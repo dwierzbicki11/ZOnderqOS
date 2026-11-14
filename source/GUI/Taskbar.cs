@@ -28,7 +28,13 @@ namespace ZonderqOS.GUI
         private int lastPageSlots = -1;
         private bool notificationHovered;
         private int cachedClockKey = -1;
+        private int cachedHour;
+        private int cachedMinute;
+        private int cachedSecond;
+        private bool hasValidClockTime;
         private int cachedDay = -1;
+        private int cachedDayNum;
+        private int cachedMonthNum;
         private int cachedVolumeCount = -1;
         private long lastStoragePollTicks = -1;
         private int cachedTimeZone = int.MinValue;
@@ -36,8 +42,6 @@ namespace ZonderqOS.GUI
         private bool cachedNetworkReady;
         private bool networkStateInitialized;
         private bool volumeStateInitialized;
-        private string cachedTime = "--:--";
-        private string cachedDate = "--.--";
         private string cachedVolumeLabel = "VOL 0";
         public bool HasPendingUpdate { get; set; }
 
@@ -345,15 +349,17 @@ namespace ZonderqOS.GUI
             if (clockKey != cachedClockKey)
             {
                 cachedClockKey = clockKey;
-                cachedTime = showSeconds
-                    ? currentTime.ToString("HH:mm:ss")
-                    : currentTime.ToString("HH:mm");
+                cachedHour = currentTime.Hour;
+                cachedMinute = currentTime.Minute;
+                cachedSecond = currentTime.Second;
+                hasValidClockTime = true;
             }
 
             if (currentTime.DayOfYear != cachedDay)
             {
                 cachedDay = currentTime.DayOfYear;
-                cachedDate = currentTime.ToString("dd.MM");
+                cachedDayNum = currentTime.Day;
+                cachedMonthNum = currentTime.Month;
             }
 
             bool networkReady = global::ZonderqOS.Network.IsReady;
@@ -441,17 +447,37 @@ namespace ZonderqOS.GUI
                     clockHovered ? SystemTheme.AccentBorder : Color.FromArgb(40, 50, 62));
             }
 
+            bool showSeconds = global::ZonderqOS.SystemSettings.ShowClockSeconds;
+            int timeWidth = showSeconds ? 47 : 29;
+            int timeX = clockX + System.Math.Max(0, (68 - timeWidth) / 2);
+            Color timeColor = Color.FromArgb(232, 237, 242);
+
             if (global::ZonderqOS.SystemSettings.ShowTaskbarDate)
             {
-                SmallTextRenderer.DrawCentered(canvas, cachedTime, clockX, Y + 12, 68,
-                    Color.FromArgb(232, 237, 242));
-                SmallTextRenderer.DrawCentered(canvas, cachedDate, clockX, Y + 27, 68,
-                    Color.FromArgb(132, 148, 162));
+                if (hasValidClockTime)
+                    SmallTextRenderer.DrawTime(canvas, cachedHour, cachedMinute, cachedSecond, showSeconds, timeX, Y + 12, timeColor);
+                else
+                    SmallTextRenderer.DrawCentered(canvas, "--:--", clockX, Y + 12, 68, timeColor);
+
+                if (cachedDay >= 0)
+                {
+                    int dateX = clockX + (68 - 29) / 2;
+                    Color dateColor = Color.FromArgb(132, 148, 162);
+                    SmallTextRenderer.DrawUInt2(canvas, (ulong)cachedDayNum, dateX, Y + 27, dateColor);
+                    SmallTextRenderer.DrawSingleChar(canvas, '.', dateX + 12, Y + 27, dateColor);
+                    SmallTextRenderer.DrawUInt2(canvas, (ulong)cachedMonthNum, dateX + 18, Y + 27, dateColor);
+                }
+                else
+                {
+                    SmallTextRenderer.DrawCentered(canvas, "--.--", clockX, Y + 27, 68, Color.FromArgb(132, 148, 162));
+                }
             }
             else
             {
-                SmallTextRenderer.DrawCentered(canvas, cachedTime, clockX, Y + 19, 68,
-                    Color.FromArgb(232, 237, 242));
+                if (hasValidClockTime)
+                    SmallTextRenderer.DrawTime(canvas, cachedHour, cachedMinute, cachedSecond, showSeconds, timeX, Y + 19, timeColor);
+                else
+                    SmallTextRenderer.DrawCentered(canvas, "--:--", clockX, Y + 19, 68, timeColor);
             }
 
             // Windows / Zorin OS "Show Desktop" (Aero Peek) button at the right screen edge

@@ -50,6 +50,8 @@ namespace ZonderqOS.GUI.Apps
         }
 
         private readonly Cell[] cells = new Cell[GridCols * GridRows];
+        private readonly int[] floodStack = new int[GridCols * GridRows];
+        private readonly bool[] floodQueued = new bool[GridCols * GridRows];
         private GameStatus status = GameStatus.Ready;
         private long gameStartTicks;
         private uint elapsedSeconds;
@@ -271,15 +273,17 @@ namespace ZonderqOS.GUI.Apps
 
         private void RevealCellFlood(int startCol, int startRow)
         {
-            // Fixed-size stack for zero allocation
-            int[] stack = new int[GridCols * GridRows];
+            // Reuse fixed-size stack and queued bitmask for zero allocation and overflow safety.
+            Array.Clear(floodQueued, 0, floodQueued.Length);
             int stackPtr = 0;
+            int startIdx = startRow * GridCols + startCol;
 
-            stack[stackPtr++] = startRow * GridCols + startCol;
+            floodStack[stackPtr++] = startIdx;
+            floodQueued[startIdx] = true;
 
             while (stackPtr > 0)
             {
-                int curr = stack[--stackPtr];
+                int curr = floodStack[--stackPtr];
                 if (cells[curr].IsRevealed || cells[curr].IsFlagged)
                     continue;
 
@@ -299,9 +303,10 @@ namespace ZonderqOS.GUI.Apps
                             if (nr >= 0 && nr < GridRows && nc >= 0 && nc < GridCols)
                             {
                                 int nidx = nr * GridCols + nc;
-                                if (!cells[nidx].IsRevealed && !cells[nidx].IsFlagged)
+                                if (!cells[nidx].IsRevealed && !cells[nidx].IsFlagged && !floodQueued[nidx])
                                 {
-                                    stack[stackPtr++] = nidx;
+                                    floodQueued[nidx] = true;
+                                    floodStack[stackPtr++] = nidx;
                                 }
                             }
                         }

@@ -136,6 +136,9 @@ namespace ZonderqOS.GUI.Apps
             if (string.IsNullOrEmpty(command))
                 return;
 
+            if (!global::ZonderqOS.SensitiveCommandPolicy.ContainsPasswordBearingCommand(command))
+                global::ZonderqOS.ShellHistory.Add(command);
+
             Action previousHtopLauncher = CommandIO.HtopLauncher;
             CommandIO.HtopLauncher = StartHtop;
             CommandIO.StartRedirection();

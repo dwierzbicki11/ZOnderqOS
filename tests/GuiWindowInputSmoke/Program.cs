@@ -29,6 +29,15 @@ namespace ZonderqOS.GUI.Icons
 
 namespace ZonderqOS.GUI
 {
+    // Window performs a type check against the production Button widget;
+    // this host-only smoke test intentionally stubs rendering dependencies.
+    internal sealed class Button : Widget
+    {
+        public System.Action OnClick { get; set; }
+        public Button() : base(0, 0, 20, 20) { }
+        public override void Render(Cosmos.Kernel.System.Graphics.Canvas canvas) { }
+    }
+
     internal static class UiAnimator
     {
         public static void RequestFrames() { }

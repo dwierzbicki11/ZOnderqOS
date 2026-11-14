@@ -1,4 +1,6 @@
 using System;
+using System.Drawing;
+using Cosmos.Kernel.System.Graphics;
 
 namespace ZonderqOS.GUI
 {
@@ -8,11 +10,8 @@ namespace ZonderqOS.GUI
     /// </summary>
     public static class BmpEncoder
     {
-        public static byte[] Encode(int width, int height, uint[] argbPixels)
+        private static byte[] AllocateAndWriteHeaders(int width, int height)
         {
-            if (width <= 0 || height <= 0 || argbPixels == null)
-                return Array.Empty<byte>();
-
             int imageSize = width * height * 4;
             int fileSize = 54 + imageSize;
             byte[] bmp = new byte[fileSize];
@@ -32,7 +31,7 @@ namespace ZonderqOS.GUI
             bmp[19] = (byte)(width >> 8);
             bmp[20] = (byte)(width >> 16);
             bmp[21] = (byte)(width >> 24);
-            
+
             // Top-down image is represented by negative height
             int negHeight = -height;
             bmp[22] = (byte)(negHeight);
@@ -46,6 +45,43 @@ namespace ZonderqOS.GUI
             bmp[35] = (byte)(imageSize >> 8);
             bmp[36] = (byte)(imageSize >> 16);
             bmp[37] = (byte)(imageSize >> 24);
+
+            return bmp;
+        }
+
+        public static byte[] EncodeCanvas(Canvas canvas)
+        {
+            if (canvas == null)
+                return Array.Empty<byte>();
+
+            int width = (int)canvas.Width;
+            int height = (int)canvas.Height;
+            if (width <= 0 || height <= 0)
+                return Array.Empty<byte>();
+
+            byte[] bmp = AllocateAndWriteHeaders(width, height);
+            int outIdx = 54;
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    Color c = canvas.GetPointColor(x, y);
+                    bmp[outIdx] = c.B;
+                    bmp[outIdx + 1] = c.G;
+                    bmp[outIdx + 2] = c.R;
+                    bmp[outIdx + 3] = c.A;
+                    outIdx += 4;
+                }
+            }
+            return bmp;
+        }
+
+        public static byte[] Encode(int width, int height, uint[] argbPixels)
+        {
+            if (width <= 0 || height <= 0 || argbPixels == null)
+                return Array.Empty<byte>();
+
+            byte[] bmp = AllocateAndWriteHeaders(width, height);
 
             // Copy pixels in standard little-endian BGRA format
             int outIdx = 54;

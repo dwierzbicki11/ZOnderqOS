@@ -178,6 +178,9 @@ namespace ZonderqOS.GUI
                 int firstMouseY = (int)MouseManager.Y;
                 ResetActivityTimer();
                 RenderFrame(firstMouseX, firstMouseY);
+                // Only after a successfully rendered authenticated desktop can
+                // this GUI boot confirm the pending A/B slot.
+                global::ZonderqOS.SystemCore.Updates.BootSlotManager.ConfirmSlotHealth();
 
                 while (isRunning)
                 {
@@ -620,7 +623,50 @@ namespace ZonderqOS.GUI
             }
             finally
             {
-                Instance = null;
+                // The static shutdown callback is an instance method. If left
+                // installed after logout it roots the entire old desktop,
+                // including large Canvas/wallpaper buffers, across relogins.
+                // Never unregister a callback installed by a newer session.
+                if (object.ReferenceEquals(
+                    global::ZonderqOS.SystemCore.SystemPower.OnBeforeShutdown?.Target, this))
+                    global::ZonderqOS.SystemCore.SystemPower.OnBeforeShutdown = null;
+
+                // Session teardown must also happen if a GUI callback threw.
+                // A single broken app must not prevent releasing the rest.
+                try { applicationManager?.CloseAll(); }
+                catch (Exception closeError)
+                {
+                    Console.WriteLine("[GUI] Session cleanup warning: " + closeError.Message);
+                }
+
+                if (object.ReferenceEquals(Instance, this))
+                    Instance = null;
+
+                isRunning = false;
+                cursorDamageRenderer = null;
+                wallpaperCanvas = null;
+                canvas = null;
+                desktopShortcuts = null;
+                desktopContextMenu = null;
+                notificationCenter = null;
+                commandPalette = null;
+                startMenu = null;
+                taskbar = null;
+                appRegistry = null;
+                applicationManager = null;
+            }
+        }
+
+        internal ulong EstimatedGraphicsBufferBytes
+        {
+            get
+            {
+                ulong total = 0;
+                if (canvas != null)
+                    total += (ulong)canvas.Width * (ulong)canvas.Height * 4UL;
+                if (wallpaperCanvas != null)
+                    total += (ulong)wallpaperCanvas.Width * (ulong)wallpaperCanvas.Height * 4UL;
+                return total;
             }
         }
 
@@ -660,7 +706,8 @@ namespace ZonderqOS.GUI
 
             if (startMenu.Visible || (desktopContextMenu != null && desktopContextMenu.Visible) ||
                 (notificationCenter != null && notificationCenter.Visible) ||
-                (commandPalette != null && commandPalette.Visible))
+                (commandPalette != null && commandPalette.Visible) ||
+                applicationManager.HasLiveTelemetryWindow)
                 return false;
 
             NotificationEntry toast;

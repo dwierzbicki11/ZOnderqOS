@@ -6,7 +6,12 @@ namespace ZonderqOS
     public static class SecurityLogger
     {
         private static string LogPath = @"/var/log/auth.log";
+        private static readonly string BackupLogPath = @"/var/log/auth.log.1";
         private const long MaxLogSize = 256 * 1024;
+        private const int StatRefreshInterval = 32;
+        private static readonly object Sync = new object();
+        private static long approxLogBytes = -1;
+        private static int writesSinceStat;
 
         public static void Initialize()
         {
@@ -14,8 +19,20 @@ namespace ZonderqOS
             {
                 if (!Directory.Exists("/var/log")) Directory.CreateDirectory("/var/log");
 
-                if (!File.Exists(LogPath))
-                    File.WriteAllText(LogPath, $"[{GetTimestamp()}] [SYS] Security audit log initialized.\n");
+                lock (Sync)
+                {
+                    if (!File.Exists(LogPath))
+                    {
+                        string initial = $"[{GetTimestamp()}] [SYS] Security audit log initialized.\n";
+                        File.WriteAllText(LogPath, initial);
+                        approxLogBytes = initial.Length;
+                    }
+                    else
+                    {
+                        approxLogBytes = new FileInfo(LogPath).Length;
+                    }
+                    writesSinceStat = 0;
+                }
             }
             catch (Exception ex)
             {
@@ -32,10 +49,37 @@ namespace ZonderqOS
                 string currentUser = SecurityContext.CurrentUser ?? "unknown";
                 string logEntry = $"[{GetTimestamp()}] [{severity}] [UID:{currentUser}] {message}\n";
 
-                if (File.Exists(LogPath) && new FileInfo(LogPath).Length + logEntry.Length > MaxLogSize)
-                    File.WriteAllText(LogPath, $"[{GetTimestamp()}] [SYS] Security audit log rotated.\n");
+                lock (Sync)
+                {
+                    if (approxLogBytes < 0 || writesSinceStat >= StatRefreshInterval)
+                    {
+                        approxLogBytes = File.Exists(LogPath) ? new FileInfo(LogPath).Length : 0;
+                        writesSinceStat = 0;
+                    }
 
-                File.AppendAllText(LogPath, logEntry);
+                    if (approxLogBytes + logEntry.Length > MaxLogSize)
+                    {
+                        try
+                        {
+                            if (File.Exists(LogPath))
+                            {
+                                if (File.Exists(BackupLogPath))
+                                    File.Delete(BackupLogPath);
+                                File.Move(LogPath, BackupLogPath);
+                            }
+                        }
+                        catch { }
+
+                        string rotatedHeader = $"[{GetTimestamp()}] [SYS] Security audit log rotated.\n";
+                        File.WriteAllText(LogPath, rotatedHeader);
+                        approxLogBytes = rotatedHeader.Length;
+                        writesSinceStat = 0;
+                    }
+
+                    File.AppendAllText(LogPath, logEntry);
+                    approxLogBytes += logEntry.Length;
+                    writesSinceStat++;
+                }
             }
             catch
             {

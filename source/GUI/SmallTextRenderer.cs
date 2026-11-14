@@ -173,6 +173,11 @@ namespace ZonderqOS.GUI
 
         public static void DrawTime(Canvas canvas, int hour, int minute, int second, int x, int y, Color color)
         {
+            DrawTime(canvas, hour, minute, second, true, x, y, color);
+        }
+
+        public static void DrawTime(Canvas canvas, int hour, int minute, int second, bool showSeconds, int x, int y, Color color)
+        {
             hour = Math.Max(0, Math.Min(23, hour));
             minute = Math.Max(0, Math.Min(59, minute));
             second = Math.Max(0, Math.Min(59, second));
@@ -180,8 +185,11 @@ namespace ZonderqOS.GUI
             DrawUInt2(canvas, (ulong)hour, x, y, color);
             DrawChar(canvas, ':', x + 12, y, color);
             DrawUInt2(canvas, (ulong)minute, x + 18, y, color);
-            DrawChar(canvas, ':', x + 30, y, color);
-            DrawUInt2(canvas, (ulong)second, x + 36, y, color);
+            if (showSeconds)
+            {
+                DrawChar(canvas, ':', x + 30, y, color);
+                DrawUInt2(canvas, (ulong)second, x + 36, y, color);
+            }
         }
 
         public static void DrawInt(Canvas canvas, long value, int x, int y, Color color)
@@ -384,6 +392,9 @@ namespace ZonderqOS.GUI
         {
             return CachedPowersOfTen[exponent];
         }
+
+        public static void DrawSingleChar(Canvas canvas, char ch, int x, int y, Color color) =>
+            DrawChar(canvas, ch, x, y, color);
 
         private static void DrawChar(Canvas canvas, char ch, int x, int y, Color color)
         {

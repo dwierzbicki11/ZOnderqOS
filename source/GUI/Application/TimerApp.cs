@@ -41,6 +41,11 @@ namespace ZonderqOS.GUI.Apps
 
         private long toneEndTicks;
         private readonly Action closeCallback;
+        private long lastRenderedClockSecond = -1;
+        private int lastRenderedTzOffset = int.MinValue;
+        private long lastRenderedTimerSeconds = -1;
+        private int cachedTzOffset = int.MinValue;
+        private string cachedTzStr = string.Empty;
 
         public TimerApp(int x, int y, Action onClose) : base("Zegar i Czas")
         {
@@ -49,7 +54,22 @@ namespace ZonderqOS.GUI.Apps
             Window.CloseAction = Close;
         }
 
-        public override bool NeedsContinuousRedraw => activeTab == 0 || isStopwatchRunning || isTimerRunning || isAlarming;
+        public override bool NeedsContinuousRedraw => isStopwatchRunning || isAlarming || NeedsPerSecondRedraw();
+
+        private bool NeedsPerSecondRedraw()
+        {
+            if (activeTab == 0)
+            {
+                long currentSec = DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond;
+                return currentSec != lastRenderedClockSecond ||
+                    global::ZonderqOS.SystemSettings.TimeZoneOffsetHours != lastRenderedTzOffset;
+            }
+            if (activeTab == 2 && isTimerRunning)
+            {
+                return timerRemainingSeconds != lastRenderedTimerSeconds;
+            }
+            return false;
+        }
 
         public override void Close()
         {
@@ -395,7 +415,11 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderAnalogClock(Canvas canvas, int cx, int cy, int cw)
         {
-            DateTime now = DateTime.UtcNow.AddHours(global::ZonderqOS.SystemSettings.TimeZoneOffsetHours);
+            DateTime utcNow = DateTime.UtcNow;
+            int tzOffset = global::ZonderqOS.SystemSettings.TimeZoneOffsetHours;
+            lastRenderedClockSecond = utcNow.Ticks / TimeSpan.TicksPerSecond;
+            lastRenderedTzOffset = tzOffset;
+            DateTime now = utcNow.AddHours(tzOffset);
 
             int centerX = cx + cw / 2;
             int centerY = cy + 96;
@@ -438,18 +462,28 @@ namespace ZonderqOS.GUI.Apps
 
             // Digital clock display below
             int digY = cy + 195;
-            string timeStr = now.Hour.ToString("00") + ":" + now.Minute.ToString("00") + ":" + now.Second.ToString("00");
             canvas.DrawFilledRectangle(Panel, centerX - 80, digY, 160, 32);
             canvas.DrawRectangle(Border, centerX - 80, digY, 160, 32);
-            SmallTextRenderer.DrawCentered(canvas, timeStr, centerX - 80, digY + 12, 160, TextColor);
+            int timeX = centerX - 80 + (160 - 47) / 2;
+            SmallTextRenderer.DrawTime(canvas, now.Hour, now.Minute, now.Second, true, timeX, digY + 12, TextColor);
 
             // Date and Timezone
-            string dateStr = now.Day.ToString("00") + "." + now.Month.ToString("00") + "." + now.Year;
-            string tzStr = "Strefa: UTC" + (global::ZonderqOS.SystemSettings.TimeZoneOffsetHours >= 0 ? "+" : "") +
-                global::ZonderqOS.SystemSettings.TimeZoneOffsetHours;
+            int yearVal = Math.Max(0, now.Year);
+            int dateW = 36 + SmallTextRenderer.WidthUInt((ulong)yearVal);
+            int dateX = cx + (cw - dateW) / 2;
+            int dateY = digY + 42;
+            SmallTextRenderer.DrawUInt2(canvas, (ulong)now.Day, dateX, dateY, MutedColor);
+            SmallTextRenderer.DrawSingleChar(canvas, '.', dateX + 12, dateY, MutedColor);
+            SmallTextRenderer.DrawUInt2(canvas, (ulong)now.Month, dateX + 18, dateY, MutedColor);
+            SmallTextRenderer.DrawSingleChar(canvas, '.', dateX + 30, dateY, MutedColor);
+            SmallTextRenderer.DrawUInt(canvas, (ulong)yearVal, dateX + 36, dateY, MutedColor);
 
-            SmallTextRenderer.DrawCentered(canvas, dateStr, cx, digY + 42, cw, MutedColor);
-            SmallTextRenderer.DrawCentered(canvas, tzStr, cx, digY + 56, cw, SystemTheme.Accent);
+            if (tzOffset != cachedTzOffset)
+            {
+                cachedTzOffset = tzOffset;
+                cachedTzStr = "Strefa: UTC" + (tzOffset >= 0 ? "+" : "") + tzOffset;
+            }
+            SmallTextRenderer.DrawCentered(canvas, cachedTzStr, cx, digY + 56, cw, SystemTheme.Accent);
         }
 
         private void RenderStopwatch(Canvas canvas, int cx, int cy, int cw)
@@ -460,8 +494,6 @@ namespace ZonderqOS.GUI.Apps
             long secs = (totalMs % 60000) / 1000;
             long cs = (totalMs % 1000) / 10;
 
-            string displayStr = mins.ToString("00") + ":" + secs.ToString("00") + "." + cs.ToString("00");
-
             // Big Stopwatch Display
             int dispY = cy + 20;
             int dispW = 260;
@@ -469,7 +501,20 @@ namespace ZonderqOS.GUI.Apps
 
             canvas.DrawFilledRectangle(Color.FromArgb(14, 18, 24), dispX, dispY, dispW, 58);
             canvas.DrawRectangle(isStopwatchRunning ? SystemTheme.AccentBorder : Border, dispX, dispY, dispW, 58);
-            SmallTextRenderer.DrawCentered(canvas, displayStr, dispX, dispY + 25, dispW, isStopwatchRunning ? SystemTheme.Accent : TextColor);
+            ulong safeMins = mins > 0 ? (ulong)mins : 0UL;
+            int minsW = safeMins >= 100UL ? SmallTextRenderer.WidthUInt(safeMins) : 11;
+            int swTotalW = minsW + 36;
+            int swX = dispX + (dispW - swTotalW) / 2;
+            Color swColor = isStopwatchRunning ? SystemTheme.Accent : TextColor;
+            if (safeMins >= 100UL)
+                SmallTextRenderer.DrawUInt(canvas, safeMins, swX, dispY + 25, swColor);
+            else
+                SmallTextRenderer.DrawUInt2(canvas, safeMins, swX, dispY + 25, swColor);
+            int swColX = swX + minsW + 1;
+            SmallTextRenderer.DrawSingleChar(canvas, ':', swColX, dispY + 25, swColor);
+            SmallTextRenderer.DrawUInt2(canvas, (ulong)secs, swColX + 6, dispY + 25, swColor);
+            SmallTextRenderer.DrawSingleChar(canvas, '.', swColX + 18, dispY + 25, swColor);
+            SmallTextRenderer.DrawUInt2(canvas, (ulong)cs, swColX + 24, dispY + 25, swColor);
 
             // Stopwatch Buttons: [START/PAUZA], [LAP], [RESET]
             int btnY = cy + 96;
@@ -507,9 +552,9 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderTimer(Canvas canvas, int cx, int cy, int cw)
         {
+            lastRenderedTimerSeconds = timerRemainingSeconds;
             long mins = timerRemainingSeconds / 60;
             long secs = timerRemainingSeconds % 60;
-            string timerStr = mins.ToString("00") + ":" + secs.ToString("00");
 
             // Big Timer Display
             int dispY = cy + 20;
@@ -519,7 +564,17 @@ namespace ZonderqOS.GUI.Apps
             Color numColor = isAlarming ? RedColor : (isTimerRunning ? GreenColor : TextColor);
             canvas.DrawFilledRectangle(Color.FromArgb(14, 18, 24), dispX, dispY, dispW, 58);
             canvas.DrawRectangle(isAlarming ? RedColor : (isTimerRunning ? GreenColor : Border), dispX, dispY, dispW, 58);
-            SmallTextRenderer.DrawCentered(canvas, timerStr, dispX, dispY + 25, dispW, numColor);
+            ulong safeMins = mins > 0 ? (ulong)mins : 0UL;
+            int minsW = safeMins >= 100UL ? SmallTextRenderer.WidthUInt(safeMins) : 11;
+            int tmTotalW = minsW + 18;
+            int tmX = dispX + (dispW - tmTotalW) / 2;
+            if (safeMins >= 100UL)
+                SmallTextRenderer.DrawUInt(canvas, safeMins, tmX, dispY + 25, numColor);
+            else
+                SmallTextRenderer.DrawUInt2(canvas, safeMins, tmX, dispY + 25, numColor);
+            int tmColX = tmX + minsW + 1;
+            SmallTextRenderer.DrawSingleChar(canvas, ':', tmColX, dispY + 25, numColor);
+            SmallTextRenderer.DrawUInt2(canvas, (ulong)secs, tmColX + 6, dispY + 25, numColor);
 
             // Progress bar
             int barY = cy + 88;

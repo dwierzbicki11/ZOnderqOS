@@ -30,6 +30,9 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action closeCallback;
         private string statusMessage = "Autozapis aktywny";
         private long lastSaveTicks = 0;
+        private long lastEditTicks = 0;
+        private bool isDirty = false;
+        private const long AutoSaveDelaySeconds = 2;
 
         public QuickNotesApp(int x, int y, Action onClose) : base("Szybkie Notatki")
         {
@@ -42,9 +45,32 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
-            SaveNotes();
+            if (isDirty)
+                SaveNotes();
             base.Close();
             closeCallback?.Invoke();
+        }
+
+        public override void Update()
+        {
+            base.Update();
+            if (!isDirty)
+                return;
+
+            long freq = System.Diagnostics.Stopwatch.Frequency > 0
+                ? System.Diagnostics.Stopwatch.Frequency : 1000000L;
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (now - lastEditTicks >= AutoSaveDelaySeconds * freq)
+            {
+                SaveNotes();
+            }
+        }
+
+        private void MarkDirty()
+        {
+            isDirty = true;
+            lastEditTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            statusMessage = "Edycja (oczekuje zapis)...";
         }
 
         private void LoadNotes()
@@ -78,6 +104,8 @@ namespace ZonderqOS.GUI.Apps
             try
             {
                 File.WriteAllLines(NotesFilePath, lines.ToArray());
+                isDirty = false;
+                lastSaveTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                 statusMessage = "Zapisano " + DateTime.Now.ToString("HH:mm:ss");
             }
             catch
@@ -103,7 +131,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     lines.Add("");
                     cursorRow = lines.Count - 1;
-                    SaveNotes();
+                    MarkDirty();
                 }
                 return;
             }
@@ -122,7 +150,7 @@ namespace ZonderqOS.GUI.Apps
                         lines.RemoveAt(cursorRow);
                         cursorRow = Math.Max(0, lines.Count - 1);
                     }
-                    SaveNotes();
+                    MarkDirty();
                 }
                 return;
             }
@@ -147,7 +175,7 @@ namespace ZonderqOS.GUI.Apps
                     if (lines[cursorRow].Length < 38)
                     {
                         lines[cursorRow] += key.KeyChar;
-                        SaveNotes();
+                        MarkDirty();
                     }
                 }
             }
@@ -263,13 +291,12 @@ namespace ZonderqOS.GUI.Apps
                 canvas.DrawLine(noteBorder, wx + 8, textY + 16, wx + ww - 8, textY + 16);
 
                 string lineText = lines[i];
+                SmallTextRenderer.Draw(canvas, lineText, wx + 12, textY, TextColor);
                 if (i == cursorRow)
                 {
-                    // Blinking or static cursor indicator
-                    lineText += " |";
+                    int cursorX = wx + 12 + SmallTextRenderer.Width(lineText) + 4;
+                    SmallTextRenderer.DrawSingleChar(canvas, '|', cursorX, textY, TextColor);
                 }
-
-                SmallTextRenderer.Draw(canvas, lineText, wx + 12, textY, TextColor);
                 textY += 18;
             }
 

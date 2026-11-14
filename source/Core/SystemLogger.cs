@@ -24,8 +24,10 @@ namespace ZonderqOS
     public static class SystemLogger
     {
         public const string LogPath = "/var/log/system.log";
+        private const string BackupLogPath = "/var/log/system.log.1";
         private const int Capacity = 96;
         private const long MaxLogBytes = 512 * 1024;
+        private const int StatRefreshInterval = 32;
 
         private static readonly object Sync = new object();
         private static readonly SystemLogEntry[] Entries = new SystemLogEntry[Capacity];
@@ -33,6 +35,8 @@ namespace ZonderqOS
         private static int count;
         private static long nextSequence = 1;
         private static bool initialized;
+        private static long approxLogBytes = -1;
+        private static int writesSinceStat;
 
         public static int Count
         {
@@ -59,21 +63,32 @@ namespace ZonderqOS
                     {
                         try
                         {
-                            if (new FileInfo(LogPath).Length > MaxLogBytes)
-                                File.WriteAllText(LogPath, "[SYSTEM] Previous system log rotated at boot.\n");
+                            long existingLength = new FileInfo(LogPath).Length;
+                            if (existingLength > MaxLogBytes)
+                            {
+                                RotateFileLocked("[SYSTEM] Previous system log rotated at boot.\n");
+                            }
+                            else
+                            {
+                                approxLogBytes = existingLength;
+                                writesSinceStat = 0;
+                            }
                         }
                         catch { }
                     }
                     else
                     {
                         File.WriteAllText(LogPath, string.Empty);
+                        approxLogBytes = 0;
+                        writesSinceStat = 0;
                     }
 
                     int start = count == Capacity ? writeIndex : 0;
                     for (int i = 0; i < count; i++)
                     {
                         int index = (start + i) % Capacity;
-                        AppendPersistentLocked(Entries[index]);
+                        string line = Format(Entries[index]);
+                        AppendPersistentLocked(line);
                     }
 
                     initialized = true;
@@ -119,8 +134,9 @@ namespace ZonderqOS
 
                     if (initialized)
                     {
-                        RotateIfNeededLocked(entry);
-                        AppendPersistentLocked(entry);
+                        string formatted = Format(entry);
+                        RotateIfNeededLocked(formatted.Length + 1);
+                        AppendPersistentLocked(formatted);
                     }
                 }
             }
@@ -170,6 +186,8 @@ namespace ZonderqOS
                     try
                     {
                         File.WriteAllText(LogPath, string.Empty);
+                        approxLogBytes = 0;
+                        writesSinceStat = 0;
                     }
                     catch
                     {
@@ -182,25 +200,58 @@ namespace ZonderqOS
             return success;
         }
 
-        private static void RotateIfNeededLocked(SystemLogEntry nextEntry)
+        private static void RotateIfNeededLocked(int nextBytes)
         {
             try
             {
-                if (!File.Exists(LogPath))
-                    return;
+                if (approxLogBytes < 0 || writesSinceStat >= StatRefreshInterval)
+                {
+                    if (!File.Exists(LogPath))
+                    {
+                        approxLogBytes = 0;
+                        writesSinceStat = 0;
+                        return;
+                    }
+                    approxLogBytes = new FileInfo(LogPath).Length;
+                    writesSinceStat = 0;
+                }
 
-                long estimated = new FileInfo(LogPath).Length + Format(nextEntry).Length + 1;
-                if (estimated > MaxLogBytes)
-                    File.WriteAllText(LogPath, "[SYSTEM] Log rotated after reaching size limit.\n");
+                if (approxLogBytes + nextBytes > MaxLogBytes)
+                {
+                    RotateFileLocked("[SYSTEM] Log rotated after reaching size limit.\n");
+                }
             }
             catch { }
         }
 
-        private static void AppendPersistentLocked(SystemLogEntry entry)
+        private static void RotateFileLocked(string rotatedHeader)
         {
             try
             {
-                File.AppendAllText(LogPath, Format(entry) + "\n");
+                if (File.Exists(LogPath))
+                {
+                    if (File.Exists(BackupLogPath))
+                        File.Delete(BackupLogPath);
+                    File.Move(LogPath, BackupLogPath);
+                }
+            }
+            catch { }
+
+            File.WriteAllText(LogPath, rotatedHeader);
+            approxLogBytes = rotatedHeader.Length;
+            writesSinceStat = 0;
+        }
+
+        private static void AppendPersistentLocked(string formattedLine)
+        {
+            try
+            {
+                string line = formattedLine + "\n";
+                File.AppendAllText(LogPath, line);
+                if (approxLogBytes < 0)
+                    approxLogBytes = 0;
+                approxLogBytes += line.Length;
+                writesSinceStat++;
             }
             catch { }
         }

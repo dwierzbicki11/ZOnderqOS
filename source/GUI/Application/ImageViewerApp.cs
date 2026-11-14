@@ -44,6 +44,7 @@ namespace ZonderqOS.GUI.Apps
         private CosmosBitmap previewBitmap;
         private int previewWidth;
         private int previewHeight;
+        private int[] rxMapScratch;
         private int preparedAreaWidth = -1;
         private int preparedAreaHeight = -1;
         private bool previewDirty = true;
@@ -76,7 +77,12 @@ namespace ZonderqOS.GUI.Apps
         public override void Close()
         {
             sourcePixels = null;
+            sourceWidth = 0;
+            sourceHeight = 0;
             previewBitmap = null;
+            previewWidth = 0;
+            previewHeight = 0;
+            rxMapScratch = null;
             base.Close();
         }
 
@@ -686,6 +692,12 @@ namespace ZonderqOS.GUI.Apps
             int cropX = (targetWidth - visibleWidth) / 2;
             int cropY = (targetHeight - visibleHeight) / 2;
 
+            // Drop previous scaled bitmap before allocating a new one so two full
+            // preview buffers do not overlap on the heap during resize/zoom.
+            previewBitmap = null;
+            previewWidth = 0;
+            previewHeight = 0;
+
             CosmosBitmap preview = new CosmosBitmap(visibleWidth, visibleHeight, ColorDepth.ColorDepth32);
             int[] destination = preview.RawData;
             if (destination == null || (long)destination.Length < (long)visibleWidth * visibleHeight)
@@ -698,6 +710,16 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            if (rxMapScratch == null || rxMapScratch.Length < visibleWidth)
+                rxMapScratch = new int[visibleWidth];
+
+            for (int dx = 0; dx < visibleWidth; dx++)
+            {
+                int rx = (int)((long)(dx + cropX) * rotatedWidth / targetWidth);
+                if (rx >= rotatedWidth) rx = rotatedWidth - 1;
+                rxMapScratch[dx] = rx;
+            }
+
             int background = ViewBackground.ToArgb();
             for (int dy = 0; dy < visibleHeight; dy++)
             {
@@ -707,8 +729,7 @@ namespace ZonderqOS.GUI.Apps
 
                 for (int dx = 0; dx < visibleWidth; dx++)
                 {
-                    int rx = (int)((long)(dx + cropX) * rotatedWidth / targetWidth);
-                    if (rx >= rotatedWidth) rx = rotatedWidth - 1;
+                    int rx = rxMapScratch[dx];
 
                     int sx;
                     int sy;

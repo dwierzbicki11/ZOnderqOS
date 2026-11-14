@@ -42,8 +42,16 @@ namespace ZonderqOS.GUI.Apps
         private int selectedIndex = 0;
         private bool isUnlocked = false;
 
+        private static readonly string[] DigitLabels = { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" };
+        private static readonly string[] PinMaskLabels =
+        {
+            "----", " * ", " * * ", " * * * ", " * * * * ",
+            " * * * * * ", " * * * * * * ", " * * * * * * * ", " * * * * * * * * "
+        };
+
         // PIN & Master Key state
         private string pinInput = "";
+        private string unlockedPin = "";
         private string masterPinHash = "";
         private int failedAttempts = 0;
         private long lockoutUntilTicks = 0;
@@ -74,7 +82,8 @@ namespace ZonderqOS.GUI.Apps
             LoadVault();
         }
 
-        public override bool NeedsContinuousRedraw => !isUnlocked || lockoutUntilTicks > 0 || clipboardClearTicks > 0;
+        public override bool NeedsContinuousRedraw =>
+            lockoutUntilTicks > 0 && Stopwatch.GetTimestamp() < lockoutUntilTicks;
 
         public override void Close()
         {
@@ -129,6 +138,7 @@ namespace ZonderqOS.GUI.Apps
         {
             isUnlocked = false;
             pinInput = "";
+            unlockedPin = "";
             showPassword = false;
             lastCopiedPassword = "";
             clipboardClearTicks = 0;
@@ -159,10 +169,11 @@ namespace ZonderqOS.GUI.Apps
                 isUnlocked = true;
                 failedAttempts = 0;
                 lockoutUntilTicks = 0;
+                unlockedPin = pinInput;
                 statusMessage = "Sejf odblokowany pomyslnie.";
                 statusColor = GreenColor;
                 RegisterActivity();
-                DecryptVaultData(pinInput);
+                DecryptVaultData(unlockedPin);
                 pinInput = "";
             }
             else
@@ -503,7 +514,7 @@ namespace ZonderqOS.GUI.Apps
 
                         if (Hit(mouseX, mouseY, bx, by, bW, bH))
                         {
-                            if (pinInput.Length < 8) pinInput += n.ToString();
+                            if (pinInput.Length < 8) pinInput += DigitLabels[n];
                             if (pinInput.Length == 4) UnlockVault();
                             return;
                         }
@@ -611,7 +622,7 @@ namespace ZonderqOS.GUI.Apps
                         selectedIndex = Math.Max(0, selectedIndex - 1);
                         statusMessage = "Usunieto wpis: " + deleted;
                         statusColor = YellowColor;
-                        SaveEncryptedVault("1234");
+                        SaveEncryptedVault(unlockedPin);
                     }
                     return;
                 }
@@ -637,7 +648,7 @@ namespace ZonderqOS.GUI.Apps
             showPassword = true;
             statusMessage = "Dodano i zaszyfrowano nowy wpis: " + newEntry.Title;
             statusColor = AccentColor;
-            SaveEncryptedVault("1234");
+            SaveEncryptedVault(unlockedPin);
         }
 
         private void GenerateNewPassword()
@@ -651,15 +662,16 @@ namespace ZonderqOS.GUI.Apps
                 showPassword = true;
                 statusMessage = "Wygenerowano nowe pancerne haslo (18 znakow)!";
                 statusColor = GreenColor;
-                SaveEncryptedVault("1234");
+                SaveEncryptedVault(unlockedPin);
             }
         }
 
         private void PromptChangePin()
         {
             // Simple robust PIN rotation
-            masterPinHash = HashPin("9999", DefaultSalt);
-            SaveEncryptedVault("9999");
+            unlockedPin = "9999";
+            masterPinHash = HashPin(unlockedPin, DefaultSalt);
+            SaveEncryptedVault(unlockedPin);
             statusMessage = "Zmieniono PIN glowny na: 9999 (Zaszyfrowano baze)";
             statusColor = GreenColor;
             SecurityLogger.LogEvent("INFO", "PassVault master PIN updated successfully.");
@@ -747,9 +759,8 @@ namespace ZonderqOS.GUI.Apps
             int pinBoxY = y + 84;
             UiPainter.RoundedPanel(canvas, pinBoxX, pinBoxY, pinBoxW, 30, 4, Panel, AccentColor);
 
-            string dots = "";
-            for (int i = 0; i < pinInput.Length; i++) dots += " ● ";
-            SmallTextRenderer.DrawCentered(canvas, string.IsNullOrEmpty(dots) ? "----" : dots, pinBoxX, pinBoxY + 11, pinBoxW, GoldColor);
+            int maskIdx = Math.Min(pinInput.Length, PinMaskLabels.Length - 1);
+            SmallTextRenderer.DrawCentered(canvas, PinMaskLabels[maskIdx], pinBoxX, pinBoxY + 11, pinBoxW, GoldColor);
 
             SmallTextRenderer.DrawCentered(canvas, statusMessage, x, pinBoxY + 36, w, statusColor);
 
@@ -765,7 +776,7 @@ namespace ZonderqOS.GUI.Apps
                 int c = (n - 1) % 3;
                 int bx = padX + c * (bW + 8);
                 int by = padY + r * (bH + 6);
-                DrawBtn(canvas, n.ToString(), bx, by, bW, bH, TextColor);
+                DrawBtn(canvas, DigitLabels[n], bx, by, bW, bH, TextColor);
             }
 
             int lastY = padY + 3 * (bH + 6);

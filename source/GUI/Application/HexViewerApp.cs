@@ -34,6 +34,10 @@ namespace ZonderqOS.GUI.Apps
         };
 
         private string currentPath;
+        private string cachedTitleText = "Brak pliku (0 B)";
+        private string cachedPosText = "Poz: 0x0000 / 0x0000";
+        private int cachedPosOffset = -1;
+        private int cachedPosTotal = -1;
         private byte[] fileBytes;
         private int currentOffset;
         private int sampleIndex;
@@ -80,11 +84,17 @@ namespace ZonderqOS.GUI.Apps
                     fileBytes = System.Text.Encoding.ASCII.GetBytes(fallback);
                 }
                 Window.Title = "Hex Viewer - " + Path.GetFileName(path);
+                int len = fileBytes != null ? fileBytes.Length : 0;
+                cachedTitleText = (currentPath ?? "Brak pliku") + " (" + len + " B)";
+                cachedPosOffset = -1;
             }
             catch (Exception ex)
             {
                 string err = "Blad odczytu: " + ex.Message;
                 fileBytes = System.Text.Encoding.ASCII.GetBytes(err);
+                int len = fileBytes.Length;
+                cachedTitleText = (currentPath ?? "Brak pliku") + " (" + len + " B)";
+                cachedPosOffset = -1;
             }
         }
 
@@ -197,9 +207,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(HeaderBg, contentX, contentY, contentWidth, 30);
             canvas.DrawFilledRectangle(Border, contentX, contentY + 29, contentWidth, 1);
 
-            int fileLen = fileBytes != null ? fileBytes.Length : 0;
-            string titleText = (currentPath ?? "Brak pliku") + " (" + fileLen + " B)";
-            SmallTextRenderer.Draw(canvas, titleText, contentX + 8, contentY + 11, TextColor);
+            SmallTextRenderer.Draw(canvas, cachedTitleText, contentX + 8, contentY + 11, TextColor);
 
             // Table Header Row
             int gridTop = contentY + 34;
@@ -252,7 +260,7 @@ namespace ZonderqOS.GUI.Apps
                     {
                         byte val = fileBytes[byteIdx];
                         char ch = (val >= 32 && val <= 126) ? (char)val : '.';
-                        SmallTextRenderer.Draw(canvas, ch.ToString(), ax, rowY, AsciiCol);
+                        SmallTextRenderer.DrawSingleChar(canvas, ch, ax, rowY, AsciiCol);
                     }
                     ax += 8;
                 }
@@ -269,8 +277,13 @@ namespace ZonderqOS.GUI.Apps
             DrawNavButton(canvas, contentX + 110, barY + 1, 96, 24, "NASTEPNE", hoveredBtn == 1);
             DrawNavButton(canvas, contentX + contentWidth - 130, barY + 1, 120, 24, "INNY PLIK [SPACJA]", hoveredBtn == 2);
 
-            string posText = "Poz: 0x" + currentOffset.ToString("X4") + " / 0x" + totalBytes.ToString("X4");
-            SmallTextRenderer.Draw(canvas, posText, contentX + 220, barY + 9, MutedColor);
+            if (currentOffset != cachedPosOffset || totalBytes != cachedPosTotal)
+            {
+                cachedPosOffset = currentOffset;
+                cachedPosTotal = totalBytes;
+                cachedPosText = "Poz: 0x" + currentOffset.ToString("X4") + " / 0x" + totalBytes.ToString("X4");
+            }
+            SmallTextRenderer.Draw(canvas, cachedPosText, contentX + 220, barY + 9, MutedColor);
         }
 
         private static void DrawNavButton(Canvas canvas, int x, int y, int w, int h, string text, bool hovered)
@@ -290,18 +303,18 @@ namespace ZonderqOS.GUI.Apps
         {
             char h1 = HexDigits[(val >> 4) & 0x0F];
             char h2 = HexDigits[val & 0x0F];
-            SmallTextRenderer.Draw(canvas, h1.ToString() + h2.ToString(), x, y, color);
+            SmallTextRenderer.DrawSingleChar(canvas, h1, x, y, color);
+            SmallTextRenderer.DrawSingleChar(canvas, h2, x + 6, y, color);
         }
 
         private static void DrawHex32(Canvas canvas, uint val, int x, int y, Color color)
         {
-            char[] buf = new char[8];
             for (int i = 7; i >= 0; i--)
             {
-                buf[i] = HexDigits[val & 0x0F];
+                SmallTextRenderer.DrawSingleChar(canvas, HexDigits[val & 0x0F], x + i * 6, y, color);
                 val >>= 4;
             }
-            SmallTextRenderer.Draw(canvas, new string(buf) + ":", x, y, color);
+            SmallTextRenderer.DrawSingleChar(canvas, ':', x + 48, y, color);
         }
     }
 }

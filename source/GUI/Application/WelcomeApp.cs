@@ -188,12 +188,13 @@ namespace ZonderqOS.GUI.Apps
             RenderFooter(canvas, x + 8, y + h - 38, w - 16, 32);
         }
 
+        private static readonly string[] TabLabels = { "1. PRZEGLAD", "2. NOWOSCI", "3. SKROTY", "4. JEZYK / LANG", "5. O SYSTEMIE" };
+
         private void RenderTabBar(Canvas canvas, int x, int y, int w, int h)
         {
-            string[] tabs = { "1. PRZEGLAD", "2. NOWOSCI", "3. SKROTY", "4. JEZYK / LANG", "5. O SYSTEMIE" };
-            int tabW = w / 5;
+            int tabW = w / TabLabels.Length;
 
-            for (int i = 0; i < tabs.Length; i++)
+            for (int i = 0; i < TabLabels.Length; i++)
             {
                 int tx = x + i * tabW;
                 bool isSel = (i == activeTab);
@@ -203,7 +204,7 @@ namespace ZonderqOS.GUI.Apps
                 Color textCol = isSel ? TextColor : MutedColor;
 
                 UiPainter.RoundedPanel(canvas, tx, y, tabW - 4, h, 4, bg, border);
-                SmallTextRenderer.DrawCentered(canvas, tabs[i], tx, y + 6, tabW - 4, textCol);
+                SmallTextRenderer.DrawCentered(canvas, TabLabels[i], tx, y + 6, tabW - 4, textCol);
             }
         }
 

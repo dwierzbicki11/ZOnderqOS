@@ -67,6 +67,10 @@ namespace ZonderqOS.GUI.Apps
         private int hoveredBackground = -1;
         private long toneEndTicks;
         private readonly Action closeCallback;
+        private int cachedPreviewAccent = -1;
+        private string cachedAccentLine = string.Empty;
+        private int cachedPreviewBg = -1;
+        private string cachedBgLine = string.Empty;
 
         public ThemeStudioApp(int x, int y, Action onClose) : base("Studio Motywow")
         {
@@ -182,11 +186,11 @@ namespace ZonderqOS.GUI.Apps
                 }
             }
 
-            // 3. Reset Button
-            int btnW = 150;
-            int btnH = 24;
+            // 3. Reset Button (keep aligned with Render)
+            int btnW = 160;
+            int btnH = 26;
             int btnX = contentX + 14;
-            int btnY = contentY + 316;
+            int btnY = contentY + 312;
 
             if (leftClicked && !leftWasClicked)
             {
@@ -239,10 +243,20 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Color.FromArgb(240, 80, 80), prevX + prevW - 8, prevY + 4, 6, 6);
 
             // Mini content
-            SmallTextRenderer.Draw(canvas, "Akcent: " + global::ZonderqOS.SystemSettings.AccentThemeName,
-                prevX + 8, prevY + 22, TextColor);
-            SmallTextRenderer.Draw(canvas, "Pulpit: " + global::ZonderqOS.SystemSettings.DesktopBackgroundName,
-                prevX + 8, prevY + 36, MutedColor);
+            int curAccent = global::ZonderqOS.SystemSettings.AccentTheme;
+            if (curAccent != cachedPreviewAccent)
+            {
+                cachedPreviewAccent = curAccent;
+                cachedAccentLine = "Akcent: " + global::ZonderqOS.SystemSettings.AccentThemeName;
+            }
+            int curBg = global::ZonderqOS.SystemSettings.DesktopBackgroundMode;
+            if (curBg != cachedPreviewBg)
+            {
+                cachedPreviewBg = curBg;
+                cachedBgLine = "Pulpit: " + global::ZonderqOS.SystemSettings.DesktopBackgroundName;
+            }
+            SmallTextRenderer.Draw(canvas, cachedAccentLine, prevX + 8, prevY + 22, TextColor);
+            SmallTextRenderer.Draw(canvas, cachedBgLine, prevX + 8, prevY + 36, MutedColor);
 
             // Mini taskbar indicator
             canvas.DrawFilledRectangle(SystemTheme.AccentSoft, prevX + 1, prevY + prevH - 12, prevW - 2, 11);

@@ -21,18 +21,7 @@ namespace ZonderqOS.GUI
 
             try
             {
-                uint[] pixels = new uint[width * height];
-                for (int y = 0; y < height; y++)
-                {
-                    int rowOffset = y * width;
-                    for (int x = 0; x < width; x++)
-                    {
-                        Color c = canvas.GetPointColor(x, y);
-                        pixels[rowOffset + x] = (uint)c.ToArgb();
-                    }
-                }
-
-                byte[] bmpBytes = BmpEncoder.Encode(width, height, pixels);
+                byte[] bmpBytes = BmpEncoder.EncodeCanvas(canvas);
                 if (bmpBytes.Length == 0)
                     return null;
 
