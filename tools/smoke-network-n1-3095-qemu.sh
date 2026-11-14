@@ -199,7 +199,7 @@ while (( SECONDS - started < TIMEOUT )); do
         echo "[NET3095-N1][FAIL] Guest exited before TX capture" >&2; exit 1;
       }
       if (( SECONDS - capture_start >= 12 )); then
-        python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
+        python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP" || true
         echo "[NET3095-N1][FAIL] TX capture missing or malformed" >&2
         exit 1
       fi
@@ -288,7 +288,7 @@ while (( SECONDS - started < TIMEOUT )); do
           exit 1
         fi
         if (( SECONDS - tcp_start >= 20 )); then
-          python3 "$ROOT/tests/verify_3095_network_n4.py" "$LOG" "$PCAP"
+          python3 "$ROOT/tests/verify_3095_network_n4.py" "$LOG" "$PCAP" || true
           cat "$LOG.tcp-host" >&2
           echo "[NET3095-N4][FAIL] No correlated TCP RX/TX capture" >&2
           exit 1
@@ -334,7 +334,7 @@ while (( SECONDS - started < TIMEOUT )); do
           exit 1
         fi
         if (( SECONDS - http_start >= 20 )); then
-          python3 "$ROOT/tests/verify_3095_network_n6.py" "$LOG" "$PCAP"
+          python3 "$ROOT/tests/verify_3095_network_n6.py" "$LOG" "$PCAP" || true
           cat "$LOG.http-host" >&2
           echo "[NET3095-N6][FAIL] No correlated HTTP TCP capture" >&2
           exit 1
@@ -381,7 +381,7 @@ while (( SECONDS - started < TIMEOUT )); do
           exit 1
         fi
         if (( SECONDS - post_http_start >= 20 )); then
-          python3 "$ROOT/tests/verify_3095_network_n6_post_http.py" "$LOG" "$PCAP"
+          python3 "$ROOT/tests/verify_3095_network_n6_post_http.py" "$LOG" "$PCAP" || true
           cat "$LOG.http-host" >&2
           echo "[NET3095-N6][FAIL] No correlated post-burst HTTP RX/TX capture" >&2
           exit 1
@@ -403,7 +403,7 @@ while (( SECONDS - started < TIMEOUT )); do
           exit 1
         fi
         if (( SECONDS - final_icmp_start >= 15 )); then
-          python3 "$ROOT/tests/verify_3095_network_n6_final_icmp.py" "$LOG" "$PCAP"
+          python3 "$ROOT/tests/verify_3095_network_n6_final_icmp.py" "$LOG" "$PCAP" || true
           echo "[NET3095-N6][FAIL] No final ICMP RX/TX after six HTTP teardowns" >&2
           exit 1
         fi
