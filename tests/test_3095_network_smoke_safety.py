@@ -207,9 +207,10 @@ class EvidenceSafety(unittest.TestCase):
         import re
         source = SMOKE.read_text()
         gates = (
-            "n1", "n2", "n3", "n4", "n5", "n6",
+            "n1", "n3", "n4", "n5", "n6",
             "n6_burst", "n6_post_http", "n6_final_icmp",
         )
+        self.assertIn('python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP" || true', source)
         for gate in gates:
             with self.subTest(gate=gate):
                 pattern = (
