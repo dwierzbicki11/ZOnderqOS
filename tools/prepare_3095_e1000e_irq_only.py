@@ -37,8 +37,13 @@ def main() -> None:
     ap.add_argument('--expected-sha256', required=True,
                     help='64-digit SHA256 of reviewed stock v3.0.95 E1000EDriver.cs')
     args = ap.parse_args()
-    if args.input.resolve() == args.output.resolve():
-        ap.error('in-place SDK modification forbidden')
+    # Do not overwrite either reviewed upstream input, including through
+    # symlink aliases. An existing symlink destination is also forbidden:
+    # writing through it could mutate a file outside the disposable tree.
+    if args.output.is_symlink():
+        ap.error('symlink output forbidden')
+    if args.output.resolve() in (args.input.resolve(), args.state.resolve()):
+        ap.error('overwriting reviewed SDK input forbidden')
     original = args.input.read_bytes()
     if hashlib.sha256(original).hexdigest() != args.expected_sha256.lower():
         ap.error('source SHA256 differs from reviewed stock 3.0.95 input')
