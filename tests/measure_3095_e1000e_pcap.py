@@ -90,7 +90,20 @@ def burst_capture_stats(pcap: bytes) -> tuple[int, float]:
                 frame[14:14 + len(tag)] == tag]
     if len(observed) != 128:
         raise ValueError(f'expected 128 raw TX frames, found {len(observed)}')
+    source_mac = None
     for sequence, (_, frame) in enumerate(observed):
+        # The isolated probe emits broadcast Ethernet frames from one NIC.
+        # A matching payload from a different device must not be counted as
+        # evidence of this adapter's 128-frame DMA TX burst.
+        if frame[:6] != b'\xff' * 6:
+            raise ValueError(f'raw TX destination is not broadcast at {sequence}')
+        mac = frame[6:12]
+        if mac == b'\x00' * 6 or mac == b'\xff' * 6 or mac[0] & 1:
+            raise ValueError(f'raw TX source MAC is not unicast at {sequence}')
+        if source_mac is None:
+            source_mac = mac
+        elif mac != source_mac:
+            raise ValueError(f'raw TX source MAC changed at {sequence}')
         # Require the on-wire sequence, not just a plausible length. Otherwise
         # reordered/duplicated frames of the same size can appear valid.
         expected_prefix = tag + f'{sequence:03d}'.encode('ascii')
@@ -261,6 +274,17 @@ def self_test():
         return bytes(output)
     total, span = burst_capture_stats(capture(range(128)))
     assert total == 81650 and span == 635.0
+    # Reject a burst that mixes transmitters or is not addressed as the
+    # broadcast probe, even if all sequence numbers and lengths match.
+    for byte_offset, replacement_byte in ((0, 0), (6, 0x53), (6, 0), (7, 0)):
+        corrupt = bytearray(capture(range(128)))
+        second_frame = 24 + 16 + lengths[0] + 16
+        corrupt[second_frame + byte_offset] = replacement_byte
+        try:
+            burst_capture_stats(bytes(corrupt))
+        except ValueError:
+            continue
+        raise AssertionError('accepted raw TX burst with inconsistent Ethernet identity')
     # A capture can contain all 128 correctly ordered sequence numbers yet
     # have a backwards timestamp in the middle; reject it, not just its endpoints.
     reordered_time = bytearray(capture(range(128)))
