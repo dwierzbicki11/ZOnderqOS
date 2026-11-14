@@ -36,6 +36,8 @@ def main() -> None:
     ap.add_argument('--state', type=Path, required=True)
     ap.add_argument('--expected-sha256', required=True,
                     help='64-digit SHA256 of reviewed stock v3.0.95 E1000EDriver.cs')
+    ap.add_argument('--expected-state-sha256', required=True,
+                    help='64-digit SHA256 of reviewed stock v3.0.95 E1000EState.cs')
     args = ap.parse_args()
     # Do not overwrite either reviewed upstream input, including through
     # symlink aliases. An existing symlink destination is also forbidden:
@@ -49,7 +51,10 @@ def main() -> None:
     original = args.input.read_bytes()
     if hashlib.sha256(original).hexdigest() != args.expected_sha256.lower():
         ap.error('source SHA256 differs from reviewed stock 3.0.95 input')
-    state = args.state.read_text(encoding='utf-8')
+    state_bytes = args.state.read_bytes()
+    if hashlib.sha256(state_bytes).hexdigest() != args.expected_state_sha256.lower():
+        ap.error('state SHA256 differs from reviewed stock 3.0.95 input')
+    state = state_bytes.decode('utf-8')
     for marker in ('internal void OnInterrupt(InterruptContext context)',
                    '_interruptCount++;', 'context.Schedule(drain);',
                    '_framesReceived++;', 'public bool IsPolling'):
