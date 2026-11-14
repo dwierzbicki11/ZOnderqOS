@@ -98,6 +98,29 @@ def burst_capture_stats(pcap: bytes) -> tuple[int, float]:
     return sum(len(frame) for _, frame in observed), round(span_ms, 3)
 
 
+def unique_contiguous_tcp_bytes(segments: list[tuple[float, int, int]]) -> int:
+    """Count a contiguous TCP byte range, ignoring exact retransmissions.
+
+    Sequence numbers are relative to the first observed data segment, allowing
+    a single 32-bit wrap. Gaps and overlaps must fail closed; matching byte
+    counts alone cannot prove complete delivery.
+    """
+    if not segments:
+        raise ValueError('missing TCP payload segments')
+    origin = segments[0][1]
+    unique = set()
+    for _, seq, size in segments:
+        if size <= 0:
+            raise ValueError('invalid TCP payload size')
+        unique.add(((seq - origin) & 0xffffffff, size))
+    offset = 0
+    for start, size in sorted(unique):
+        if start != offset:
+            raise ValueError('TCP response has a gap or overlapping segments')
+        offset += size
+    return offset
+
+
 def measure(pcap: bytes, serial: str):
     http = defaultdict(list)
     icmp_requests = {}
@@ -125,7 +148,7 @@ def measure(pcap: bytes, serial: str):
         raise ValueError('missing or malformed guest HTTP RX telemetry')
     for attempt, (port, segments) in enumerate(sorted(http.items(), key=lambda item: min(x[0] for x in item[1])), 1):
         unique = {(seq, size) for _, seq, size in segments}
-        if sum(size for _, size in unique) != 4202:
+        if unique_contiguous_tcp_bytes(segments) != 4202:
             raise ValueError(f'HTTP response {attempt} has incomplete/duplicate payload')
         span_ms = round((max(t for t, _, _ in segments)-min(t for t, _, _ in segments))*1000, 2)
         m = stats[attempt-1]
@@ -175,6 +198,21 @@ def self_test():
         except ValueError:
             continue
         raise AssertionError('accepted malformed PCAP')
+    # Equal byte totals must not mask gaps or overlapping TCP ranges.
+    assert unique_contiguous_tcp_bytes([(0.0, 100, 100), (0.1, 200, 50),
+                                        (0.2, 200, 50)]) == 150
+    assert unique_contiguous_tcp_bytes([(0.0, 0xfffffff0, 16),
+                                        (0.1, 0, 20)]) == 36
+    for bad_segments in (
+        [(0.0, 100, 100), (0.1, 250, 50)],
+        [(0.0, 100, 100), (0.1, 190, 50)],
+        [(0.0, 100, 100), (0.1, 100, 90)],
+    ):
+        try:
+            unique_contiguous_tcp_bytes(bad_segments)
+        except ValueError:
+            continue
+        raise AssertionError('accepted gapped or overlapping TCP response')
     # Synthetic PCAP with 5ms spacing. This is a parser test, not guest data.
     prefix = bytes((255,)) * 6 + bytes((0x52, 0x54, 0, 0x12, 0x34, 0x56, 0x88, 0xB5))
     tag = b'ZONDERQ3095-BURST-'
