@@ -32,6 +32,7 @@ def records(data: bytes):
     if (major, minor, linktype) != (2, 4, 1) or snaplen < 60:
         raise ValueError('expected full Ethernet PCAP v2.4')
     pos = 24
+    previous_timestamp = None
     while pos < len(data):
         if len(data) - pos < 16:
             raise ValueError('truncated PCAP record header')
@@ -41,9 +42,13 @@ def records(data: bytes):
             raise ValueError('truncated or invalid PCAP record')
         if sub >= (1_000_000_000 if nanos else 1_000_000):
             raise ValueError('invalid PCAP timestamp fraction')
+        timestamp = sec + sub/(1_000_000_000 if nanos else 1_000_000)
+        if previous_timestamp is not None and timestamp < previous_timestamp:
+            raise ValueError('PCAP timestamps out of order')
+        previous_timestamp = timestamp
         frame = data[pos:pos+captured]
         pos += captured
-        yield sec + sub/(1_000_000_000 if nanos else 1_000_000), frame
+        yield timestamp, frame
 
 
 def decode(time: float, frame: bytes):
@@ -184,7 +189,16 @@ def self_test():
         return bytes(output)
     total, span = burst_capture_stats(capture(range(128)))
     assert total == 81650 and span == 635.0
+    # A capture can contain all 128 correctly ordered sequence numbers yet
+    # have a backwards timestamp in the middle; reject it, not just its endpoints.
+    reordered_time = bytearray(capture(range(128)))
+    first_record_size = 16 + lengths[0]
+    second_record_offset = 24 + first_record_size
+    struct.pack_into('<I', reordered_time, second_record_offset + 4, 0)
+    third_record_offset = second_record_offset + 16 + lengths[1]
+    struct.pack_into('<I', reordered_time, third_record_offset + 4, 1000)
     for broken in (capture(range(127)), capture(range(129)),
+                   bytes(reordered_time),
                    capture(range(128), step_us=0),
                    capture([0, 2, 1] + list(range(3, 128))),
                    capture([5, 1, 2, 3, 4, 0] + list(range(6, 128))),
