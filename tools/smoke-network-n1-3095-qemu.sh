@@ -268,7 +268,7 @@ while (( SECONDS - started < TIMEOUT )); do
           exit 1
         fi
         if (( SECONDS - icmp_start >= 15 )); then
-          python3 "$ROOT/tests/verify_3095_network_n3.py" "$LOG" "$PCAP"
+          python3 "$ROOT/tests/verify_3095_network_n3.py" "$LOG" "$PCAP" || true
           echo "[NET3095-N3][FAIL] No correlated ICMP echo RX/TX capture" >&2
           exit 1
         fi
@@ -314,7 +314,7 @@ while (( SECONDS - started < TIMEOUT )); do
           exit 1
         fi
         if (( SECONDS - dns_start >= 15 )); then
-          python3 "$ROOT/tests/verify_3095_network_n5.py" "$LOG" "$PCAP"
+          python3 "$ROOT/tests/verify_3095_network_n5.py" "$LOG" "$PCAP" || true
           echo "[NET3095-N5][FAIL] No correlated DNS query/answer capture" >&2
           exit 1
         fi
@@ -361,7 +361,7 @@ while (( SECONDS - started < TIMEOUT )); do
           exit 1
         fi
         if (( SECONDS - burst_start >= 15 )); then
-          python3 "$ROOT/tests/verify_3095_network_n6_burst.py" "$LOG" "$PCAP"
+          python3 "$ROOT/tests/verify_3095_network_n6_burst.py" "$LOG" "$PCAP" || true
           echo "[NET3095-N6][FAIL] No 128-frame ordered raw TX PCAP proof" >&2
           exit 1
         fi
