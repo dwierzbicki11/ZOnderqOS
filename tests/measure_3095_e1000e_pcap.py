@@ -194,7 +194,7 @@ def self_test():
     reordered_time = bytearray(capture(range(128)))
     first_record_size = 16 + lengths[0]
     second_record_offset = 24 + first_record_size
-    struct.pack_into('<I', reordered_time, second_record_offset + 4, 0)
+    struct.pack_into('<I', reordered_time, second_record_offset + 4, 9000)
     third_record_offset = second_record_offset + 16 + lengths[1]
     struct.pack_into('<I', reordered_time, third_record_offset + 4, 1000)
     for broken in (capture(range(127)), capture(range(129)),
