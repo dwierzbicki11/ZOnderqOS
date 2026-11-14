@@ -218,6 +218,18 @@ while (( SECONDS - started < TIMEOUT )); do
           echo "[NET3095-N2][FAIL] Guest reported DHCP failure" >&2
           exit 1
         fi
+        # BeforeRun executes DHCP synchronously, before Run() emits its first
+        # heartbeat. If Run() is already ticking without a DHCP lease, the
+        # guest has left BeforeRun and waiting longer cannot repair DHCP.
+        # Preserve the serial evidence and fail immediately instead of
+        # misclassifying this as slow QEMU startup.
+        if grep -Fq '[NET3095-N1] HEARTBEAT=' "$LOG" &&
+           ! grep -Fq '[NET3095-N2] DHCP_LEASE=' "$LOG"; then
+          echo '[NET3095-N2][FAIL] Guest entered Run() without a DHCP lease; BeforeRun already returned' >&2
+          grep -E '\[NET3095-N[12]\]' "$LOG" | tail -n 100 >&2 || true
+          python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP" || true
+          exit 1
+        fi
         if (( SECONDS - dhcp_start >= (LINK_CYCLE == 1 ? 45 : 20) )); then
           # Preserve the independent PCAP gate failure, but surface guest
           # diagnostics in the CI log before exiting. In particular, a
