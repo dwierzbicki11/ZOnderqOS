@@ -72,8 +72,8 @@ class UpdateEngineABTests(unittest.TestCase):
         self.assertIn('"drives"', CMD_UPDATE)
 
     def test_manifest_verification_and_signing(self):
-        self.assertIn("VerifySignature", UPDATE_MANIFEST)
-        self.assertIn("ComputeHmacSha256", UPDATE_MANIFEST)
+        self.assertIn("SIGNATURE_ALG=ED25519", UPDATE_MANIFEST)
+        self.assertIn("ReleaseSignatureVerifier.VerifyProductionManifest", UPDATE_MGR)
         self.assertIn("VerifyPackageIntegrity", UPDATE_MGR)
 
 

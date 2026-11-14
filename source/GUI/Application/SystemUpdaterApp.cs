@@ -213,7 +213,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 UpdatePackageInfo pkg;
                 string msg;
-                bool found = UpdateManager.CheckForUpdates(false, out pkg, out msg);
+                bool found = UpdateManager.CheckForUpdates(true, out pkg, out msg);
                 isBusy = false;
                 currentOp = UpdateOp.None;
                 statusMessage = msg;

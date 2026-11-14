@@ -1,0 +1,53 @@
+name: ZonderqOS EFI BootGuard compile and policy
+
+on:
+  pull_request:
+    paths:
+      - 'tools/bootguard/**'
+      - 'tests/test_bootguard_policy.c'
+      - 'source/Core/Updates/BootSlotManager.cs'
+      - '.github/workflows/bootguard-efi.yml'
+  push:
+    branches:
+      - fix/p0-update-trust-gate
+    paths:
+      - 'tools/bootguard/**'
+      - 'tests/test_bootguard_policy.c'
+      - 'source/Core/Updates/BootSlotManager.cs'
+      - '.github/workflows/bootguard-efi.yml'
+
+concurrency:
+  group: bootguard-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-and-policy:
+    # Pin binutils until Ubuntu 26.04 objcopy ELF regression is resolved.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and run preboot failure policy
+        run: |
+          gcc -std=c11 -O2 -Wall -Wextra -Werror tests/test_bootguard_policy.c -o /tmp/test_bootguard_policy
+          /tmp/test_bootguard_policy
+      - name: Reject malformed ELF64 images in EFI boot policy
+        run: |
+          gcc -std=c11 -O2 -Wall -Wextra -Werror -pedantic tests/test_bootguard_elf.c -o /tmp/test_bootguard_elf
+          /tmp/test_bootguard_elf
+      - name: Validate BootGuard installation on isolated fake ESP and data volume
+        run: python3 -m unittest discover -s tests -p 'test_bootguard_installer.py' -v
+      - name: Install GNU-EFI toolchain
+        run: sudo apt-get update -qq && sudo apt-get install -y gnu-efi binutils
+      - name: Compile production UEFI first-stage
+        run: make -C tools/bootguard
+      - name: Confirm PE32+ EFI Application format
+        run: |
+          file tools/bootguard/build/bootguard.efi
+          file tools/bootguard/build/bootguard.efi | grep -E 'PE32\+ executable .*EFI application'
+      - name: Build EFI chainload stub and provision disposable OVMF guest
+        run: |
+          sudo apt-get install -y qemu-system-x86 ovmf mtools dosfstools
+          make -C tools/bootguard build/limine_stub.efi
+      - name: Four real pre-kernel recovery boots on one FAT32 disk
+        run: bash tests/test_bootguard_ovmf.sh

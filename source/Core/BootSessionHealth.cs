@@ -268,7 +268,9 @@ namespace ZonderqOS.SystemCore
             }
             catch { }
 
-            // 2. Direct hardware port power-off signals (QEMU, Bochs, VirtualBox, and common ACPI PM1a)
+            // 2. x86 port I/O is illegal on ARM64; leave ARM power handling to Cosmos.
+#if !ZONDERQ_ARCH_ARM64
+            // Direct hardware port power-off signals (QEMU, Bochs, VirtualBox, ACPI PM1a)
             try
             {
                 // QEMU / KVM ACPI shutdown port
@@ -283,6 +285,8 @@ namespace ZonderqOS.SystemCore
                 ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x0804, 0x2000);
             }
             catch { }
+
+#endif
 
             // 3. Fallback text console screen if no GUI was registered
             if (OnBeforeShutdown == null)

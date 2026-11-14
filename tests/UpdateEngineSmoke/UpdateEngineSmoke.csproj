@@ -8,9 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
     <Compile Include="../../source/Common/Crypto.cs" Link="Crypto.cs" />
     <Compile Include="../../source/Core/KernelBuildInfo.cs" Link="KernelBuildInfo.cs" />
     <Compile Include="../../source/Core/Updates/UpdateManifest.cs" Link="UpdateManifest.cs" />
+    <Compile Include="../../source/Core/Updates/TrustedReleaseKey.cs" Link="TrustedReleaseKey.cs" />
+    <Compile Include="../../source/Core/Updates/ReleaseSignatureVerifier.cs" Link="ReleaseSignatureVerifier.cs" />
     <Compile Include="../../source/Core/Updates/BootSlotManager.cs" Link="BootSlotManager.cs" />
     <Compile Include="../../source/Core/Updates/UpdateManager.cs" Link="UpdateManager.cs" />
   </ItemGroup>
