@@ -132,7 +132,11 @@ def self_test() -> None:
         assert "PASS mode=none" in verify(base.replace(DECLINE, split), "none")
         assert "PASS mode=rtl8139" in verify(rtl.replace(DECLINE, split), "rtl8139")
         assert "PASS mode=e1000e" in verify(rtl.replace(DECLINE, split), "e1000e")
-    # Real QEMU can also interleave a complete LAPIC timer diagnostic.\n    # Reassemble only when the resulting exact decline marker is intact.\n    for pos in range(1, len(DECLINE)):\n        split = DECLINE[:pos] + "[LAPIC] Timer tick 4 RSP=FFFF80007F6E2D00\\n" + DECLINE[pos:]\n        assert "PASS mode=none" in verify(base.replace(DECLINE, split), "none")\n    # Actual QEMU can splice the scheduler tick into BOOT, not just DECLINE.
+    # Real QEMU can also interleave a complete LAPIC timer diagnostic.
+    # Reassemble only when the resulting exact decline marker is intact.
+    for pos in range(1, len(DECLINE)):
+        split = DECLINE[:pos] + "[LAPIC] Timer tick 4 RSP=FFFF80007F6E2D00\n" + DECLINE[pos:]
+        assert "PASS mode=none" in verify(base.replace(DECLINE, split), "none")\n    # Actual QEMU can splice the scheduler tick into BOOT, not just DECLINE.
     # Every internal byte boundary must reconstruct exactly, including when
     # both markers are independently interrupted.
     for pos in range(1, len(BOOT)):
@@ -149,7 +153,9 @@ def self_test() -> None:
                     BOOT[12:].replace("read-only", "read-write")),
         rtl.replace(BOOT, BOOT[:12] + "[SCHED] Tick 6 enabled=1\n" + BOOT[12:] +
                     "\n" + BOOT),
-        rtl.replace("offers=0", "offers=1"),\n        rtl.replace(DECLINE, DECLINE[:35] + "[LAPIC] Timer tick 4 RSP=NOTHEX\\n" + DECLINE[35:]),\n        rtl.replace(DECLINE, DECLINE[:35] + "[LAPIC] Timer tick 4 RSP=FFFF80007F6E2D00\\n" + DECLINE[35:].replace("samples=0", "samples=1")),
+        rtl.replace("offers=0", "offers=1"),
+        rtl.replace(DECLINE, DECLINE[:35] + "[LAPIC] Timer tick 4 RSP=NOTHEX\n" + DECLINE[35:]),
+        rtl.replace(DECLINE, DECLINE[:35] + "[LAPIC] Timer tick 4 RSP=FFFF80007F6E2D00\n" + DECLINE[35:].replace("samples=0", "samples=1")),
         rtl.replace("samples=0", "samples=1"),
         rtl.replace("HEARTBEAT=2", "HEARTBEAT=1"),
         rtl.replace("HEARTBEAT=2", "HEARTBEAT=3"),
