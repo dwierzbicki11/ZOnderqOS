@@ -1,4 +1,4 @@
-<Project Sdk="Cosmos.Sdk/3.0.95">
+<Project Sdk="Cosmos.Sdk/3.0.95" TreatAsLocalProperty="DefineConstants">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
