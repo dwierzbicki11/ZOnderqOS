@@ -74,7 +74,10 @@ def verify(serial: str, mode: str) -> str:
         raise ValueError("unexpected RTL810xE failure marker")
     if FATAL.search(raw) or "MMIO_SNAPSHOT=READ" in raw or "SNAPSHOT=PASS" in raw:
         raise ValueError("guest fault or false physical MMIO proof")
-    if "E1000EDriver: mac" in raw or "RTL810xEReadOnlyProbe -> bound" in raw:
+    # An unrelated NIC can still bind after the expected "no driver" line.
+    # Reject any explicit binding evidence, not just the MAC diagnostic.
+    if (re.search(r"\b(?:E1000EDriver|RTL810xEReadOnlyProbe)\b[^\n]*\b(?:bound|binding)\b", raw, re.IGNORECASE)
+            or "E1000EDriver: mac" in raw):
         raise ValueError("unexpected network driver binding")
     functions = [int(x) for x in PCI_FUNCTIONS.findall(cleaned)]
     expected = 5 if mode == "none" else 6
@@ -110,6 +113,8 @@ def self_test() -> None:
         rtl.replace("no driver", "offer E1000EDriver -> bound"),
         rtl.replace("[Drivers] pci:0000:00:02.0 no driver\n", ""),
         rtl + "[Drivers] pci:0000:00:02.0 E1000EDriver: mac 52:54:00:12:34:56\n",
+        rtl + "[Drivers] pci:0000:00:02.0 offer E1000EDriver -> bound\n",
+        rtl + "[Drivers] pci:0000:00:02.0 RTL810xEReadOnlyProbe -> binding\n",
     ):
         try:
             verify(bad_e1000e, "e1000e")
