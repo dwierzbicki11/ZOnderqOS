@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.Commands
 {
@@ -13,38 +14,51 @@ namespace ZonderqOS.Commands
 
         public void Execute(string[] args, ref string currentPath)
         {
-            if (args.Length <= 2)
-            {
-                WriteMessage.WriteError("Usage: append <file> <content>", "CMD");
-                CommandIO.LastCommandSuccess = false;
-                return;
-            }
-
-            string path = PathResolver.GetAbsolutePath(currentPath, args[1]);
-            bool existed = File.Exists(path);
-
-            if (existed && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
-            {
-                WriteMessage.WriteError($"Permission denied: Cannot append to {path}", "SEC");
-                SecurityLogger.LogEvent("WARN", $"Unauthorized append attempt on {path} by {SecurityContext.CurrentUser}");
-                CommandIO.LastCommandSuccess = false;
-                return;
-            }
-
+            CommandIO.LastCommandSuccess = false;
             try
             {
+                if (args.Length <= 2)
+                {
+                    WriteMessage.WriteError("Usage: append <file> <content>", "CMD");
+                    return;
+                }
+
+                string path = PathResolver.GetAbsolutePath(currentPath, args[1]);
                 string content = BuildBoundedContent(args);
+                if (VirtualFs.IsVirtualPath(path))
+                {
+                    Disk.AppendFile(path, content);
+                    return;
+                }
+
+                bool existed = File.Exists(path);
+                if (existed && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
+                {
+                    WriteMessage.WriteError($"Permission denied: Cannot append to {path}", "SEC");
+                    SecurityLogger.LogEvent("WARN", $"Unauthorized append attempt on {path} by {SecurityContext.CurrentUser}");
+                    return;
+                }
+
                 Disk.AppendFile(path, content);
-
-                if (!existed && File.Exists(path))
+                if (!CommandIO.LastCommandSuccess) return;
+                if (!File.Exists(path))
+                {
+                    CommandIO.LastCommandSuccess = false;
+                    WriteMessage.WriteError($"Append was not confirmed: {path}", "FS");
+                    return;
+                }
+                if (!existed)
                     PermissionManager.SetPermission(path, SecurityContext.CurrentUser, 644);
-
-                CommandIO.LastCommandSuccess = File.Exists(path);
             }
             catch (InvalidDataException ex)
             {
                 WriteMessage.WriteError($"Append rejected: {ex.Message}", "CMD");
                 CommandIO.LastCommandSuccess = false;
+            }
+            catch (Exception ex)
+            {
+                CommandIO.LastCommandSuccess = false;
+                WriteMessage.WriteError($"Append failed: {ex.Message}", "FS");
             }
         }
 

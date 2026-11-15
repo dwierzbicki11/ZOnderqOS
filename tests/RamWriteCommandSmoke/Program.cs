@@ -6,11 +6,11 @@ static class Program
 {
     static int passed;
     static void Check(bool ok, string message) { if (!ok) throw new Exception(message); }
-    static void Write(string path, string value, bool success)
+    static void Write(string path, string value, bool success, bool append = false)
     {
         string cwd = "/";
         CommandIO.LastCommandSuccess = !success; WriteMessage.Error = null;
-        new CmdWrite().Execute(new[] { "write", path, value }, ref cwd);
+        (append ? (ICommand)new CmdAppend() : new CmdWrite()).Execute(new[] { "write", path, value }, ref cwd);
         Check(CommandIO.LastCommandSuccess == success, "status " + path + ": " + WriteMessage.Error);
         Check((WriteMessage.Error != null) != success, "diagnostic " + path);
         passed++;
@@ -25,6 +25,11 @@ static class Program
             string file = root + "/file";
             Write(file, "hello\\nworld", true);
             Check(VirtualFs.TryRead(file, out string value) && value == "hello\nworld", "newline");
+            Write(file, "tail", true, true);
+            Check(VirtualFs.TryRead(file, out value) && value == "hello\nworldtail\n", "append contents");
+            Write(root + "/missing/file", "x", false, true);
+            Write(root, "x", false, true);
+            Write(file, new string('x', 65537), false, true);
             Write(file, "replacement", true);
             Check(VirtualFs.TryRead(file, out value) && value == "replacement", "overwrite");
             Write(root, "directory", false);
@@ -43,6 +48,7 @@ static class Program
             }
             Write(root + "/extra", "x", false);
             Write(file, "replacement larger", false);
+            Write(file, "x", false, true);
             Check(VirtualFs.TryRead(file, out value) && value == "replacement", "quota changed old data");
             Write(file, "", true);
             Check(VirtualFs.TryRead(file, out value) && value == "", "truncate to empty");
@@ -50,6 +56,7 @@ static class Program
             if (tmp) TmpFs.TryDeleteDirectory(root, true, out _); else RunFs.TryDeleteDirectory(root, true, out _);
         }
         Write("/proc/forbidden", "x", false);
+        Write("/proc/forbidden", "x", false, true);
         Console.WriteLine(passed + " RAM write command checks passed");
     }
 }

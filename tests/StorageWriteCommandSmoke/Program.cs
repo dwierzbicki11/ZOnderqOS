@@ -41,6 +41,7 @@ static class Program
                 Check(Faults.MetadataCalls == 0, "unexpected metadata");
                 File.Delete(file); count++;
             }
+            count += AppendChecks.Run(dir);
             Console.WriteLine(count + " write command checks passed");
         }
         finally { Directory.Delete(dir, true); }
@@ -54,6 +55,13 @@ namespace ZonderqOS
     static class PathResolver { public static string GetAbsolutePath(string cwd, string path) { Faults.At("path"); return path; } }
     static class Disk
     {
+        public static void AppendFile(string path, string content)
+        {
+            CommandIO.LastCommandSuccess = false; Faults.At("backend");
+            File.AppendAllText(path, Faults.Stage == "partial" ? "partial" : content + "\n");
+            if (Faults.Stage == "partial") { WriteMessage.WriteError("Injected append failure", "FS"); return; }
+            CommandIO.LastCommandSuccess = true;
+        }
         public static void CreateFile(string path, string content)
         {
             CommandIO.LastCommandSuccess = false;

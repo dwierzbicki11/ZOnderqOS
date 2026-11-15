@@ -6,5 +6,6 @@
   <Compile Include="../../source/Storage/DiskWrites.cs" Link="DiskWrites.cs" />
   <Compile Include="../../source/Shell/Commands/CmdWrite.cs" Link="CmdWrite.cs" />
   <Compile Include="../../source/Shell/Commands/ICommand.cs" Link="ICommand.cs" />
+  <Compile Include="../../source/Shell/Commands/CmdAppend.cs" Link="CmdAppend.cs" />
  </ItemGroup>
 </Project>
