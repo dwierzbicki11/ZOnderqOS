@@ -84,6 +84,7 @@ static class Program
                 if (File.Exists(target)) File.Delete(target);
                 passed++;
             }
+            passed += DirectoryCommands.Check(root);
             Console.WriteLine(passed + " storage mutation checks passed");
         }
         finally { Directory.Delete(root, true); }
@@ -91,6 +92,7 @@ static class Program
 }
 namespace ZonderqOS
 {
+    static class CommandIO { public static bool LastCommandSuccess; }
     public static partial class Disk
     {
         static bool RejectVirtualMutation(string path, string operation)
@@ -114,7 +116,7 @@ namespace ZonderqOS.SystemCore
         public static string Stage;
         public static void At(string stage) { if (Stage == stage) throw new IOException("Injected " + stage); }
     }
-    static class CommandIO { public static bool LastCommandSuccess; }
+
     static class RunFs { public static bool IsRunPath(string path) { Faults.At("dispatch"); return Faults.Stage.StartsWith("virtual"); } }
     static class TmpFs { public static bool IsTmpPath(string path) { return false; } }
     static class VirtualFs

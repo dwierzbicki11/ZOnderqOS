@@ -1,3 +1,5 @@
+using System;
+
 namespace ZonderqOS.Commands
 {
     public class CmdMkdir : ICommand
@@ -6,14 +8,23 @@ namespace ZonderqOS.Commands
         public string Description => "Create a new directory";
         public void Execute(string[] args, ref string currentPath)
         {
-            if (args.Length > 1) 
+            CommandIO.LastCommandSuccess = false;
+            try
             {
-                Disk.CreateDir(PathResolver.GetAbsolutePath(currentPath, args[1]));
+                if (args.Length > 1)
+                {
+                    Disk.CreateDir(PathResolver.GetAbsolutePath(currentPath, args[1]));
+                }
+                else
+                {
+                    WriteMessage.WriteError("Usage: mkdir <path>", "CMD");
+                    CommandIO.LastCommandSuccess = false;
+                }
             }
-            else 
+            catch (Exception ex)
             {
-                WriteMessage.WriteError("Usage: mkdir <path>", "CMD");
                 CommandIO.LastCommandSuccess = false;
+                WriteMessage.WriteError($"Failed to create directory: {ex.Message}", "FS");
             }
         }
     }

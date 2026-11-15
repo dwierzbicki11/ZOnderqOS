@@ -8,5 +8,8 @@
   <ItemGroup>
     <Compile Include="../../source/Storage/DiskMutations.cs" Link="DiskMutations.cs" />
     <Compile Include="../../source/Storage/DiskTransfers.cs" Link="DiskTransfers.cs" />
+    <Compile Include="../../source/Shell/Commands/CmdMkdir.cs" Link="CmdMkdir.cs" />
+    <Compile Include="../../source/Shell/Commands/CmdRmdir.cs" Link="CmdRmdir.cs" />
+    <Compile Include="../../source/Shell/Commands/ICommand.cs" Link="ICommand.cs" />
   </ItemGroup>
 </Project>
