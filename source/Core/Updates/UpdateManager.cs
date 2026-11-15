@@ -412,6 +412,7 @@ namespace ZonderqOS.SystemCore.Updates
         }
 
         private static long lastAutoCheckTicks = 0;
+        private static bool backgroundManifestScanCompleted = false;
         private static bool updateNotificationSent = false;
         private static string lastNotifiedVersion = string.Empty;
 
@@ -421,13 +422,14 @@ namespace ZonderqOS.SystemCore.Updates
             lastNotifiedVersion = string.Empty;
             lastLoggedDiscoveredVersion = string.Empty;
             lastAutoCheckTicks = 0;
+            backgroundManifestScanCompleted = false;
         }
 
         public static void PollBackground()
         {
             Initialize();
 
-            if (IsRebootRequired || Status == UpdateStatus.Installing || Status == UpdateStatus.Verifying)
+            if (backgroundManifestScanCompleted || IsRebootRequired || Status == UpdateStatus.Installing || Status == UpdateStatus.Verifying)
                 return;
 
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -436,6 +438,7 @@ namespace ZonderqOS.SystemCore.Updates
                 return;
 
             lastAutoCheckTicks = now;
+            backgroundManifestScanCompleted = true;
 
             UpdatePackageInfo pkg;
             string msg;
@@ -587,19 +590,19 @@ namespace ZonderqOS.SystemCore.Updates
                         info.IsSigned = false;
                         info.IsSignatureValid = false;
 
-                        // Determine kernel image location
+                        // Determine kernel image location using a single VFS stat lookup
                         string baseDir = Path.GetDirectoryName(path);
                         string kernelCandidate = Path.Combine(baseDir, manifest.KernelImage);
-                        if (File.Exists(kernelCandidate))
+                        try
                         {
-                            info.KernelImagePath = kernelCandidate;
-                            try
+                            FileInfo fi = new FileInfo(kernelCandidate);
+                            if (fi.Exists)
                             {
-                                FileInfo fi = new FileInfo(kernelCandidate);
+                                info.KernelImagePath = kernelCandidate;
                                 info.SizeKb = (int)(fi.Length / 1024);
                             }
-                            catch { }
                         }
+                        catch { }
                         // Never substitute a kernel from another USB location:
                         // the manifest and all binaries must come from the same
                         // update package. Missing file is a verification error.

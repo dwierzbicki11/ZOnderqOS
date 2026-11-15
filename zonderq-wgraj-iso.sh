@@ -3,7 +3,10 @@
 set -Eeuo pipefail
 
 DEVICE="/dev/sdb"
-ISO="$HOME/Pulpit/ZOnderqOS/output-3095/ZonderqOS-3095-disk.iso"
+ISO="$HOME/Pulpit/ZOnderqOS/output-x64/ZonderqOS.iso"
+if [[ ! -f "$ISO" && -f "$HOME/Pulpit/ZOnderqOS/output-3095/ZonderqOS-3095-disk.iso" ]]; then
+    ISO="$HOME/Pulpit/ZOnderqOS/output-3095/ZonderqOS-3095-disk.iso"
+fi
 
 for arg in "$@"; do
     if [[ "$arg" == /dev/* ]]; then
@@ -94,6 +97,33 @@ sudo udevadm settle
 sync
 [[ "$(sudo blkid -p -s LABEL -o value "${DEVICE}4" || true)" == ZONDERQDATA ]] || fail "Weryfikacja ZONDERQDATA nieudana. NIE FORMATUJ"
 [[ "$(sudo lsblk -dn -o START "${DEVICE}4" | xargs)" == "$DATA_START" ]] || fail "Zly sektor startowy partycji danych"
+
+# Synchronize A/B boot slots on ZONDERQDATA with the newly flashed kernel ELF
+# so Limine default_entry: 1 (fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf)
+# boots the exact kernel matching the flashed ISO instead of a stale slot binary.
+KERNEL_ELF="$(dirname "$ISO")/ZonderqOS.elf"
+if [[ ! -f "$KERNEL_ELF" && -f "$HOME/Pulpit/ZOnderqOS/output-x64/ZonderqOS.elf" ]]; then
+    KERNEL_ELF="$HOME/Pulpit/ZOnderqOS/output-x64/ZonderqOS.elf"
+fi
+if [[ -f "$KERNEL_ELF" && -s "$KERNEL_ELF" ]]; then
+    MOUNT_DATA="$(mktemp -d /tmp/zonderq-data-sync.XXXXXX)"
+    if sudo mount -t vfat "${DEVICE}4" "$MOUNT_DATA"; then
+        sudo mkdir -p "$MOUNT_DATA/boot/slot_a" "$MOUNT_DATA/boot/slot_b"
+        sudo cp -f "$KERNEL_ELF" "$MOUNT_DATA/boot/slot_a/ZonderqOS.elf"
+        sudo cp -f "$KERNEL_ELF" "$MOUNT_DATA/boot/slot_b/ZonderqOS.elf"
+        sudo cp -f "$KERNEL_ELF" "$MOUNT_DATA/boot/ZonderqOS.elf"
+        if command -v sha256sum >/dev/null 2>&1; then
+            KERNEL_SHA="$(sha256sum "$KERNEL_ELF" | awk '{print $1}')"
+            printf '%s\n' "$KERNEL_SHA" | sudo tee "$MOUNT_DATA/boot/slot_a/kernel.sha256" >/dev/null
+            printf '%s\n' "$KERNEL_SHA" | sudo tee "$MOUNT_DATA/boot/slot_b/kernel.sha256" >/dev/null
+        fi
+        sync
+        sudo umount "$MOUNT_DATA" || fail "Nie mozna odmontowac $MOUNT_DATA"
+    fi
+    rmdir "$MOUNT_DATA" 2>/dev/null || true
+    printf '[OK] Zsynchronizowano /boot/slot_a/ZonderqOS.elf i /boot/slot_b/ZonderqOS.elf z: %s\n' "$KERNEL_ELF"
+fi
+
 printf '\n[OK] Wgrano istniejacy obraz ISO, ZONDERQDATA zachowana bez formatowania.\n'
 lsblk -o NAME,START,SIZE,FSTYPE,LABEL,PARTTYPE "$DEVICE"
 printf '\nMozesz bezpiecznie odłączyć USB: sudo udisksctl power-off -b %s\n' "$DEVICE"

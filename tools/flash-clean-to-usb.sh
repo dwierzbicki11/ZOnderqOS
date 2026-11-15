@@ -2,7 +2,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ISO="$ROOT/output-3095/ZonderqOS-3095-disk.iso"
+ISO="$ROOT/output-x64/ZonderqOS.iso"
+if [[ ! -f "$ISO" && -f "$ROOT/output-3095/ZonderqOS-3095-disk.iso" ]]; then
+  ISO="$ROOT/output-3095/ZonderqOS-3095-disk.iso"
+fi
 DEVICE="/dev/sdb"
 PART4="${DEVICE}4"
 PART2="${DEVICE}2"
@@ -83,7 +86,10 @@ echo "-> Konfiguracja rozruchowa UEFI Limine na partycji EFI zaktualizowana pomy
 MOUNT_DATA="$(mktemp -d /tmp/zonderq-data-mount.XXXXXX)"
 mount -t vfat "$PART4" "$MOUNT_DATA"
 
-KERNEL_BIN="$ROOT/output-3095/updates-package/ZonderqOS.elf"
+KERNEL_BIN="$ROOT/output-x64/ZonderqOS.elf"
+if [[ ! -f "$KERNEL_BIN" && -f "$ROOT/output-3095/updates-package/ZonderqOS.elf" ]]; then
+  KERNEL_BIN="$ROOT/output-3095/updates-package/ZonderqOS.elf"
+fi
 mkdir -p "$MOUNT_DATA/boot/slot_a" "$MOUNT_DATA/boot/slot_b" "$MOUNT_DATA/boot/limine" "$MOUNT_DATA/etc"
 
 echo "-> Instalowanie nowego kernela 1.0.2 do slotow i glownego pliku boot..."

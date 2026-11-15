@@ -181,6 +181,10 @@ namespace ZonderqOS.GUI
                 // Only after a successfully rendered authenticated desktop can
                 // this GUI boot confirm the pending A/B slot.
                 global::ZonderqOS.SystemCore.Updates.BootSlotManager.ConfirmSlotHealth();
+                global::ZonderqOS.SystemCore.Updates.UpdateManager.PollBackground();
+                bool initialPendingUpd = global::ZonderqOS.SystemCore.Updates.UpdateManager.Status == global::ZonderqOS.SystemCore.Updates.UpdateStatus.Available;
+                if (startMenu != null) startMenu.HasPendingUpdate = initialPendingUpd;
+                if (taskbar != null) taskbar.HasPendingUpdate = initialPendingUpd;
 
                 while (isRunning)
                 {

@@ -15,6 +15,9 @@ namespace ZonderqOS.GUI
     /// </summary>
     public static class LockScreenManager
     {
+        private static CursorDamageRenderer cursorDamageRenderer;
+        private static Canvas cursorDamageCanvas;
+
         public static bool Run(Canvas canvas)
         {
             if (canvas == null || !SecurityContext.IsAuthenticated ||
@@ -27,18 +30,26 @@ namespace ZonderqOS.GUI
                 LockScreen screen = new LockScreen((int)canvas.Width, (int)canvas.Height,
                     SecurityContext.CurrentUser);
 
+                if (cursorDamageRenderer == null || !ReferenceEquals(cursorDamageCanvas, canvas))
+                {
+                    cursorDamageCanvas = canvas;
+                    cursorDamageRenderer = new CursorDamageRenderer(canvas);
+                }
+                else
+                {
+                    cursorDamageRenderer.Reset();
+                }
+
                 bool previousLeft = MouseManager.LeftButton;
                 int previousMouseX = (int)MouseManager.X;
                 int previousMouseY = (int)MouseManager.Y;
-                int frame = 0;
 
                 screen.Render(canvas);
-                Cursor.Draw(canvas, previousMouseX, previousMouseY);
+                cursorDamageRenderer.DrawAfterScene(previousMouseX, previousMouseY);
                 canvas.Display();
 
                 while (!screen.Unlocked && SecurityContext.IsAuthenticated)
                 {
-                    frame++;
                     bool keyboardActivity = false;
 
                     while (KeyboardManager.TryReadKey(out KeyEvent? key))
@@ -65,16 +76,35 @@ namespace ZonderqOS.GUI
                     previousMouseX = mouseX;
                     previousMouseY = mouseY;
 
-                    bool heartbeat = frame % 134 == 0;
-                    if (!screen.Unlocked && SecurityContext.IsAuthenticated &&
-                        (keyboardActivity || pointerMoved || buttonChanged || heartbeat))
+#if !ZONDERQ_ARCH_ARM64
+                    global::ZonderqOS.Platform.X64.SerialMemoryTelemetry.SampleIfDue(
+                        System.Diagnostics.Stopwatch.GetTimestamp(), System.Diagnostics.Stopwatch.Frequency);
+#endif
+
+                    if (!screen.Unlocked && SecurityContext.IsAuthenticated)
                     {
-                        screen.Render(canvas);
-                        Cursor.Draw(canvas, mouseX, mouseY);
-                        canvas.Display();
+                        bool cursorOnly = pointerMoved && !keyboardActivity && !buttonChanged && !currentLeft;
+                        if (cursorOnly && cursorDamageRenderer != null &&
+                            cursorDamageRenderer.TryMove(mouseX, mouseY))
+                        {
+                            // Only the two 24x28 cursor damage rectangles were repainted.
+                        }
+                        else if (keyboardActivity || pointerMoved || buttonChanged)
+                        {
+                            cursorDamageRenderer?.Reset();
+                            screen.Render(canvas);
+                            if (cursorDamageRenderer != null)
+                                cursorDamageRenderer.DrawAfterScene(mouseX, mouseY);
+                            else
+                                Cursor.Draw(canvas, mouseX, mouseY);
+                            canvas.Display();
+                        }
                     }
 
-                    Thread.Sleep(15);
+                    if (keyboardActivity || pointerMoved || buttonChanged)
+                        Thread.Sleep(15);
+                    else
+                        Thread.Sleep(25);
                 }
 
                 screen.ClearSensitiveData();

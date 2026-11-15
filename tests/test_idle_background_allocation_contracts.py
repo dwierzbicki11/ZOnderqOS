@@ -10,6 +10,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 UPDATER = (ROOT / "source/Core/Updates/UpdateManager.cs").read_text()
 GUARDIAN = (ROOT / "source/Core/MemoryGuardian.cs").read_text()
+LOCK_SCREEN = (ROOT / "source/GUI/LockScreenManager.cs").read_text()
+SERVICE_MGR = (ROOT / "source/Core/Services/ServiceManager.cs").read_text()
+FLASH_ISO = (ROOT / "zonderq-wgraj-iso.sh").read_text()
 
 
 class IdleMemoryBackgroundContracts(unittest.TestCase):
@@ -30,6 +33,7 @@ class IdleMemoryBackgroundContracts(unittest.TestCase):
         self.assertNotIn(
             "bool found = CheckForUpdates(false, out pkg, out msg);", UPDATER
         )
+        self.assertIn("backgroundManifestScanCompleted", UPDATER)
 
     def test_manifest_candidate_paths_are_reused(self):
         self.assertIn(
@@ -48,10 +52,26 @@ class IdleMemoryBackgroundContracts(unittest.TestCase):
         self.assertIn("lastCheckTimeUtc = now;", GUARDIAN)
         self.assertIn("FormatTime(checkedAt)", GUARDIAN)
         self.assertNotIn("lastCheckTime = FormatTime(now);", GUARDIAN)
+        self.assertNotIn('Disk.AppendFile("/sysmon.log"', GUARDIAN)
+        self.assertNotIn("new FileInfo(logPath)", GUARDIAN)
+
+    def test_lock_screen_samples_telemetry_and_avoids_idle_full_redraw(self):
+        self.assertIn("SerialMemoryTelemetry.SampleIfDue", LOCK_SCREEN)
+        self.assertIn("cursorDamageRenderer.TryMove(mouseX, mouseY)", LOCK_SCREEN)
+        self.assertNotIn("bool heartbeat = frame % 134 == 0;", LOCK_SCREEN)
+
+    def test_service_manager_skips_continuous_fat32_appends_after_initial_entry(self):
+        self.assertIn("if (wroteInitialHeartbeat)\n                        skipDiskAppend = true;", SERVICE_MGR)
+
+    def test_usb_iso_flasher_syncs_ab_slots_on_zonderqdata(self):
+        self.assertIn("/boot/slot_a/ZonderqOS.elf", FLASH_ISO)
+        self.assertIn("/boot/slot_b/ZonderqOS.elf", FLASH_ISO)
 
     def test_no_forced_gc_was_added(self):
         self.assertNotIn("GC.Collect(", GUARDIAN)
         self.assertNotIn("GarbageCollector.Collect(", GUARDIAN)
+        self.assertNotIn("GC.Collect(", UPDATER)
+        self.assertNotIn("GC.Collect(", LOCK_SCREEN)
 
 
 if __name__ == "__main__":

@@ -327,11 +327,11 @@ namespace ZonderqOS.SystemCore.Services
                 {
                     bool skipDiskAppend = false;
 #if !ZSRV_HOST_TESTS
-                    // During idle desktop operation, writing "heartbeat" to FAT32 every 60s
-                    // allocates FileStream/StreamWriter/DateTime.ToString objects continuously.
-                    // Record initial startup heartbeat once and skip redundant disk writes unless
-                    // the service actively samples memory telemetry ("type=memory").
-                    if (definition.Type != "memory" && wroteInitialHeartbeat)
+                    // During idle desktop operation, appending service logs to FAT32 in a loop
+                    // allocates FileStream/StreamWriter/DateTime.ToString objects and 32 KiB
+                    // FAT32 cluster buffers continuously. Record the initial startup entry once
+                    // and keep periodic service telemetry in RAM.
+                    if (wroteInitialHeartbeat)
                         skipDiskAppend = true;
 #endif
                     if (!skipDiskAppend)

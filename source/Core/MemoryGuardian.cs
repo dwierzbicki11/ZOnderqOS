@@ -64,8 +64,6 @@ namespace ZonderqOS.SystemCore
             {
                 DateTime lastWarningAlert = DateTime.MinValue;
                 DateTime lastCriticalAlert = DateTime.MinValue;
-                DateTime lastFaultLog = DateTime.MinValue;
-                int logMaintenanceCounter = 0;
 
                 SystemLogger.Log(SystemLogLevel.Info, "GUARDIAN", "System guardian started.");
 
@@ -91,6 +89,11 @@ namespace ZonderqOS.SystemCore
                             lastCheckTimeUtc = now;
                         }
 
+                        // Keep low-memory tracking strictly in-memory inside the periodic
+                        // guardian loop. Appending to /sysmon.log or /var/log/system.log or
+                        // polling FileInfo("/sysmon.log") on a 32 KiB-cluster FAT32 partition
+                        // allocates 32 KiB cluster buffers (> OrionGC's max free-list class),
+                        // forcing new 64 KiB GCSegments from PageAllocator whenever free RAM is low.
                         if (totalPages == 0)
                         {
                             RecordFault("Page allocator reports zero total pages.");
@@ -98,11 +101,6 @@ namespace ZonderqOS.SystemCore
                         else if (freePercent <= RamCriticalThresholdPercent &&
                                  now - lastCriticalAlert >= RamCriticalInterval)
                         {
-                            string message = "Critical memory pressure: free=" + freePercent + "% (" +
-                                             freePages + "/" + totalPages + " pages)";
-                            SystemLogger.Log(SystemLogLevel.Critical, "RAM", message);
-                            logWrittenThisSession = true;
-                            Disk.AppendFile("/sysmon.log", "[CRITICAL][RAM] " + message + "\n");
                             lock (StatusLock)
                                 criticalCount++;
                             lastCriticalAlert = now;
@@ -110,11 +108,6 @@ namespace ZonderqOS.SystemCore
                         else if (freePercent <= RamWarningThresholdPercent &&
                                  now - lastWarningAlert >= RamWarningInterval)
                         {
-                            string message = "Memory pressure warning: free=" + freePercent + "% (" +
-                                             freePages + "/" + totalPages + " pages)";
-                            SystemLogger.Log(SystemLogLevel.Warning, "RAM", message);
-                            logWrittenThisSession = true;
-                            Disk.AppendFile("/sysmon.log", "[WARN][RAM] " + message + "\n");
                             lock (StatusLock)
                                 warningCount++;
                             lastWarningAlert = now;
@@ -125,46 +118,10 @@ namespace ZonderqOS.SystemCore
                         // forcing a full mark/sweep outside the allocator path has caused
                         // #PF/#GP crashes in the GUI/input workload. Memory stability here is
                         // maintained by bounded buffers and reusable render/snapshot objects.
-
-                        logMaintenanceCounter++;
-                        if (logMaintenanceCounter >= LogMaintenanceCycles)
-                        {
-                            logMaintenanceCounter = 0;
-                            const string logPath = "/sysmon.log";
-                            if (logWrittenThisSession && File.Exists(logPath))
-                            {
-                                try
-                                {
-                                    FileInfo logInfo = new FileInfo(logPath);
-                                    if (logInfo.Length > MaxLogByteLength)
-                                    {
-                                        Disk.CreateFile(logPath, "[GUARDIAN] Log file truncated due to size limits.\n");
-                                        lock (StatusLock)
-                                            logTruncationCount++;
-                                        SystemLogger.Log(SystemLogLevel.Warning, "GUARDIAN",
-                                            "Legacy /sysmon.log truncated after reaching size limit.");
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    RecordFault("Log maintenance: " + ex.Message);
-                                }
-                            }
-                        }
                     }
                     catch (Exception ex)
                     {
                         RecordFault(ex.Message);
-
-                        DateTime faultNow = DateTime.UtcNow;
-                        if (faultNow - lastFaultLog >= FaultLogInterval)
-                        {
-                            SystemLogger.Log(
-                                SystemLogLevel.Error,
-                                "GUARDIAN",
-                                "Guardian cycle failed: " + Safe(ex.Message));
-                            lastFaultLog = faultNow;
-                        }
                     }
 
                     if (token.WaitHandle.WaitOne(4000))
