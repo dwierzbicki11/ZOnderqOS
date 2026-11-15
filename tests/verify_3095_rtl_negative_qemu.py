@@ -77,7 +77,7 @@ def verify(serial: str, mode: str) -> str:
     # An unrelated NIC can still bind after the expected "no driver" line.
     # Reject any explicit binding evidence, not just the MAC diagnostic.
     if (re.search(r"\b(?:E1000EDriver|RTL810xEReadOnlyProbe)\b[^\n]*\b(?:bound|binding)\b", raw, re.IGNORECASE)
-            or "E1000EDriver: mac" in raw):
+            or re.search(r"\bE1000EDriver:\s*(?:mac|ready|link)\b", raw, re.IGNORECASE)):
         raise ValueError("unexpected network driver binding")
     functions = [int(x) for x in PCI_FUNCTIONS.findall(cleaned)]
     expected = 5 if mode == "none" else 6
@@ -115,6 +115,8 @@ def self_test() -> None:
         rtl + "[Drivers] pci:0000:00:02.0 E1000EDriver: mac 52:54:00:12:34:56\n",
         rtl + "[Drivers] pci:0000:00:02.0 offer E1000EDriver -> bound\n",
         rtl + "[Drivers] pci:0000:00:02.0 RTL810xEReadOnlyProbe -> binding\n",
+        rtl + "[Drivers] pci:0000:00:02.0 E1000EDriver: ready=1 link=up\n",
+        rtl + "[Drivers] pci:0000:00:02.0 E1000EDriver: LINK up\n",
     ):
         try:
             verify(bad_e1000e, "e1000e")
