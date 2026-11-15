@@ -137,12 +137,31 @@ def self_test() -> None:
     for pos in range(1, len(DECLINE)):
         split = DECLINE[:pos] + "[LAPIC] Timer tick 4 RSP=FFFF80007F6E2D00\n" + DECLINE[pos:]
         assert "PASS mode=none" in verify(base.replace(DECLINE, split), "none")
+        assert "PASS mode=rtl8139" in verify(rtl.replace(DECLINE, split), "rtl8139")
+        assert "PASS mode=e1000e" in verify(rtl.replace(DECLINE, split), "e1000e")
     # LAPIC ticks may also interrupt BOOT at any internal byte boundary.
     for pos in range(1, len(BOOT)):
         split = BOOT[:pos] + "[LAPIC] Timer tick 4 RSP=FFFF80007F6E2D00\n" + BOOT[pos:]
         assert "PASS mode=none" in verify(base.replace(BOOT, split), "none")
         assert "PASS mode=rtl8139" in verify(rtl.replace(BOOT, split), "rtl8139")
         assert "PASS mode=e1000e" in verify(rtl.replace(BOOT, split), "e1000e")
+    # Independent LAPIC interruptions in both markers must reconstruct
+    # without accepting a changed decline marker or a duplicated boot marker.
+    lapic = "[LAPIC] Timer tick 4 RSP=FFFF80007F6E2D00\n"
+    both_lapic = rtl.replace(BOOT, BOOT[:12] + lapic + BOOT[12:])
+    both_lapic = both_lapic.replace(DECLINE, DECLINE[:35] + lapic + DECLINE[35:])
+    assert "PASS mode=rtl8139" in verify(both_lapic, "rtl8139")
+    assert "PASS mode=e1000e" in verify(both_lapic, "e1000e")
+    for corrupted in (
+        both_lapic.replace("offers=0", "offers=1"),
+        both_lapic + BOOT + "\n",
+    ):
+        try:
+            verify(corrupted, "e1000e")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted corrupted dual-LAPIC evidence")
     # Malformed LAPIC diagnostics must remain rejected and visible in evidence.
     try:
         verify(base.replace(DECLINE, DECLINE[:35] +
