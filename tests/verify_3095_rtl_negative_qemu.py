@@ -78,7 +78,7 @@ def verify(serial: str, mode: str) -> str:
     # Reject any explicit binding evidence, not just the MAC diagnostic.
     if (re.search(r"\b(?:E1000EDriver|RTL810xEReadOnlyProbe)\b[^\n]*\b(?:bound|binding|initialized|started|attached)\b", raw, re.IGNORECASE)
             or re.search(r"\b(?:E1000EDriver|RTL810xEReadOnlyProbe)\b[^\n]*?\s*->\s*(?:ready|link|tx|rx|dma|irq)\b", raw, re.IGNORECASE)
-            or re.search(r"\b(?:E1000EDriver|RTL810xEReadOnlyProbe):\s*(?:mac|ready|link|tx|rx|dma|irq)\b", raw, re.IGNORECASE)):
+            or re.search(r"\b(?:E1000EDriver|RTL810xEReadOnlyProbe):\s*(?:mac|ready|link|tx|rx|dma|irq|bound|binding|initialized|started|attached)\b", raw, re.IGNORECASE)):
         raise ValueError("unexpected network driver binding")
     functions = [int(x) for x in PCI_FUNCTIONS.findall(cleaned)]
     expected = 5 if mode == "none" else 6
@@ -123,6 +123,8 @@ def self_test() -> None:
         rtl + "[Drivers] pci:0000:00:02.0 RTL810xEReadOnlyProbe: DMA enabled\n",
         rtl + "[Drivers] pci:0000:00:02.0 E1000EDriver: IRQ active\n",
         rtl + "[Drivers] pci:0000:00:02.0 E1000EDriver -> TX ring armed\n",
+        rtl + "[Drivers] pci:0000:00:02.0 E1000EDriver: initialized\n",
+        rtl + "[Drivers] pci:0000:00:02.0 RTL810xEReadOnlyProbe: attached\n",
         rtl + "[Drivers] pci:0000:00:02.0 RTL810xEReadOnlyProbe -> DMA active\n",
     ):
         try:
