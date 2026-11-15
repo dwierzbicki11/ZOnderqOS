@@ -65,7 +65,7 @@ def verify(serial: str, mode: str) -> str:
         # from the actual guest serial stream. A scheduler may splice output
         # in ways the strict one-tick normalizer deliberately rejects.
         candidates = [line for line in lines if ("NET3095-RTL810XE" in line or
-                      "[SCHED] Tick" in line)]
+                      "[SCHED] Tick" in line or "[LAPIC] Timer tick" in line)]
         preview = " | ".join(repr(line[:180]) for line in candidates[:8])
         raise ValueError("missing/duplicate RTL810xE boot or exact decline marker "
                          f"(boot={lines.count(BOOT)}, decline={lines.count(DECLINE)}, "
@@ -137,6 +137,20 @@ def self_test() -> None:
     for pos in range(1, len(DECLINE)):
         split = DECLINE[:pos] + "[LAPIC] Timer tick 4 RSP=FFFF80007F6E2D00\n" + DECLINE[pos:]
         assert "PASS mode=none" in verify(base.replace(DECLINE, split), "none")
+    # LAPIC ticks may also interrupt BOOT at any internal byte boundary.
+    for pos in range(1, len(BOOT)):
+        split = BOOT[:pos] + "[LAPIC] Timer tick 4 RSP=FFFF80007F6E2D00\\n" + BOOT[pos:]
+        assert "PASS mode=none" in verify(base.replace(BOOT, split), "none")
+        assert "PASS mode=rtl8139" in verify(rtl.replace(BOOT, split), "rtl8139")
+        assert "PASS mode=e1000e" in verify(rtl.replace(BOOT, split), "e1000e")
+    # Malformed LAPIC diagnostics must remain rejected and visible in evidence.
+    try:
+        verify(base.replace(DECLINE, DECLINE[:35] +
+                            "[LAPIC] Timer tick 4 RSP=NOTHEX\\n" + DECLINE[35:]), "none")
+    except ValueError as exc:
+        assert "LAPIC" in str(exc) and "preview=" in str(exc)
+    else:
+        raise AssertionError("accepted malformed LAPIC diagnostic")
     # Actual QEMU can splice the scheduler tick into BOOT, not just DECLINE.
     # Every internal byte boundary must reconstruct exactly, including when
     # both markers are independently interrupted.
