@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../source/Storage/DiskMutations.cs" Link="DiskMutations.cs" />
+    <Compile Include="../../source/Storage/DiskTransfers.cs" Link="DiskTransfers.cs" />
   </ItemGroup>
 </Project>

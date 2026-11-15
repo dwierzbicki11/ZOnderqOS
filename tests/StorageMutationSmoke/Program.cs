@@ -59,6 +59,31 @@ static class Program
             Disk.DeleteFile(dir);
             Check(!CommandIO.LastCommandSuccess && WriteMessage.Error != null && Directory.Exists(dir), "delete directory as file");
             passed++;
+            foreach (bool move in new[] { false, true })
+            foreach (string fault in new[] { "guard", "readonly-source", "readonly-target", "permission", "denied", "log", "collision", "missing", "bad-parent", "" })
+            {
+                string source = Path.Combine(root, "source");
+                string target = Path.Combine(root, "target");
+                File.WriteAllBytes(source, new byte[] { 0, 255, 42, 0 });
+                if (fault == "missing") File.Delete(source);
+                if (fault == "collision") File.WriteAllText(target, "keep destination");
+                if (fault == "bad-parent") target = Path.Combine(root, "absent", "target");
+                Faults.Stage = fault;
+                CommandIO.LastCommandSuccess = true; WriteMessage.Error = null;
+                if (move) Disk.MoveFile(source, target);
+                else Disk.CopyFile(source, target);
+                bool success = fault == "";
+                Check(CommandIO.LastCommandSuccess == success, "transfer status " + move + "/" + fault);
+                Check((WriteMessage.Error != null) == !success, "transfer diagnostic " + fault);
+                Check(File.Exists(source) == !(fault == "missing" || (success && move)), "transfer source presence");
+                if (File.Exists(source)) Check(Convert.ToHexString(File.ReadAllBytes(source)) == "00FF2A00", "source bytes changed");
+                if (success) Check(Convert.ToHexString(File.ReadAllBytes(target)) == "00FF2A00", "binary transfer changed bytes");
+                else if (fault == "collision") Check(File.ReadAllText(target) == "keep destination", "collision overwrote destination");
+                else Check(!File.Exists(target), "failed transfer created destination");
+                if (File.Exists(source)) File.Delete(source);
+                if (File.Exists(target)) File.Delete(target);
+                passed++;
+            }
             Console.WriteLine(passed + " storage mutation checks passed");
         }
         finally { Directory.Delete(root, true); }
@@ -71,7 +96,7 @@ namespace ZonderqOS
         static bool RejectVirtualMutation(string path, string operation)
         {
             Faults.At("guard");
-            if (Faults.Stage != "reject") return false;
+            if (Faults.Stage != "reject" && !VirtualFs.IsReadOnlyPath(path)) return false;
             WriteMessage.WriteError("Read only", "FS"); return true;
         }
     }
@@ -94,6 +119,12 @@ namespace ZonderqOS.SystemCore
     static class TmpFs { public static bool IsTmpPath(string path) { return false; } }
     static class VirtualFs
     {
+        public static bool IsReadOnlyPath(string path)
+        {
+            Faults.At("guard");
+            return (Faults.Stage == "readonly-source" && Path.GetFileName(path) == "source") ||
+                (Faults.Stage == "readonly-target" && Path.GetFileName(path) == "target");
+        }
         static bool Result(out string error) { Faults.At("virtual"); error = "rejected"; return Faults.Stage == "virtual-ok"; }
         public static bool TryDeleteFile(string path, out string error) { return Result(out error); }
         public static bool TryCreateDirectory(string path, out string error) { return Result(out error); }
@@ -101,6 +132,7 @@ namespace ZonderqOS.SystemCore
     }
     static class PermissionManager
     {
+        public static bool CanRead(string path, string user) { return CanWrite(path, user); }
         public static bool CanWrite(string path, string user) { Faults.At("permission"); return Faults.Stage != "denied" && Faults.Stage != "log"; }
     }
     static class SecurityContext { public static string CurrentUser = "test"; }
