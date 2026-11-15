@@ -24,6 +24,14 @@ class PlatformBoundaryTests(unittest.TestCase):
         self.assertTrue(all(start < i < end for i in ports),
                         "all direct x86 power port calls must stay behind the architecture guard")
 
+    def test_cosmos_cli_define_override_cannot_drop_project_symbols(self):
+        """`cosmos build` passes -p:DefineConstants=ARCH_<X>, a global property that
+        silently replaced every csproj DefineConstants (ZONDERQ_COSMOS_INPUT_API ->
+        CS0246 KeyEvent). TreatAsLocalProperty keeps the project symbols."""
+        project = (ROOT / "ZonderqOS.csproj").read_text(encoding="utf-8")
+        first = project.splitlines()[0]
+        self.assertIn('TreatAsLocalProperty="DefineConstants"', first)
+
     def test_only_project_defined_arch_symbols_are_used(self):
         """Regression: GuiManager used `#if !ARM64`, a symbol never defined,
         so the x64-only SerialMemoryTelemetry call leaked into ARM64 builds."""
