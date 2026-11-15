@@ -57,6 +57,7 @@ static class Program
             Run("extra CR cannot bypass limit", file, () => {}, false, "");
             File.WriteAllText(file, "");
             Run("empty file", file, () => {}, true, "");
+            passed += ListingChecks.Run(folder);
             Console.WriteLine(passed + " storage read checks passed");
         }
         finally { Directory.Delete(folder, true); }
@@ -74,13 +75,14 @@ namespace ZonderqOS.SystemCore
     static class VirtualFs
     {
         public static bool IsVirtualPath(string p) { Faults.At("dispatch"); return p == "/virtual"; }
+        public static bool TryList(string p, out string[] entries) { Faults.At("list"); entries = new[] { "entry" }; return Faults.Stage != "missing"; }
         public static bool TryRead(string p, out string content) { Faults.At("read"); content = "virtual data"; return true; }
     }
     static class CommandIO
     {
         public static bool LastCommandSuccess;
         public static StringBuilder Text = new StringBuilder();
-        public static void Write(string text) { Faults.At("output"); Text.Append(text); }
+        public static void Write(string text) { if (Faults.Stage == "nested" && text.StartsWith("    ")) throw new IOException("Nested output failure"); Faults.At("output"); Text.Append(text); }
         public static void WriteLine(string text) { Write(text + "\n"); }
     }
 }

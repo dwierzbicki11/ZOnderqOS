@@ -152,27 +152,6 @@ namespace ZonderqOS
             }
         }
 
-        public static void Tree(string path, string indent = "")
-        {
-            try
-            {
-                string[] files = Directory.GetFiles(path);
-                foreach (string file in files)
-                    CommandIO.WriteLine($"{indent}--- {Path.GetFileName(file)}");
-
-                string[] directories = Directory.GetDirectories(path);
-                foreach (string dir in directories)
-                {
-                    CommandIO.WriteLine($"{indent}+-- {Path.GetFileName(dir)}");
-                    Tree(dir, indent + "    ");
-                }
-            }
-            catch (Exception ex)
-            {
-                WriteMessage.WriteError($"Error reading structure at {path}: {ex.Message}", "FS");
-            }
-        }
-
         private static bool RejectVirtualMutation(string path, string operation)
         {
             if (!VirtualFs.IsReadOnlyPath(path))
