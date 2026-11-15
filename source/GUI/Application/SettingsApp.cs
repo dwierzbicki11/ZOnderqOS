@@ -381,7 +381,7 @@ namespace ZonderqOS.GUI.Apps
         private void RenderMemory(Canvas canvas, int contentX, int contentWidth)
         {
             DrawNumericRow(canvas, contentX, contentWidth, 0, IconType.Settings,
-                "RAM FIZYCZNY", "Calkowity fizyczny RAM (mapa Limine / BIOS)", physicalRamMb > 0 ? physicalRamMb : PagesToMb(totalPages), " MB");
+                "RAM WIDOCZNY", "RAM z mapy Limine (zainstalowany: nieznany, brak SMBIOS)", physicalRamMb > 0 ? physicalRamMb : PagesToMb(totalPages), " MB");
             DrawNumericRow(canvas, contentX, contentWidth, 1, IconType.Settings,
                 "RAM WOLNY", "Aktualnie wolne strony fizyczne", PagesToMb(freePages), " MB");
             DrawNumericRow(canvas, contentX, contentWidth, 2, IconType.Settings,
@@ -726,7 +726,7 @@ namespace ZonderqOS.GUI.Apps
                 ulong physBytes = ZonderqOS.Hardware.PhysicalMemoryDetector.TotalPhysicalBytes;
                 physicalRamMb = physBytes > 0 ? physBytes / (1024UL * 1024UL) : PagesToMb(totalPages);
                 ulong instBytes = ZonderqOS.Hardware.PhysicalMemoryDetector.InstalledBytes;
-                installedRamMb = instBytes > 0 ? instBytes / (1024UL * 1024UL) : physicalRamMb;
+                installedRamMb = instBytes / (1024UL * 1024UL); // 0 == unknown (no SMBIOS)
             }
             catch
             {

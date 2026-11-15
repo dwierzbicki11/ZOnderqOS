@@ -670,7 +670,7 @@ namespace ZonderqOS.GUI.Apps
                 hasPreviousMemorySnapshot = true;
 
                 physicalInstalledBytes = PhysicalMemoryDetector.InstalledBytes;
-                physicalUsableBytes = PhysicalMemoryDetector.TotalPhysicalBytes;
+                physicalUsableBytes = PhysicalMemoryDetector.UsableBytes;
 
                 memoryCache.Update(usedPages, freePages, totalPages,
                                    gcHeapBytes, gcCommittedBytes,
