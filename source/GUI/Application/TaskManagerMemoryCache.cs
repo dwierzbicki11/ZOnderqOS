@@ -175,11 +175,11 @@ namespace ZonderqOS.GUI.Apps
                 lastSnapUsableBytes = physicalUsableBytes;
                 lastSnapTotalPages = totalPages;
 
-                InstalledRamText = FormatBytesSmart(physicalInstalledBytes);
+                InstalledRamText = physicalInstalledBytes > 0 ? FormatBytesSmart(physicalInstalledBytes) : "nieznany (brak SMBIOS)";
                 UsableRamText = FormatBytesSmart(physicalUsableBytes);
                 HeapPoolText = FormatBytesSmart(totalPages * PageSize);
                 MemoryPagesText = totalPages + " (" + PageSize + " B/strona)";
-                HardwareRamText = InstalledRamText + " / " + HeapPoolText;
+                HardwareRamText = (physicalInstalledBytes > 0 ? InstalledRamText : UsableRamText + " widoczny") + " / " + HeapPoolText;
                 FormattedLabelCount += 5;
             }
         }

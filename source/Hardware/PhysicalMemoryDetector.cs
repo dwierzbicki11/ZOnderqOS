@@ -5,47 +5,58 @@ using Cosmos.Kernel.Core.Memory;
 namespace ZonderqOS.Hardware
 {
     /// <summary>
-    /// Detects total physical RAM installed on the machine and available to the firmware
-    /// by querying the Limine bootloader memory map response across all memory regions.
-    /// This resolves the issue where a multi-gigabyte memory map split across the 4 GB MMIO hole
-    /// is only partially reported by the single-range Cosmos heap allocator.
+    /// Separates the four memory quantities that used to be conflated:
+    ///  * Installed physical RAM  - only from SMBIOS (Type 17/19). Cosmos 3.0.95's Limine
+    ///    binding exposes no SMBIOS request and raw physical scans of 0xF0000 are not
+    ///    guaranteed to be HHDM-mapped under Limine base revision 3, so this value is
+    ///    reported as UNKNOWN (0, InstalledBytesConfirmed == false). We never round the
+    ///    memory map up to a "standard module size" and present it as installed RAM.
+    ///  * Usable RAM              - Limine memory map entries of type Usable.
+    ///  * Firmware-visible RAM    - Usable + BootloaderReclaimable + AcpiReclaimable +
+    ///    KernelAndModules (lower bound of installed RAM; excludes firmware-reserved RAM).
+    ///  * Kernel heap pool        - PageAllocator.TotalPageCount * PageSize (live values
+    ///    for used/free must be read from PageAllocator, not from this class).
     /// </summary>
     public static class PhysicalMemoryDetector
     {
         private static bool initialized;
-        private static ulong cachedTotalPhysicalBytes;
-        private static ulong cachedInstalledBytes;
+        private static ulong cachedUsableBytes;
+        private static ulong cachedFirmwareVisibleBytes;
+        private static bool memoryMapAvailable;
 
+        /// <summary>Firmware-visible RAM (lower bound of installed). Kept for API compatibility.</summary>
         public static ulong TotalPhysicalBytes
         {
-            get
-            {
-                EnsureDetected();
-                return cachedTotalPhysicalBytes;
-            }
+            get { EnsureDetected(); return cachedFirmwareVisibleBytes; }
         }
 
+        /// <summary>Limine "Usable" regions only.</summary>
+        public static ulong UsableBytes
+        {
+            get { EnsureDetected(); return cachedUsableBytes; }
+        }
+
+        /// <summary>Installed module capacity confirmed by SMBIOS; 0 when unknown.</summary>
         public static ulong InstalledBytes
         {
-            get
-            {
-                EnsureDetected();
-                return cachedInstalledBytes;
-            }
+            get { EnsureDetected(); return 0; }
         }
+
+        public static bool InstalledBytesConfirmed => false;
+
+        public static bool MemoryMapAvailable
+        {
+            get { EnsureDetected(); return memoryMapAvailable; }
+        }
+
+        public static string InstalledSourceText => "nieznany (brak SMBIOS w Cosmos 3.0.95)";
 
         public static ulong HeapPoolBytes
         {
             get
             {
-                try
-                {
-                    return PageAllocator.TotalPageCount * PageAllocator.PageSize;
-                }
-                catch
-                {
-                    return 0;
-                }
+                try { return PageAllocator.TotalPageCount * PageAllocator.PageSize; }
+                catch { return 0; }
             }
         }
 
@@ -53,22 +64,10 @@ namespace ZonderqOS.Hardware
         {
             if (initialized)
                 return;
-
             initialized = true;
 
-            ulong heapBytes = 0;
-            try
-            {
-                heapBytes = PageAllocator.TotalPageCount * PageAllocator.PageSize;
-            }
-            catch
-            {
-                heapBytes = 0;
-            }
-
-            ulong detectedUsable = 0;
-            ulong highestAddr = 0;
-
+            ulong usable = 0;
+            ulong visible = 0;
             try
             {
                 unsafe
@@ -76,74 +75,41 @@ namespace ZonderqOS.Hardware
                     LimineMemmapResponse* response = Limine.MemoryMap.Response;
                     if (response != null && response->Entries != null && response->EntryCount > 0)
                     {
+                        memoryMapAvailable = true;
                         ulong count = response->EntryCount;
                         for (ulong i = 0; i < count; i++)
                         {
                             LimineMemmapEntry* entry = response->Entries[i];
                             if (entry == null)
                                 continue;
-
-                            ulong baseAddr = (ulong)entry->Base;
                             ulong length = entry->Length;
-                            ulong endAddr = baseAddr + length;
-                            if (endAddr > highestAddr)
-                                highestAddr = endAddr;
-
                             LimineMemmapType type = entry->Type;
-                            // Sum RAM that was available to firmware/OS (usable + bootloader + kernel modules + ACPI reclaimable)
+                            if (type == LimineMemmapType.Usable)
+                                usable = SaturatingAdd(usable, length);
                             if (type == LimineMemmapType.Usable ||
                                 type == LimineMemmapType.BootloaderReclaimable ||
                                 type == LimineMemmapType.AcpiReclaimable ||
                                 type == LimineMemmapType.KernelAndModules)
-                            {
-                                detectedUsable += length;
-                            }
+                                visible = SaturatingAdd(visible, length);
                         }
                     }
                 }
             }
             catch
             {
-                // Fallback for host tests or environments without Limine memory map
-                detectedUsable = 0;
-                highestAddr = 0;
+                memoryMapAvailable = false;
+                usable = 0;
+                visible = 0;
             }
 
-            // If Limine gave us valid physical RAM regions, use them
-            if (detectedUsable > heapBytes)
-            {
-                cachedTotalPhysicalBytes = detectedUsable;
-            }
-            else
-            {
-                cachedTotalPhysicalBytes = heapBytes;
-            }
-
-            // Estimate installed module capacity based strictly on detected physical RAM bytes
-            cachedInstalledBytes = EstimateInstalledCapacity(cachedTotalPhysicalBytes);
+            cachedUsableBytes = usable;
+            cachedFirmwareVisibleBytes = visible;
         }
 
-        private static ulong EstimateInstalledCapacity(ulong physicalBytes)
+        private static ulong SaturatingAdd(ulong a, ulong b)
         {
-            if (physicalBytes == 0)
-                return 0;
-
-            const ulong GiB = 1024UL * 1024UL * 1024UL;
-
-            // Round detected physical usable RAM up to standard module sizes (1, 2, 4, 6, 8, 12, 16, 24, 32, 64, 128 GB)
-            if (physicalBytes <= 1UL * GiB) return 1UL * GiB;
-            if (physicalBytes <= 2UL * GiB) return 2UL * GiB;
-            if (physicalBytes <= 4UL * GiB) return 4UL * GiB;
-            if (physicalBytes <= 6UL * GiB) return 6UL * GiB;
-            if (physicalBytes <= 8UL * GiB) return 8UL * GiB;
-            if (physicalBytes <= 12UL * GiB) return 12UL * GiB;
-            if (physicalBytes <= 16UL * GiB) return 16UL * GiB;
-            if (physicalBytes <= 24UL * GiB) return 24UL * GiB;
-            if (physicalBytes <= 32UL * GiB) return 32UL * GiB;
-            if (physicalBytes <= 64UL * GiB) return 64UL * GiB;
-            if (physicalBytes <= 128UL * GiB) return 128UL * GiB;
-
-            return physicalBytes;
+            ulong r = a + b;
+            return r < a ? ulong.MaxValue : r;
         }
     }
 }
