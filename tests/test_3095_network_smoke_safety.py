@@ -207,6 +207,20 @@ class EvidenceSafety(unittest.TestCase):
                 self.assertFalse(called.exists(), "fake QEMU was invoked")
 
 
+    def test_dhcp_fail_fast_preserves_guest_evidence(self):
+        # A guest heartbeat without a DHCP lease must not be mistaken for
+        # slow boot; preserve the verifier failure and fail explicitly.
+        source = SMOKE.read_text()
+        self.assertIn("Guest entered Run() without a DHCP lease", source)
+        self.assertIn("DHCP=PASS ip=", source)
+        self.assertIn("HEARTBEAT=", source)
+        self.assertIn(
+            'python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP" || true',
+            source,
+        )
+        self.assertIn("LINK_CYCLE == 1 ? 45 : 20", source)
+        self.assertIn("No correlated DHCP RX/TX capture", source)
+
     def test_timeout_diagnostics_preserve_explicit_failure_markers(self):
         # A failing verifier inside a timeout branch must not trigger set -e
         # before the host prints its phase-specific [FAIL] marker.
