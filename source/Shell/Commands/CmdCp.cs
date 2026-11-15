@@ -119,9 +119,11 @@ namespace ZonderqOS.Commands
             }
 
             Disk.CopyFile(source, destination);
-            if (!CommandIO.LastCommandSuccess || !File.Exists(destination))
+            if (!CommandIO.LastCommandSuccess) return;
+            if (!File.Exists(destination))
             {
                 CommandIO.LastCommandSuccess = false;
+                WriteMessage.WriteError($"Copy was not confirmed: {source} -> {destination}", "FS");
                 return;
             }
 

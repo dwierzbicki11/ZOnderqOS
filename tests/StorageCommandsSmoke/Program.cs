@@ -20,6 +20,7 @@ internal static class Program
     {
         VirtualFs.Files.Clear();
         Disk.FailWrite = Disk.FailDelete = Disk.FailCopy = false;
+        Disk.Unconfirmed = 0; WriteMessage.Error = null;
         PermissionManager.ReadAllowed = true;
         PermissionManager.Copies = PermissionManager.Moves = 0;
         CommandIO.LastCommandSuccess = true; // deliberately stale success
@@ -94,6 +95,21 @@ internal static class Program
                 Run("disconnect after partial read " + move, move, source, "/tmp/dest",
                     () => { System.IO.File.WriteAllText(source, new string('x', 4096)); TestFaults.FailAfterBytes = 512; },
                     () => { Check(!CommandIO.LastCommandSuccess && !VirtualFs.Files.ContainsKey("/tmp/dest"), "partial read published"); Check(System.IO.File.Exists(source), "source deleted after read failure"); Check(TestFaults.Disposed, "failed input stream leaked"); });
+            }
+            foreach (bool move in new[] { false, true })
+            foreach (int result in move ? new[] { 1, 2 } : new[] { 1 })
+            {
+                Run("unconfirmed physical transfer reports paths " + move + result, move, source, dest,
+                    () => { System.IO.File.WriteAllText(source, "complete"); Disk.Unconfirmed = result; },
+                    () => {
+                        Check(!CommandIO.LastCommandSuccess, "unconfirmed transfer succeeded");
+                        Check(WriteMessage.Error != null && WriteMessage.Error.Contains(source) && WriteMessage.Error.Contains(dest), "missing recovery paths");
+                        Check(System.IO.File.ReadAllText(source) == "complete", "source changed");
+                        Check(System.IO.File.Exists(dest) == (move && result == 2), "unexpected destination");
+                        if (System.IO.File.Exists(dest)) Check(System.IO.File.ReadAllText(dest) == "complete", "destination changed");
+                        Check(PermissionManager.Copies == 0 && PermissionManager.Moves == 0, "metadata changed after unconfirmed transfer");
+                    });
+                System.IO.File.Delete(dest);
             }
             Run("partial copy cannot report success", false, source, dest,
                 () => { System.IO.File.WriteAllText(source, "complete"); Disk.FailCopy = true; },
@@ -194,10 +210,11 @@ namespace ZonderqOS.SystemCore
 }
 namespace ZonderqOS
 {
-    static class WriteMessage { public static void WriteError(string message, string category) {} }
+    static class WriteMessage { public static string Error; public static void WriteError(string message, string category) { Error = message; } }
     static class Disk
     {
         public static bool FailWrite, FailDelete, FailCopy;
+        public static int Unconfirmed;
         public static void CreateFile(string path, string content)
         {
             CommandIO.LastCommandSuccess = false;
@@ -217,6 +234,7 @@ namespace ZonderqOS
         public static void CopyFile(string source, string dest)
         {
             CommandIO.LastCommandSuccess = false;
+            if (Unconfirmed != 0) { CommandIO.LastCommandSuccess = true; return; }
             if (FailCopy) { System.IO.File.WriteAllText(dest, "partial"); return; }
             System.IO.File.Copy(source, dest);
             CommandIO.LastCommandSuccess = true;
@@ -224,6 +242,11 @@ namespace ZonderqOS
         public static void MoveFile(string source, string dest)
         {
             CommandIO.LastCommandSuccess = false;
+            if (Unconfirmed != 0)
+            {
+                if (Unconfirmed == 2) System.IO.File.Copy(source, dest);
+                CommandIO.LastCommandSuccess = true; return;
+            }
             System.IO.File.Move(source, dest);
             CommandIO.LastCommandSuccess = true;
         }

@@ -166,9 +166,11 @@ namespace ZonderqOS.Commands
             }
 
             Disk.MoveFile(source, destination);
-            if (!CommandIO.LastCommandSuccess || File.Exists(source) || !File.Exists(destination))
+            if (!CommandIO.LastCommandSuccess) return;
+            if (File.Exists(source) || !File.Exists(destination))
             {
                 CommandIO.LastCommandSuccess = false;
+                WriteMessage.WriteError($"Move was not confirmed: {source} -> {destination}", "FS");
                 return;
             }
 
