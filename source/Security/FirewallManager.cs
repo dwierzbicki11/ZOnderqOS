@@ -79,7 +79,7 @@ namespace ZonderqOS.Security
                     }
                     else
                     {
-                        ResetDefaultRules();
+                        ResetDefaultRulesInternal(persist: SecurityContext.IsBootInitializationActive || IsAuthenticatedRoot());
                     }
 
                     isInitialized = true;
@@ -91,29 +91,48 @@ namespace ZonderqOS.Security
             }
         }
 
-        public static void ResetDefaultRules()
+        private static bool IsAuthenticatedRoot()
         {
+            return SecurityContext.IsAuthenticated &&
+                   SecurityContext.CurrentUid == 0 &&
+                   string.Equals(SecurityContext.CurrentUser, "root", StringComparison.Ordinal);
+        }
+
+        public static bool ResetDefaultRules()
+        {
+            if (!IsAuthenticatedRoot())
+            {
+                SecurityLogger.LogEvent("WARN", "Blocked unauthorized FirewallManager.ResetDefaultRules().");
+                return false;
+            }
+
             lock (_lock)
             {
-                rules.Clear();
-                nextRuleId = 1;
-
-                // Standard sensible defaults:
-                // Outbound essential network traffic:
-                AddRuleInternal(53, RuleProtocol.UDP, RuleDirection.Outbound, RuleAction.Allow, "Zapytania DNS (Domain Name System)");
-                AddRuleInternal(80, RuleProtocol.TCP, RuleDirection.Outbound, RuleAction.Allow, "Ruch sieciowy WWW (HTTP)");
-                AddRuleInternal(443, RuleProtocol.TCP, RuleDirection.Outbound, RuleAction.Allow, "Ruch szyfrowany SSL/TLS (HTTPS)");
-                AddRuleInternal(123, RuleProtocol.UDP, RuleDirection.Outbound, RuleAction.Allow, "Synchronizacja czasu zegara (NTP)");
-
-                // Inbound protection:
-                AddRuleInternal(22, RuleProtocol.TCP, RuleDirection.Inbound, RuleAction.Drop, "Blokada zdalnego dostepu SSH");
-                AddRuleInternal(23, RuleProtocol.TCP, RuleDirection.Inbound, RuleAction.Drop, "Blokada nieszyfrowanego protokolu Telnet");
-                AddRuleInternal(445, RuleProtocol.TCP, RuleDirection.Inbound, RuleAction.Drop, "Blokada portu SMB / NetBIOS");
-
-                Mode = FirewallMode.Enabled;
-                SaveConfigLocked();
-                SecurityLogger.LogEvent("INFO", "Firewall reset to default security rules.");
+                return ResetDefaultRulesInternal(persist: true);
             }
+        }
+
+        private static bool ResetDefaultRulesInternal(bool persist)
+        {
+            rules.Clear();
+            nextRuleId = 1;
+
+            // Standard sensible defaults:
+            // Outbound essential network traffic:
+            AddRuleInternal(53, RuleProtocol.UDP, RuleDirection.Outbound, RuleAction.Allow, "Zapytania DNS (Domain Name System)");
+            AddRuleInternal(80, RuleProtocol.TCP, RuleDirection.Outbound, RuleAction.Allow, "Ruch sieciowy WWW (HTTP)");
+            AddRuleInternal(443, RuleProtocol.TCP, RuleDirection.Outbound, RuleAction.Allow, "Ruch szyfrowany SSL/TLS (HTTPS)");
+            AddRuleInternal(123, RuleProtocol.UDP, RuleDirection.Outbound, RuleAction.Allow, "Synchronizacja czasu zegara (NTP)");
+
+            // Inbound protection:
+            AddRuleInternal(22, RuleProtocol.TCP, RuleDirection.Inbound, RuleAction.Drop, "Blokada zdalnego dostepu SSH");
+            AddRuleInternal(23, RuleProtocol.TCP, RuleDirection.Inbound, RuleAction.Drop, "Blokada nieszyfrowanego protokolu Telnet");
+            AddRuleInternal(445, RuleProtocol.TCP, RuleDirection.Inbound, RuleAction.Drop, "Blokada portu SMB / NetBIOS");
+
+            Mode = FirewallMode.Enabled;
+            bool ok = !persist || SaveConfigLocked();
+            SecurityLogger.LogEvent("INFO", "Firewall reset to default security rules.");
+            return ok;
         }
 
         private static void AddRuleInternal(int port, RuleProtocol proto, RuleDirection dir, RuleAction action, string desc)
@@ -130,18 +149,32 @@ namespace ZonderqOS.Security
             });
         }
 
-        public static void AddRule(int port, RuleProtocol proto, RuleDirection dir, RuleAction action, string desc)
+        public static bool AddRule(int port, RuleProtocol proto, RuleDirection dir, RuleAction action, string desc)
         {
+            if (!IsAuthenticatedRoot())
+            {
+                SecurityLogger.LogEvent("WARN", "Blocked unauthorized FirewallManager.AddRule().");
+                return false;
+            }
+
             lock (_lock)
             {
                 AddRuleInternal(port, proto, dir, action, desc);
-                SaveConfigLocked();
+                if (!SaveConfigLocked())
+                    return false;
                 SecurityLogger.LogEvent("INFO", "Firewall rule added: Port " + port + " (" + proto + "/" + action + ")");
+                return true;
             }
         }
 
         public static bool RemoveRule(int ruleId)
         {
+            if (!IsAuthenticatedRoot())
+            {
+                SecurityLogger.LogEvent("WARN", "Blocked unauthorized FirewallManager.RemoveRule().");
+                return false;
+            }
+
             lock (_lock)
             {
                 for (int i = 0; i < rules.Count; i++)
@@ -149,21 +182,28 @@ namespace ZonderqOS.Security
                     if (rules[i].Id == ruleId)
                     {
                         rules.RemoveAt(i);
-                        SaveConfigLocked();
-                        return true;
+                        return SaveConfigLocked();
                     }
                 }
                 return false;
             }
         }
 
-        public static void SetMode(FirewallMode mode)
+        public static bool SetMode(FirewallMode mode)
         {
+            if (!IsAuthenticatedRoot())
+            {
+                SecurityLogger.LogEvent("WARN", "Blocked unauthorized FirewallManager.SetMode().");
+                return false;
+            }
+
             lock (_lock)
             {
                 Mode = mode;
-                SaveConfigLocked();
+                if (!SaveConfigLocked())
+                    return false;
                 SecurityLogger.LogEvent("INFO", "Firewall mode changed to: " + mode.ToString().ToUpperInvariant());
+                return true;
             }
         }
 
@@ -305,7 +345,7 @@ namespace ZonderqOS.Security
             }
         }
 
-        private static void SaveConfigLocked()
+        private static bool SaveConfigLocked()
         {
             try
             {
@@ -320,11 +360,14 @@ namespace ZonderqOS.Security
                         sw.WriteLine(r.Port + "|" + r.Protocol + "|" + r.Direction + "|" + r.Action + "|" + r.Description);
                     }
                 }
-                PermissionManager.SetPermission(ConfigPath, "root", 600);
+                if (SecurityContext.IsBootInitializationActive)
+                    return PermissionManager.SetBootSystemPermissionInternal(ConfigPath, 600);
+                return PermissionManager.SetPermission(ConfigPath, "root", 600);
             }
             catch (Exception ex)
             {
                 SecurityLogger.LogEvent("ERROR", "Failed to save firewall configuration: " + ex.Message);
+                return false;
             }
         }
 

@@ -7,6 +7,15 @@
     <DefineConstants>$(DefineConstants);ZIG_HOST_TESTS</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../source/Common/Crypto.cs" Link="Crypto.cs" />
+    <Compile Include="../../source/Core/SystemSettings.cs" Link="SystemSettings.cs" />
+    <Compile Include="../../source/Security/AuthenticationGuard.cs" Link="AuthenticationGuard.cs" />
     <Compile Include="../../source/Security/IntegrityGuard.cs" Link="IntegrityGuard.cs" />
+    <Compile Include="../../source/Security/PasswordPolicy.cs" Link="PasswordPolicy.cs" />
+    <Compile Include="../../source/Security/PermissionManager.cs" Link="PermissionManager.cs" />
+    <Compile Include="../../source/Security/SecurityContext.cs" Link="SecurityContext.cs" />
+    <Compile Include="../../source/Security/SessionManager.cs" Link="SessionManager.cs" />
+    <Compile Include="../../source/Security/UserManager.cs" Link="UserManager.cs" />
+    <Compile Include="../../source/Security/UserProfileManager.cs" Link="UserProfileManager.cs" />
   </ItemGroup>
 </Project>

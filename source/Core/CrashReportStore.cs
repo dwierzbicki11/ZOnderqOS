@@ -41,7 +41,6 @@ namespace ZonderqOS.SystemCore
                     File.Delete(TempCrashPath);
 
                 File.WriteAllText(TempCrashPath, report);
-                PermissionManager.SetPermission(TempCrashPath, "root", 600);
 
                 if (File.Exists(BackupCrashPath))
                     File.Delete(BackupCrashPath);
@@ -60,13 +59,11 @@ namespace ZonderqOS.SystemCore
                     throw;
                 }
 
-                PermissionManager.SetPermission(LastCrashPath, "root", 600);
+                PermissionManager.SetKernelTelemetryAclInternal(LastCrashPath, 600);
 
                 if (File.Exists(BackupCrashPath))
                     File.Delete(BackupCrashPath);
 
-                PermissionManager.RemovePermission(TempCrashPath);
-                PermissionManager.RemovePermission(BackupCrashPath);
                 return true;
             }
             catch (Exception ex)
@@ -75,7 +72,6 @@ namespace ZonderqOS.SystemCore
                 {
                     if (File.Exists(TempCrashPath))
                         File.Delete(TempCrashPath);
-                    PermissionManager.RemovePermission(TempCrashPath);
                 }
                 catch { }
 
@@ -131,7 +127,7 @@ namespace ZonderqOS.SystemCore
                 if (File.Exists(LastCrashPath))
                     File.Delete(LastCrashPath);
 
-                PermissionManager.RemovePermission(LastCrashPath);
+                PermissionManager.RemoveKernelTelemetryAclInternal(LastCrashPath);
                 return true;
             }
             catch (Exception ex)

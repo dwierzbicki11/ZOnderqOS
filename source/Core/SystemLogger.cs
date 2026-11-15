@@ -101,7 +101,7 @@ namespace ZonderqOS
 
             try
             {
-                PermissionManager.SetPermission(LogPath, "root", 600);
+                PermissionManager.SetKernelTelemetryAclInternal(LogPath, 600);
             }
             catch { }
 

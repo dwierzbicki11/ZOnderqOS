@@ -19,6 +19,103 @@ namespace ZonderqOS
 
         private static bool loaded;
 
+        private static string ToDiskPath(string logicalPath)
+        {
+#if ZIG_HOST_TESTS
+            string root = Environment.GetEnvironmentVariable("ZIG_TEST_ROOT");
+            if (!string.IsNullOrEmpty(root) &&
+                !string.IsNullOrEmpty(logicalPath) &&
+                logicalPath[0] == '/' &&
+                !logicalPath.StartsWith(root, StringComparison.Ordinal))
+            {
+                return Path.Combine(root, logicalPath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+            }
+#endif
+            return logicalPath;
+        }
+
+#if ZIG_HOST_TESTS
+        internal static void ResetForTests()
+        {
+            loaded = false;
+            RestoreDefaultsInternal();
+        }
+#endif
+
+        private static bool IsAuthenticatedRoot() =>
+            SecurityContext.IsAuthenticated &&
+            SecurityContext.CurrentUid == 0 &&
+            string.Equals(SecurityContext.CurrentUser, "root", StringComparison.Ordinal);
+
+        private static void TryRecoverInterruptedSettingsSwap(string settingsDisk, string settingsTempDisk, string settingsBakDisk)
+        {
+            if (File.Exists(settingsTempDisk))
+                File.Delete(settingsTempDisk);
+
+            bool activeValid = File.Exists(settingsDisk) && new FileInfo(settingsDisk).Length > 0;
+            bool bakValid = File.Exists(settingsBakDisk) && new FileInfo(settingsBakDisk).Length > 0;
+
+            if (!activeValid && bakValid)
+            {
+                File.Copy(settingsBakDisk, settingsDisk, true);
+                File.Delete(settingsBakDisk);
+                return;
+            }
+
+            if (activeValid && bakValid)
+            {
+                string expectedHash;
+                if (ZonderqOS.Security.IntegrityGuard.TryReadCommittedHashForRecovery(SettingsPath, out expectedHash))
+                {
+                    string activeHash = Crypto.ComputeSha256(File.ReadAllBytes(settingsDisk));
+                    string bakHash = Crypto.ComputeSha256(File.ReadAllBytes(settingsBakDisk));
+                    if (!Crypto.FixedTimeEquals(activeHash, expectedHash) &&
+                        Crypto.FixedTimeEquals(bakHash, expectedHash))
+                    {
+                        File.Copy(settingsBakDisk, settingsDisk, true);
+                        SecurityLogger.LogEvent("WARN",
+                            "Rolled back interrupted /etc/zonderq/settings.conf swap to committed integrity baseline.");
+                    }
+                }
+
+                File.Delete(settingsBakDisk);
+            }
+        }
+
+        private static bool EnsureRootSettingsAcl()
+        {
+            var current = PermissionManager.GetPermission(SettingsPath);
+            if (string.Equals(current.Owner, "root", StringComparison.Ordinal) && current.Perms == 644)
+                return true;
+
+            return PermissionManager.SetPermission(SettingsPath, "root", 644);
+        }
+
+        private static void TryRollbackSettingsWrite(bool hadExisting, string settingsDisk, string settingsBakDisk, (string Owner, int Perms)? priorAcl)
+        {
+            try
+            {
+                if (hadExisting && File.Exists(settingsBakDisk))
+                {
+                    if (File.Exists(settingsDisk))
+                        File.Delete(settingsDisk);
+                    File.Move(settingsBakDisk, settingsDisk);
+                    if (priorAcl.HasValue &&
+                        (priorAcl.Value.Owner != "root" || priorAcl.Value.Perms != 644))
+                    {
+                        PermissionManager.SetPermission(SettingsPath, priorAcl.Value.Owner, priorAcl.Value.Perms);
+                    }
+                }
+                else if (!hadExisting && File.Exists(settingsDisk))
+                {
+                    File.Delete(settingsDisk);
+                    if (!priorAcl.HasValue)
+                        PermissionManager.RemovePermission(SettingsPath);
+                }
+            }
+            catch { }
+        }
+
         // 0 = oszczedny, 1 = zrownowazony, 2 = responsywny.
         public static int PerformanceProfile { get; private set; } = 1;
         public static bool ShowClockSeconds { get; private set; }
@@ -154,13 +251,18 @@ namespace ZonderqOS
 
             try
             {
-                if (!File.Exists(SettingsPath))
+                string settingsDisk = ToDiskPath(SettingsPath);
+                string settingsTempDisk = ToDiskPath(SettingsTempPath);
+                string settingsBakDisk = ToDiskPath(SettingsBackupPath);
+                TryRecoverInterruptedSettingsSwap(settingsDisk, settingsTempDisk, settingsBakDisk);
+
+                if (!File.Exists(settingsDisk))
                 {
                     loaded = true;
                     return;
                 }
 
-                FileInfo info = new FileInfo(SettingsPath);
+                FileInfo info = new FileInfo(settingsDisk);
                 if (info.Length > MaxSettingsBytes)
                 {
                     WriteMessage.WriteError($"Settings file exceeds {MaxSettingsBytes / 1024} KB limit. Defaults loaded.", "CFG");
@@ -168,7 +270,7 @@ namespace ZonderqOS
                     return;
                 }
 
-                using (var reader = new StreamReader(SettingsPath))
+                using (var reader = new StreamReader(settingsDisk))
                 {
                     string line;
                     int lineCount = 0;
@@ -201,10 +303,24 @@ namespace ZonderqOS
 
         public static bool Save()
         {
+            if (!IsAuthenticatedRoot())
+            {
+                SecurityLogger.LogEvent("WARN",
+                    "Blocked unauthorized SystemSettings.Save() by '" +
+                    (SecurityContext.CurrentUser ?? "unknown") + "'.");
+                return false;
+            }
+
+            string settingsDirDisk = ToDiskPath(SettingsDirectory);
+            string settingsDisk = ToDiskPath(SettingsPath);
+            string settingsTempDisk = ToDiskPath(SettingsTempPath);
+            string settingsBakDisk = ToDiskPath(SettingsBackupPath);
+            (string Owner, int Perms)? priorAcl = File.Exists(settingsDisk) ? PermissionManager.GetPermission(SettingsPath) : null;
+
             try
             {
-                if (!Directory.Exists(SettingsDirectory))
-                    Directory.CreateDirectory(SettingsDirectory);
+                if (!Directory.Exists(settingsDirDisk))
+                    Directory.CreateDirectory(settingsDirDisk);
 
                 string content =
                     "# ZOnderqOS Gen3 system settings\n" +
@@ -228,38 +344,41 @@ namespace ZonderqOS
 
                 // Write-then-rename prevents a reset or filesystem error during
                 // serialization from truncating the last known-good configuration.
-                if (File.Exists(SettingsTempPath))
-                    File.Delete(SettingsTempPath);
+                if (File.Exists(settingsTempDisk))
+                    File.Delete(settingsTempDisk);
 
-                File.WriteAllText(SettingsTempPath, content);
-                PermissionManager.SetPermission(SettingsTempPath, "root", 600);
+                File.WriteAllText(settingsTempDisk, content);
 
-                if (File.Exists(SettingsBackupPath))
-                    File.Delete(SettingsBackupPath);
+                if (File.Exists(settingsBakDisk))
+                    File.Delete(settingsBakDisk);
 
-                if (File.Exists(SettingsPath))
-                    File.Move(SettingsPath, SettingsBackupPath);
+                bool hadExisting = File.Exists(settingsDisk);
+                if (hadExisting)
+                    File.Move(settingsDisk, settingsBakDisk);
 
                 try
                 {
-                    File.Move(SettingsTempPath, SettingsPath);
+                    File.Move(settingsTempDisk, settingsDisk);
                 }
                 catch
                 {
                     // Best-effort rollback: retain the previous complete file.
-                    if (!File.Exists(SettingsPath) && File.Exists(SettingsBackupPath))
-                        File.Move(SettingsBackupPath, SettingsPath);
+                    if (!File.Exists(settingsDisk) && File.Exists(settingsBakDisk))
+                        File.Move(settingsBakDisk, settingsDisk);
                     throw;
                 }
 
-                PermissionManager.SetPermission(SettingsPath, "root", 600);
-                ZonderqOS.Security.IntegrityGuard.NotifyManagedFileSaved(SettingsPath);
+                if (!EnsureRootSettingsAcl() ||
+                    !ZonderqOS.Security.IntegrityGuard.NotifyManagedFileSaved(SettingsPath))
+                {
+                    TryRollbackSettingsWrite(hadExisting, settingsDisk, settingsBakDisk, priorAcl);
+                    WriteMessage.WriteError("Settings save aborted: ACL or integrity baseline sync failed.", "CFG");
+                    SystemLogger.Log(SystemLogLevel.Error, "CFG", "Settings save aborted: ACL or integrity baseline sync failed.");
+                    return false;
+                }
 
-                if (File.Exists(SettingsBackupPath))
-                    File.Delete(SettingsBackupPath);
-
-                PermissionManager.RemovePermission(SettingsTempPath);
-                PermissionManager.RemovePermission(SettingsBackupPath);
+                if (File.Exists(settingsBakDisk))
+                    File.Delete(settingsBakDisk);
 
                 SecurityLogger.LogEvent("INFO", "System settings updated atomically.");
                 return true;
@@ -268,9 +387,8 @@ namespace ZonderqOS
             {
                 try
                 {
-                    if (File.Exists(SettingsTempPath))
-                        File.Delete(SettingsTempPath);
-                    PermissionManager.RemovePermission(SettingsTempPath);
+                    if (File.Exists(settingsTempDisk))
+                        File.Delete(settingsTempDisk);
                 }
                 catch { }
 
@@ -314,8 +432,17 @@ namespace ZonderqOS
 
         public static bool SetBootToGui(bool enabled)
         {
+            if (!IsAuthenticatedRoot())
+                return false;
+
+            bool prev = BootToGui;
             BootToGui = enabled;
-            return Save();
+            if (!Save())
+            {
+                BootToGui = prev;
+                return false;
+            }
+            return true;
         }
 
         public static void SetDesktopBackground(int id)
@@ -360,6 +487,9 @@ namespace ZonderqOS
 
         public static void CycleAutoLockTimeout()
         {
+            if (!IsAuthenticatedRoot())
+                return;
+
             switch (AutoLockMinutes)
             {
                 case 0: AutoLockMinutes = 1; break;
@@ -385,12 +515,18 @@ namespace ZonderqOS
 
         public static void SetNetworkModeDhcp(bool useDhcp)
         {
+            if (!IsAuthenticatedRoot())
+                return;
+
             NetworkUseDhcp = useDhcp;
             Save();
         }
 
         public static bool SetStaticNetwork(string ip, string mask, string gateway, string dns)
         {
+            if (!IsAuthenticatedRoot())
+                return false;
+
             if (!IsValidIPv4(ip) || !IsValidSubnetMask(mask) || !IsValidIPv4(gateway) || !IsValidIPv4(dns))
                 return false;
 
@@ -404,6 +540,9 @@ namespace ZonderqOS
 
         public static void RestoreDefaults()
         {
+            if (!IsAuthenticatedRoot())
+                return;
+
             RestoreDefaultsInternal();
             Save();
         }
@@ -422,6 +561,12 @@ namespace ZonderqOS
         public static bool BackupTo(string destinationPath, out string error)
         {
             error = string.Empty;
+            if (!SecurityContext.IsAuthenticated)
+            {
+                error = "Authentication required to export system settings.";
+                return false;
+            }
+
             try
             {
                 if (string.IsNullOrWhiteSpace(destinationPath))
@@ -430,23 +575,25 @@ namespace ZonderqOS
                     return false;
                 }
 
-                if (!File.Exists(SettingsPath))
+                string settingsDisk = ToDiskPath(SettingsPath);
+                if (!File.Exists(settingsDisk))
                 {
                     error = "Persistent settings file does not exist yet.";
                     return false;
                 }
 
-                string parent = Path.GetDirectoryName(destinationPath);
+                string destDisk = ToDiskPath(destinationPath);
+                string parent = Path.GetDirectoryName(destDisk);
                 if (!string.IsNullOrEmpty(parent) && !Directory.Exists(parent))
                     Directory.CreateDirectory(parent);
 
-                File.Copy(SettingsPath, destinationPath, true);
+                File.Copy(settingsDisk, destDisk, true);
                 PermissionManager.SetPermission(destinationPath, SecurityContext.CurrentUser, 600);
 
                 string summary;
                 if (!ValidateSettingsFile(destinationPath, false, out summary))
                 {
-                    try { File.Delete(destinationPath); } catch { }
+                    try { File.Delete(destDisk); } catch { }
                     error = "Backup validation failed: " + summary;
                     return false;
                 }
@@ -480,38 +627,51 @@ namespace ZonderqOS
                 return false;
             }
 
+            string settingsDirDisk = ToDiskPath(SettingsDirectory);
+            string settingsDisk = ToDiskPath(SettingsPath);
+            string settingsTempDisk = ToDiskPath(SettingsTempPath);
+            string settingsBakDisk = ToDiskPath(SettingsBackupPath);
+            string sourceDisk = ToDiskPath(sourcePath);
+            (string Owner, int Perms)? priorAcl = File.Exists(settingsDisk) ? PermissionManager.GetPermission(SettingsPath) : null;
+
             try
             {
-                if (!Directory.Exists(SettingsDirectory))
-                    Directory.CreateDirectory(SettingsDirectory);
+                if (!Directory.Exists(settingsDirDisk))
+                    Directory.CreateDirectory(settingsDirDisk);
 
-                if (File.Exists(SettingsTempPath))
-                    File.Delete(SettingsTempPath);
+                if (File.Exists(settingsTempDisk))
+                    File.Delete(settingsTempDisk);
 
-                File.Copy(sourcePath, SettingsTempPath, true);
-                PermissionManager.SetPermission(SettingsTempPath, "root", 600);
+                File.Copy(sourceDisk, settingsTempDisk, true);
 
-                if (File.Exists(SettingsBackupPath))
-                    File.Delete(SettingsBackupPath);
+                if (File.Exists(settingsBakDisk))
+                    File.Delete(settingsBakDisk);
 
-                if (File.Exists(SettingsPath))
-                    File.Move(SettingsPath, SettingsBackupPath);
+                bool hadExisting = File.Exists(settingsDisk);
+                if (hadExisting)
+                    File.Move(settingsDisk, settingsBakDisk);
 
                 try
                 {
-                    File.Move(SettingsTempPath, SettingsPath);
+                    File.Move(settingsTempDisk, settingsDisk);
                 }
                 catch
                 {
-                    if (!File.Exists(SettingsPath) && File.Exists(SettingsBackupPath))
-                        File.Move(SettingsBackupPath, SettingsPath);
+                    if (!File.Exists(settingsDisk) && File.Exists(settingsBakDisk))
+                        File.Move(settingsBakDisk, settingsDisk);
                     throw;
                 }
 
-                PermissionManager.SetPermission(SettingsPath, "root", 600);
-                ZonderqOS.Security.IntegrityGuard.NotifyManagedFileSaved(SettingsPath);
-                if (File.Exists(SettingsBackupPath))
-                    File.Delete(SettingsBackupPath);
+                if (!EnsureRootSettingsAcl() ||
+                    !ZonderqOS.Security.IntegrityGuard.NotifyManagedFileSaved(SettingsPath))
+                {
+                    TryRollbackSettingsWrite(hadExisting, settingsDisk, settingsBakDisk, priorAcl);
+                    error = "Settings restore aborted: ACL or integrity baseline sync failed.";
+                    return false;
+                }
+
+                if (File.Exists(settingsBakDisk))
+                    File.Delete(settingsBakDisk);
 
                 loaded = false;
                 Load();
@@ -524,8 +684,8 @@ namespace ZonderqOS
             {
                 try
                 {
-                    if (File.Exists(SettingsTempPath))
-                        File.Delete(SettingsTempPath);
+                    if (File.Exists(settingsTempDisk))
+                        File.Delete(settingsTempDisk);
                 }
                 catch { }
 
@@ -546,7 +706,8 @@ namespace ZonderqOS
                     return false;
                 }
 
-                if (!File.Exists(path))
+                string diskPath = ToDiskPath(path);
+                if (!File.Exists(diskPath))
                 {
                     summary = missingIsValid
                         ? "settings file does not exist; defaults are active"
@@ -554,7 +715,7 @@ namespace ZonderqOS
                     return missingIsValid;
                 }
 
-                FileInfo info = new FileInfo(path);
+                FileInfo info = new FileInfo(diskPath);
                 if (info.Length < 0 || info.Length > MaxSettingsBytes)
                 {
                     summary = "settings file size is invalid";
@@ -566,7 +727,7 @@ namespace ZonderqOS
                 int malformed = 0;
                 int schema = 0;
 
-                using (StreamReader reader = new StreamReader(path))
+                using (StreamReader reader = new StreamReader(diskPath))
                 {
                     string line;
                     while ((line = reader.ReadLine()) != null)

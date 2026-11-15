@@ -12,6 +12,16 @@ namespace ZonderqOS
         private const string ConfigDirectory = "/etc/zonderq";
         private const string LastUserPath = ConfigDirectory + "/last-user";
 
+        private static string ToDiskPath(string logicalPath)
+        {
+#if ZIG_HOST_TESTS
+            string root = Environment.GetEnvironmentVariable("ZIG_TEST_ROOT");
+            if (!string.IsNullOrEmpty(root))
+                return Path.Combine(root, logicalPath.TrimStart('/'));
+#endif
+            return logicalPath;
+        }
+
         public static string CurrentHome
         {
             get
@@ -27,16 +37,18 @@ namespace ZonderqOS
             }
         }
 
-        public static void EnsureProfile(string home)
+        public static bool EnsureProfile(string home)
         {
-            string owner = SecurityContext.IsAuthenticated ? SecurityContext.CurrentUser : "root";
-            EnsureProfile(owner, home);
+            if (!SecurityContext.IsAuthenticated)
+                return false;
+
+            return EnsureProfile(SecurityContext.CurrentUser, home);
         }
 
-        public static void EnsureProfile(string owner, string home)
+        public static bool EnsureProfile(string owner, string home)
         {
             if (!IsValidUsername(owner) || !IsSafeHome(home))
-                return;
+                return false;
 
             try
             {
@@ -56,19 +68,26 @@ namespace ZonderqOS
                 EnsureDirectory(zonderqConfig);
 
                 // The VFS itself does not provide Unix ownership metadata, so ZOnderqOS
-                // keeps ownership in PermissionManager. Without these ACLs a freshly-created
-                // user's own home would fall back to root:600 and be unusable to that account.
-                EnsurePermission(home, owner, 700);
-                EnsurePermission(desktop, owner, 700);
-                EnsurePermission(documents, owner, 700);
-                EnsurePermission(downloads, owner, 700);
-                EnsurePermission(pictures, owner, 700);
-                EnsurePermission(config, owner, 700);
-                EnsurePermission(zonderqConfig, owner, 700);
+                // keeps ownership in PermissionManager. Commit all profile ACLs atomically
+                // in one guarded transaction rather than partial per-folder writes.
+                return PermissionManager.EnsureUserProfileAclsInternal(
+                    owner,
+                    home,
+                    new[]
+                    {
+                        home,
+                        desktop,
+                        documents,
+                        downloads,
+                        pictures,
+                        config,
+                        zonderqConfig
+                    });
             }
             catch (Exception ex)
             {
                 SecurityLogger.LogEvent("WARN", "Profile initialization failed for '" + home + "': " + ex.Message);
+                return false;
             }
         }
 
@@ -79,10 +98,11 @@ namespace ZonderqOS
 
             try
             {
-                if (!Directory.Exists(ConfigDirectory))
-                    Directory.CreateDirectory(ConfigDirectory);
+                string configDisk = ToDiskPath(ConfigDirectory);
+                if (!Directory.Exists(configDisk))
+                    Directory.CreateDirectory(configDisk);
 
-                File.WriteAllText(LastUserPath, username);
+                File.WriteAllText(ToDiskPath(LastUserPath), username);
             }
             catch (Exception ex)
             {
@@ -94,10 +114,11 @@ namespace ZonderqOS
         {
             try
             {
-                if (!File.Exists(LastUserPath))
+                string lastUserDisk = ToDiskPath(LastUserPath);
+                if (!File.Exists(lastUserDisk))
                     return null;
 
-                string username = File.ReadAllText(LastUserPath).Trim();
+                string username = File.ReadAllText(lastUserDisk).Trim();
                 if (!IsValidUsername(username))
                     return null;
 
@@ -109,15 +130,6 @@ namespace ZonderqOS
             }
         }
 
-        private static void EnsurePermission(string path, string owner, int permissions)
-        {
-            var current = PermissionManager.GetPermission(path);
-            if (current.Owner == owner && current.Perms == permissions)
-                return;
-
-            PermissionManager.SetPermission(path, owner, permissions);
-        }
-
         private static bool IsSafeHome(string home)
         {
             return !string.IsNullOrEmpty(home) && home.Length > 1 && home[0] == '/';
@@ -125,8 +137,9 @@ namespace ZonderqOS
 
         private static void EnsureDirectory(string path)
         {
-            if (!Directory.Exists(path))
-                Directory.CreateDirectory(path);
+            string diskPath = ToDiskPath(path);
+            if (!Directory.Exists(diskPath))
+                Directory.CreateDirectory(diskPath);
         }
 
         private static string Append(string root, string child)
