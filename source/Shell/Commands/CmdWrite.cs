@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.Commands
 {
@@ -24,18 +25,26 @@ namespace ZonderqOS.Commands
                 }
 
                 string path = PathResolver.GetAbsolutePath(currentPath, args[1]);
+                if (!TryBuildContent(args, out string content))
+                {
+                    WriteMessage.WriteError($"Content exceeds {MaxContentCharacters} characters.", "CMD");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                // Virtual files are owned by their backend, not the physical VFS
+                // or its permission metadata store.
+                if (VirtualFs.IsVirtualPath(path))
+                {
+                    Disk.CreateFile(path, content);
+                    return;
+                }
+
                 bool existed = File.Exists(path);
                 if (existed && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
                 {
                     WriteMessage.WriteError($"Permission denied: Cannot write {path}", "SEC");
                     SecurityLogger.LogEvent("WARN", $"Unauthorized write attempt on {path} by {SecurityContext.CurrentUser}");
-                    CommandIO.LastCommandSuccess = false;
-                    return;
-                }
-
-                if (!TryBuildContent(args, out string content))
-                {
-                    WriteMessage.WriteError($"Content exceeds {MaxContentCharacters} characters.", "CMD");
                     CommandIO.LastCommandSuccess = false;
                     return;
                 }

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+ <ItemGroup>
+  <Compile Include="../../source/Core/TmpFs.cs" Link="TmpFs.cs" />
+  <Compile Include="../../source/Core/RunFs.cs" Link="RunFs.cs" />
+  <Compile Include="../../source/Storage/DiskWrites.cs" Link="DiskWrites.cs" />
+  <Compile Include="../../source/Shell/Commands/CmdWrite.cs" Link="CmdWrite.cs" />
+  <Compile Include="../../source/Shell/Commands/ICommand.cs" Link="ICommand.cs" />
+ </ItemGroup>
+</Project>
