@@ -588,6 +588,7 @@ namespace ZonderqOS.GUI.Apps
                 if (r.Status == IntegrityStatus.Modified) { st = "⚠ ZMODYFIKOWANY"; stCol = RedColor; }
                 else if (r.Status == IntegrityStatus.Missing) { st = "✕ BRAK PLIKU"; stCol = RedColor; }
                 else if (r.Status == IntegrityStatus.PermissionMismatch) { st = "⚠ ZLY CHMOD"; stCol = GoldColor; }
+                else if (r.Status == IntegrityStatus.NotCreated) { st = "DOMYSLNE"; stCol = MutedColor; }
 
                 SmallTextRenderer.Draw(canvas, st, wx + 270, rowY + 4, stCol);
 

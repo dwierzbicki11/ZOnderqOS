@@ -10,7 +10,8 @@ namespace ZonderqOS.Security
         Match = 1,
         Modified = 2,
         Missing = 3,
-        PermissionMismatch = 4
+        PermissionMismatch = 4,
+        NotCreated = 5
     }
 
     public sealed class FileIntegrityRecord
@@ -28,6 +29,7 @@ namespace ZonderqOS.Security
     {
         private const string DatabasePath = "/etc/integrity.db";
         private const string DatabaseBackupPath = "/etc/integrity.db.bak";
+        private const string SettingsConfigPath = "/etc/zonderq/settings.conf";
 
         private static readonly string[] MonitoredPaths = new string[]
         {
@@ -36,7 +38,7 @@ namespace ZonderqOS.Security
             "/etc/acl.map",
             "/etc/hostname",
             "/etc/firewall.cfg",
-            "/etc/zonderq/settings.conf"
+            SettingsConfigPath
         };
 
         private static readonly Dictionary<string, FileIntegrityRecord> records =
@@ -44,6 +46,30 @@ namespace ZonderqOS.Security
 
         private static readonly object _lock = new object();
         private static bool isInitialized = false;
+
+        private static string ToDiskPath(string logicalPath)
+        {
+#if ZIG_HOST_TESTS
+            string root = Environment.GetEnvironmentVariable("ZIG_TEST_ROOT");
+            if (!string.IsNullOrEmpty(root))
+                return Path.Combine(root, logicalPath.TrimStart('/'));
+#endif
+            return logicalPath;
+        }
+
+        private static bool IsOptionalUntilCreated(string path) =>
+            string.Equals(path, SettingsConfigPath, StringComparison.OrdinalIgnoreCase);
+
+#if ZIG_HOST_TESTS
+        public static void ResetForTests()
+        {
+            lock (_lock)
+            {
+                records.Clear();
+                isInitialized = false;
+            }
+        }
+#endif
 
         public static void Initialize()
         {
@@ -54,15 +80,19 @@ namespace ZonderqOS.Security
 
                 try
                 {
-                    if (!Directory.Exists("/etc"))
-                        Directory.CreateDirectory("/etc");
+                    string etcDir = ToDiskPath("/etc");
+                    if (!Directory.Exists(etcDir))
+                        Directory.CreateDirectory(etcDir);
 
-                    if (!File.Exists(DatabasePath) && File.Exists(DatabaseBackupPath))
+                    string dbDisk = ToDiskPath(DatabasePath);
+                    string bakDisk = ToDiskPath(DatabaseBackupPath);
+
+                    if (!File.Exists(dbDisk) && File.Exists(bakDisk))
                     {
-                        File.Copy(DatabaseBackupPath, DatabasePath, true);
+                        File.Copy(bakDisk, dbDisk, true);
                     }
 
-                    if (!File.Exists(DatabasePath))
+                    if (!File.Exists(dbDisk))
                     {
                         CreateDefaultBaseline();
                     }
@@ -87,15 +117,16 @@ namespace ZonderqOS.Security
             for (int i = 0; i < MonitoredPaths.Length; i++)
             {
                 string path = MonitoredPaths[i];
+                string diskPath = ToDiskPath(path);
                 int expectedPerms = (path == "/etc/shadow" || path == "/etc/acl.map" || path == "/etc/firewall.cfg") ? 600 : 644;
                 string hash = string.Empty;
                 long size = 0;
 
-                if (File.Exists(path))
+                if (File.Exists(diskPath))
                 {
                     try
                     {
-                        byte[] data = File.ReadAllBytes(path);
+                        byte[] data = File.ReadAllBytes(diskPath);
                         hash = Crypto.ComputeSha256(data);
                         size = data.Length;
                     }
@@ -110,7 +141,9 @@ namespace ZonderqOS.Security
                     ExpectedPerms = expectedPerms,
                     CurrentPerms = expectedPerms,
                     FileSize = size,
-                    Status = string.IsNullOrEmpty(hash) ? IntegrityStatus.Missing : IntegrityStatus.Match
+                    Status = string.IsNullOrEmpty(hash)
+                        ? (IsOptionalUntilCreated(path) ? IntegrityStatus.NotCreated : IntegrityStatus.Missing)
+                        : IntegrityStatus.Match
                 };
             }
 
@@ -121,10 +154,11 @@ namespace ZonderqOS.Security
         private static void LoadBaseline()
         {
             records.Clear();
-            if (!File.Exists(DatabasePath))
+            string dbDisk = ToDiskPath(DatabasePath);
+            if (!File.Exists(dbDisk))
                 return;
 
-            string[] lines = File.ReadAllLines(DatabasePath);
+            string[] lines = File.ReadAllLines(dbDisk);
             for (int i = 0; i < lines.Length; i++)
             {
                 string line = lines[i];
@@ -171,7 +205,9 @@ namespace ZonderqOS.Security
         {
             try
             {
-                using (var sw = new StreamWriter(DatabasePath, false))
+                string dbDisk = ToDiskPath(DatabasePath);
+                string bakDisk = ToDiskPath(DatabaseBackupPath);
+                using (var sw = new StreamWriter(dbDisk, false))
                 {
                     sw.WriteLine("# ZOnderqOS File Integrity Baseline Database");
                     sw.WriteLine("# Format: Path|ExpectedSha256|ExpectedChmod");
@@ -180,7 +216,7 @@ namespace ZonderqOS.Security
                         sw.WriteLine(kvp.Key + "|" + kvp.Value.ExpectedHash + "|" + kvp.Value.ExpectedPerms);
                     }
                 }
-                File.Copy(DatabasePath, DatabaseBackupPath, true);
+                File.Copy(dbDisk, bakDisk, true);
             }
             catch (Exception ex)
             {
@@ -198,19 +234,27 @@ namespace ZonderqOS.Security
                 {
                     FileIntegrityRecord rec = kvp.Value;
                     string path = rec.Path;
+                    string diskPath = ToDiskPath(path);
 
-                    if (!File.Exists(path))
+                    if (!File.Exists(diskPath))
                     {
-                        rec.Status = IntegrityStatus.Missing;
                         rec.CurrentHash = string.Empty;
                         rec.FileSize = 0;
-                        violations++;
+                        if (IsOptionalUntilCreated(path) && string.IsNullOrEmpty(rec.ExpectedHash))
+                        {
+                            rec.Status = IntegrityStatus.NotCreated;
+                        }
+                        else
+                        {
+                            rec.Status = IntegrityStatus.Missing;
+                            violations++;
+                        }
                         continue;
                     }
 
                     try
                     {
-                        byte[] data = File.ReadAllBytes(path);
+                        byte[] data = File.ReadAllBytes(diskPath);
                         rec.FileSize = data.Length;
                         rec.CurrentHash = Crypto.ComputeSha256(data);
 
@@ -225,6 +269,12 @@ namespace ZonderqOS.Security
                             rec.Status = IntegrityStatus.PermissionMismatch;
                             violations++;
                             SecurityLogger.LogEvent("WARN", "Permission mismatch on " + path + ": expected " + rec.ExpectedPerms + ", found " + actualPerms);
+                        }
+                        else if (IsOptionalUntilCreated(path) && string.IsNullOrEmpty(rec.ExpectedHash))
+                        {
+                            rec.Status = IntegrityStatus.Modified;
+                            violations++;
+                            SecurityLogger.LogEvent("CRITICAL", "Host integrity alert: " + path + " appeared outside managed settings write.");
                         }
                         else if (!string.IsNullOrEmpty(rec.ExpectedHash) && !Crypto.FixedTimeEquals(rec.ExpectedHash, rec.CurrentHash))
                         {
@@ -251,6 +301,43 @@ namespace ZonderqOS.Security
             }
         }
 
+        public static void NotifyManagedFileSaved(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return;
+
+            lock (_lock)
+            {
+                if (!isInitialized)
+                    return;
+
+                if (!records.TryGetValue(path, out FileIntegrityRecord rec))
+                    return;
+
+                string diskPath = ToDiskPath(path);
+                if (!File.Exists(diskPath))
+                    return;
+
+                try
+                {
+                    byte[] data = File.ReadAllBytes(diskPath);
+                    rec.ExpectedHash = Crypto.ComputeSha256(data);
+                    rec.CurrentHash = rec.ExpectedHash;
+                    rec.FileSize = data.Length;
+                    var acl = PermissionManager.GetPermission(path);
+                    int perms = acl.Perms;
+                    if (perms != 0) rec.ExpectedPerms = perms;
+                    rec.CurrentPerms = rec.ExpectedPerms;
+                    rec.Status = IntegrityStatus.Match;
+                    SaveBaselineLocked();
+                }
+                catch (Exception ex)
+                {
+                    SecurityLogger.LogEvent("WARN", "Failed to update integrity entry for " + path + ": " + ex.Message);
+                }
+            }
+        }
+
         public static void UpdateBaseline()
         {
             lock (_lock)
@@ -259,12 +346,13 @@ namespace ZonderqOS.Security
                 {
                     FileIntegrityRecord rec = kvp.Value;
                     string path = rec.Path;
+                    string diskPath = ToDiskPath(path);
 
-                    if (File.Exists(path))
+                    if (File.Exists(diskPath))
                     {
                         try
                         {
-                            byte[] data = File.ReadAllBytes(path);
+                            byte[] data = File.ReadAllBytes(diskPath);
                             rec.ExpectedHash = Crypto.ComputeSha256(data);
                             rec.CurrentHash = rec.ExpectedHash;
                             rec.FileSize = data.Length;
@@ -280,7 +368,7 @@ namespace ZonderqOS.Security
                     {
                         rec.ExpectedHash = string.Empty;
                         rec.CurrentHash = string.Empty;
-                        rec.Status = IntegrityStatus.Missing;
+                        rec.Status = IsOptionalUntilCreated(path) ? IntegrityStatus.NotCreated : IntegrityStatus.Missing;
                     }
                 }
 

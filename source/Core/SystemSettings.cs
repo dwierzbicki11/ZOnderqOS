@@ -253,6 +253,7 @@ namespace ZonderqOS
                 }
 
                 PermissionManager.SetPermission(SettingsPath, "root", 600);
+                ZonderqOS.Security.IntegrityGuard.NotifyManagedFileSaved(SettingsPath);
 
                 if (File.Exists(SettingsBackupPath))
                     File.Delete(SettingsBackupPath);
@@ -508,6 +509,7 @@ namespace ZonderqOS
                 }
 
                 PermissionManager.SetPermission(SettingsPath, "root", 600);
+                ZonderqOS.Security.IntegrityGuard.NotifyManagedFileSaved(SettingsPath);
                 if (File.Exists(SettingsBackupPath))
                     File.Delete(SettingsBackupPath);
 

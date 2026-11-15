@@ -63,6 +63,7 @@ namespace ZonderqOS.Commands
                 if (r.Status == IntegrityStatus.Modified) { statusStr = "MODIFIED [!]"; violations++; }
                 else if (r.Status == IntegrityStatus.Missing) { statusStr = "MISSING [!]"; violations++; }
                 else if (r.Status == IntegrityStatus.PermissionMismatch) { statusStr = "PERM ERR [!]"; violations++; }
+                else if (r.Status == IntegrityStatus.NotCreated) { statusStr = "DEFAULT"; }
 
                 string hashPrefix = !string.IsNullOrEmpty(r.CurrentHash) && r.CurrentHash.Length >= 12
                     ? r.CurrentHash.Substring(0, 12) + "..."
