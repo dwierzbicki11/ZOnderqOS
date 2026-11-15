@@ -139,14 +139,14 @@ def self_test() -> None:
         assert "PASS mode=none" in verify(base.replace(DECLINE, split), "none")
     # LAPIC ticks may also interrupt BOOT at any internal byte boundary.
     for pos in range(1, len(BOOT)):
-        split = BOOT[:pos] + "[LAPIC] Timer tick 4 RSP=FFFF80007F6E2D00\\n" + BOOT[pos:]
+        split = BOOT[:pos] + "[LAPIC] Timer tick 4 RSP=FFFF80007F6E2D00\n" + BOOT[pos:]
         assert "PASS mode=none" in verify(base.replace(BOOT, split), "none")
         assert "PASS mode=rtl8139" in verify(rtl.replace(BOOT, split), "rtl8139")
         assert "PASS mode=e1000e" in verify(rtl.replace(BOOT, split), "e1000e")
     # Malformed LAPIC diagnostics must remain rejected and visible in evidence.
     try:
         verify(base.replace(DECLINE, DECLINE[:35] +
-                            "[LAPIC] Timer tick 4 RSP=NOTHEX\\n" + DECLINE[35:]), "none")
+                            "[LAPIC] Timer tick 4 RSP=NOTHEX\n" + DECLINE[35:]), "none")
     except ValueError as exc:
         assert "LAPIC" in str(exc) and "preview=" in str(exc)
     else:
