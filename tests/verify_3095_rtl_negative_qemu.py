@@ -76,8 +76,8 @@ def verify(serial: str, mode: str) -> str:
         raise ValueError("guest fault or false physical MMIO proof")
     # An unrelated NIC can still bind after the expected "no driver" line.
     # Reject any explicit binding evidence, not just the MAC diagnostic.
-    if (re.search(r"\b(?:E1000EDriver|RTL810xEReadOnlyProbe)\b[^\n]*\b(?:bound|binding)\b", raw, re.IGNORECASE)
-            or re.search(r"\bE1000EDriver:\s*(?:mac|ready|link)\b", raw, re.IGNORECASE)):
+    if (re.search(r"\b(?:E1000EDriver|RTL810xEReadOnlyProbe)\b[^\n]*\b(?:bound|binding|initialized|started|attached)\b", raw, re.IGNORECASE)
+            or re.search(r"\b(?:E1000EDriver|RTL810xEReadOnlyProbe):\s*(?:mac|ready|link|tx|rx|dma|irq)\b", raw, re.IGNORECASE)):
         raise ValueError("unexpected network driver binding")
     functions = [int(x) for x in PCI_FUNCTIONS.findall(cleaned)]
     expected = 5 if mode == "none" else 6
@@ -117,6 +117,10 @@ def self_test() -> None:
         rtl + "[Drivers] pci:0000:00:02.0 RTL810xEReadOnlyProbe -> binding\n",
         rtl + "[Drivers] pci:0000:00:02.0 E1000EDriver: ready=1 link=up\n",
         rtl + "[Drivers] pci:0000:00:02.0 E1000EDriver: LINK up\n",
+        rtl + "[Drivers] pci:0000:00:02.0 E1000EDriver -> initialized\n",
+        rtl + "[Drivers] pci:0000:00:02.0 E1000EDriver -> started\n",
+        rtl + "[Drivers] pci:0000:00:02.0 RTL810xEReadOnlyProbe: DMA enabled\n",
+        rtl + "[Drivers] pci:0000:00:02.0 E1000EDriver: IRQ active\n",
     ):
         try:
             verify(bad_e1000e, "e1000e")
