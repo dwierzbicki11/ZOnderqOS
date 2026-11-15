@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Text;
 
@@ -12,42 +13,53 @@ namespace ZonderqOS.Commands
 
         public void Execute(string[] args, ref string currentPath)
         {
-            if (args.Length < 2)
+            CommandIO.LastCommandSuccess = false;
+            try
             {
-                WriteMessage.WriteError("Usage: write <file> [content]", "CMD");
-                CommandIO.LastCommandSuccess = false;
-                return;
-            }
+                if (args.Length < 2)
+                {
+                    WriteMessage.WriteError("Usage: write <file> [content]", "CMD");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
 
-            string path = PathResolver.GetAbsolutePath(currentPath, args[1]);
-            bool existed = File.Exists(path);
-            if (existed && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
+                string path = PathResolver.GetAbsolutePath(currentPath, args[1]);
+                bool existed = File.Exists(path);
+                if (existed && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
+                {
+                    WriteMessage.WriteError($"Permission denied: Cannot write {path}", "SEC");
+                    SecurityLogger.LogEvent("WARN", $"Unauthorized write attempt on {path} by {SecurityContext.CurrentUser}");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                if (!TryBuildContent(args, out string content))
+                {
+                    WriteMessage.WriteError($"Content exceeds {MaxContentCharacters} characters.", "CMD");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                Disk.CreateFile(path, content);
+
+                if (!CommandIO.LastCommandSuccess) return;
+
+                if (!File.Exists(path))
+                {
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                if (!existed)
+                    PermissionManager.SetPermission(path, SecurityContext.CurrentUser, 644);
+
+                CommandIO.LastCommandSuccess = true;
+            }
+            catch (Exception ex)
             {
-                WriteMessage.WriteError($"Permission denied: Cannot write {path}", "SEC");
-                SecurityLogger.LogEvent("WARN", $"Unauthorized write attempt on {path} by {SecurityContext.CurrentUser}");
                 CommandIO.LastCommandSuccess = false;
-                return;
+                WriteMessage.WriteError($"Write failed: {ex.Message}", "FS");
             }
-
-            if (!TryBuildContent(args, out string content))
-            {
-                WriteMessage.WriteError($"Content exceeds {MaxContentCharacters} characters.", "CMD");
-                CommandIO.LastCommandSuccess = false;
-                return;
-            }
-
-            Disk.CreateFile(path, content);
-
-            if (!File.Exists(path))
-            {
-                CommandIO.LastCommandSuccess = false;
-                return;
-            }
-
-            if (!existed)
-                PermissionManager.SetPermission(path, SecurityContext.CurrentUser, 644);
-
-            CommandIO.LastCommandSuccess = true;
         }
 
         private static bool TryBuildContent(string[] args, out string content)
