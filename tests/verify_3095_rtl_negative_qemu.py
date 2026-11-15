@@ -136,7 +136,8 @@ def self_test() -> None:
     # Reassemble only when the resulting exact decline marker is intact.
     for pos in range(1, len(DECLINE)):
         split = DECLINE[:pos] + "[LAPIC] Timer tick 4 RSP=FFFF80007F6E2D00\n" + DECLINE[pos:]
-        assert "PASS mode=none" in verify(base.replace(DECLINE, split), "none")\n    # Actual QEMU can splice the scheduler tick into BOOT, not just DECLINE.
+        assert "PASS mode=none" in verify(base.replace(DECLINE, split), "none")
+    # Actual QEMU can splice the scheduler tick into BOOT, not just DECLINE.
     # Every internal byte boundary must reconstruct exactly, including when
     # both markers are independently interrupted.
     for pos in range(1, len(BOOT)):
