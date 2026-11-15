@@ -25,5 +25,15 @@ namespace ZonderqOS
             CurrentUid = uid;
             IsAuthenticated = true;
         }
+
+#if ZIG_HOST_TESTS
+        internal static void ResetToBootStateForTests()
+        {
+            CurrentUser = "root";
+            CurrentHome = "/root";
+            CurrentUid = 0;
+            IsAuthenticated = false;
+        }
+#endif
     }
 }

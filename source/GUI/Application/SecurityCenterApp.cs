@@ -242,9 +242,25 @@ namespace ZonderqOS.GUI.Apps
                     // [ Zaktualizuj Bazę (Re-baseline) ]
                     if (Hit(mouseX, mouseY, wx + 196, btnY, 210, 30))
                     {
-                        IntegrityGuard.UpdateBaseline();
-                        RefreshAllData();
-                        statusMessage = "Baza sum kontrolnych SHA-256 zaktualizowana.";
+                        if (!SecurityContext.IsAuthenticated ||
+                            SecurityContext.CurrentUid != 0 ||
+                            SecurityContext.CurrentUser != "root")
+                        {
+                            statusMessage = "Błąd: Aktualizacja bazy integralności wymaga zalogowanego konta root.";
+                            SecurityLogger.LogEvent("WARN", "Unauthorized GUI attempt to re-baseline system integrity.");
+                            return;
+                        }
+
+                        if (IntegrityGuard.UpdateBaseline())
+                        {
+                            RefreshAllData();
+                            statusMessage = "Baza sum kontrolnych SHA-256 zaktualizowana.";
+                        }
+                        else
+                        {
+                            RefreshAllData();
+                            statusMessage = "Błąd: Nie udało się zaktualizować bazy integralności SHA-256.";
+                        }
                         return;
                     }
                 }

@@ -17,7 +17,9 @@ namespace ZonderqOS.Commands
 
             if (action == "baseline" || action == "update")
             {
-                if (SecurityContext.CurrentUser != "root")
+                if (!SecurityContext.IsAuthenticated ||
+                    SecurityContext.CurrentUid != 0 ||
+                    SecurityContext.CurrentUser != "root")
                 {
                     WriteMessage.WriteError("Access denied. Root privileges required to update integrity baseline.", "SEC");
                     SecurityLogger.LogEvent("WARN", "Unauthorized attempt to re-baseline system integrity.");
@@ -25,7 +27,13 @@ namespace ZonderqOS.Commands
                     return;
                 }
 
-                IntegrityGuard.UpdateBaseline();
+                if (!IntegrityGuard.UpdateBaseline())
+                {
+                    WriteMessage.WriteError("Failed to update system integrity baseline.", "SEC");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
                 CommandIO.WriteLine("System integrity baseline updated successfully.");
                 CommandIO.LastCommandSuccess = true;
                 return;
