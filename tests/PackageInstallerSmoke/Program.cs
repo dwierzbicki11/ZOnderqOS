@@ -85,6 +85,7 @@ namespace ZonderqOS
         public static bool IsAuthenticated = true;
         public static int CurrentUid = 0;
         public static string CurrentUser = "root";
+        internal static bool IsBootInitializationActive => false;
     }
 
     public static class SecurityLogger
@@ -95,6 +96,7 @@ namespace ZonderqOS
     public static class PermissionManager
     {
         public static void SetPermission(string path, string owner, int permissions) { }
+        internal static bool SetBootSystemPermissionInternal(string path, int permissions) => true;
         public static void RemovePermission(string path) { }
         public static void RemovePermissionsUnder(string path) { }
     }

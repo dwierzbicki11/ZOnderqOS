@@ -13,10 +13,18 @@ namespace ZonderqOS
         private static readonly string ShadowPath = @"/etc/shadow";
         private static readonly string ShadowTempPath = @"/etc/shadow.new";
         private static readonly string ShadowBackupPath = @"/etc/shadow.bak";
-        private const string IntegrityDbPath = "/etc/integrity.db";
-        private const string IntegrityDbBackupPath = "/etc/integrity.db.bak";
 
         private static readonly object _accountLock = new object();
+
+        [ThreadStatic] private static int initialRootSetupDepth;
+        [ThreadStatic] private static int passwordChangeDepth;
+        [ThreadStatic] private static int accountCreationDepth;
+        [ThreadStatic] private static int legacyUpgradeDepth;
+
+        internal static bool IsInitialRootSetupInProgressOnThread => initialRootSetupDepth > 0;
+        internal static bool IsPasswordChangeInProgressOnThread => passwordChangeDepth > 0;
+        internal static bool IsAccountCreationInProgressOnThread => accountCreationDepth > 0;
+        internal static bool IsLegacyUpgradeInProgressOnThread => legacyUpgradeDepth > 0;
 
         private static string ToDiskPath(string logicalPath)
         {
@@ -46,28 +54,29 @@ namespace ZonderqOS
                     string shadowBakDisk = ToDiskPath(ShadowBackupPath);
 
                     // Recover complete account files if power was lost during an atomic swap.
-                    RecoverInterruptedSwap(passwdDisk, passwdTempDisk, passwdBakDisk);
-                    RecoverInterruptedSwap(shadowDisk, shadowTempDisk, shadowBakDisk);
+                    RecoverInterruptedSwap(PasswdPath, passwdDisk, passwdTempDisk, passwdBakDisk);
+                    RecoverInterruptedSwap(ShadowPath, shadowDisk, shadowTempDisk, shadowBakDisk);
 
-                    bool integrityInitialized =
-                        File.Exists(ToDiskPath(IntegrityDbPath)) ||
-                        File.Exists(ToDiskPath(IntegrityDbBackupPath));
+                    bool priorPasswdPresent = File.Exists(passwdDisk);
+                    bool priorShadowPresent = File.Exists(shadowDisk);
+                    bool seededSystem = IntegrityGuard.HasSeededProvisioningMarker() ||
+                                        File.Exists(ToDiskPath("/etc/acl.map"));
 
                     // Never overwrite an existing account database just because its companion
                     // file is missing, and never regenerate factory root credentials on an
-                    // already-provisioned system where integrity baselines exist.
-                    if (!File.Exists(passwdDisk))
+                    // already-provisioned system where integrity baselines or system markers exist.
+                    if (!priorPasswdPresent)
                     {
-                        if (!integrityInitialized)
+                        if (!seededSystem && !priorShadowPresent)
                             File.WriteAllText(passwdDisk, "root:x:0:/root\n");
                         else
                             SecurityLogger.LogEvent("CRITICAL",
                                 "Missing /etc/passwd on initialized system; refusing to recreate default account database.");
                     }
 
-                    if (!File.Exists(shadowDisk))
+                    if (!priorShadowPresent)
                     {
-                        if (!integrityInitialized)
+                        if (!seededSystem && !priorPasswdPresent)
                             File.WriteAllText(shadowDisk, "root:" + BuildCredential("root") + "\n");
                         else
                             SecurityLogger.LogEvent("CRITICAL",
@@ -81,21 +90,109 @@ namespace ZonderqOS
             }
         }
 
-        private static void RecoverInterruptedSwap(string activeDisk, string tempDisk, string bakDisk)
+        internal static bool HasExistingInstallationAccountsInternal(out string evidence)
         {
-            if ((!File.Exists(activeDisk) || new FileInfo(activeDisk).Length == 0) &&
-                File.Exists(bakDisk) && new FileInfo(bakDisk).Length > 0)
+            evidence = string.Empty;
+            lock (_accountLock)
             {
-                File.Copy(bakDisk, activeDisk, true);
-                File.Delete(bakDisk);
-            }
+                try
+                {
+                    string passwdDisk = ToDiskPath(PasswdPath);
+                    string shadowDisk = ToDiskPath(ShadowPath);
+                    if (!File.Exists(passwdDisk) || !File.Exists(shadowDisk))
+                    {
+                        evidence = "missing account database";
+                        return true;
+                    }
 
+                    string[] passwdLines = File.ReadAllLines(passwdDisk);
+                    int accountCount = 0;
+                    bool rootPasswdFound = false;
+                    for (int i = 0; i < passwdLines.Length; i++)
+                    {
+                        string line = passwdLines[i];
+                        if (string.IsNullOrWhiteSpace(line))
+                            continue;
+                        accountCount++;
+                        if (string.Equals(line.Trim(), "root:x:0:/root", StringComparison.Ordinal))
+                            rootPasswdFound = true;
+                    }
+
+                    if (accountCount != 1 || !rootPasswdFound)
+                    {
+                        evidence = "non-factory passwd entries";
+                        return true;
+                    }
+
+                    string[] shadowLines = File.ReadAllLines(shadowDisk);
+                    int shadowCount = 0;
+                    string rootCred = null;
+                    for (int i = 0; i < shadowLines.Length; i++)
+                    {
+                        string line = shadowLines[i];
+                        if (string.IsNullOrWhiteSpace(line))
+                            continue;
+                        shadowCount++;
+                        if (line.StartsWith("root:", StringComparison.Ordinal))
+                            rootCred = line.Substring(5).Trim();
+                    }
+
+                    if (shadowCount != 1 || string.IsNullOrEmpty(rootCred))
+                    {
+                        evidence = "non-factory shadow entries";
+                        return true;
+                    }
+
+                    if (!VerifyCredential("root", rootCred, out _))
+                    {
+                        evidence = "configured root password";
+                        return true;
+                    }
+
+                    return false;
+                }
+                catch
+                {
+                    evidence = "unreadable account database";
+                    return true;
+                }
+            }
+        }
+
+        private static void RecoverInterruptedSwap(string logicalPath, string activeDisk, string tempDisk, string bakDisk)
+        {
             // Partial temporary files are never authoritative across boots.
             if (File.Exists(tempDisk))
                 File.Delete(tempDisk);
 
-            if (File.Exists(activeDisk) && new FileInfo(activeDisk).Length > 0 && File.Exists(bakDisk))
+            bool activeValid = File.Exists(activeDisk) && new FileInfo(activeDisk).Length > 0;
+            bool bakValid = File.Exists(bakDisk) && new FileInfo(bakDisk).Length > 0;
+
+            if (!activeValid && bakValid)
+            {
+                File.Copy(bakDisk, activeDisk, true);
                 File.Delete(bakDisk);
+                return;
+            }
+
+            if (activeValid && bakValid)
+            {
+                string expectedHash;
+                if (IntegrityGuard.TryReadCommittedHashForRecovery(logicalPath, out expectedHash))
+                {
+                    string activeHash = Crypto.ComputeSha256(File.ReadAllBytes(activeDisk));
+                    string bakHash = Crypto.ComputeSha256(File.ReadAllBytes(bakDisk));
+                    if (!Crypto.FixedTimeEquals(activeHash, expectedHash) &&
+                        Crypto.FixedTimeEquals(bakHash, expectedHash))
+                    {
+                        File.Copy(bakDisk, activeDisk, true);
+                        SecurityLogger.LogEvent("WARN",
+                            "Rolled back interrupted swap for " + logicalPath + " to committed integrity baseline.");
+                    }
+                }
+
+                File.Delete(bakDisk);
+            }
         }
 
         public static bool RequiresInitialRootPasswordSetup()
@@ -104,7 +201,7 @@ namespace ZonderqOS
             {
                 try
                 {
-                    return UserExists("root") && VerifyCredentialsLocked("root", "root", allowLegacyUpgrade: false);
+                    return UserExistsLocked("root") && VerifyCredentialsLocked("root", "root", allowLegacyUpgrade: false);
                 }
                 catch
                 {
@@ -120,7 +217,7 @@ namespace ZonderqOS
         public static bool CompleteInitialRootPasswordSetup(string newPassword)
         {
             string reason;
-            if (!PasswordPolicy.Validate(newPassword, out reason))
+            if (SecurityContext.IsAuthenticated || !PasswordPolicy.Validate(newPassword, out reason))
                 return false;
 
             lock (_accountLock)
@@ -131,11 +228,19 @@ namespace ZonderqOS
                     return false;
                 }
 
-                if (!RequiresInitialRootPasswordSetup())
+                if (!UserExistsLocked("root") || !VerifyCredentialsLocked("root", "root", allowLegacyUpgrade: false))
                     return false;
 
-                if (!RewritePasswordEntryLocked("root", newPassword, ManagedOperationKind.InitialRootPasswordSetup))
-                    return false;
+                initialRootSetupDepth++;
+                try
+                {
+                    if (!RewritePasswordEntryLocked("root", newPassword, ManagedOperationKind.InitialRootPasswordSetup))
+                        return false;
+                }
+                finally
+                {
+                    initialRootSetupDepth--;
+                }
 
                 AuthenticationGuard.Reset("root");
                 SecurityLogger.LogEvent("INFO", "Initial root credential was replaced during secure setup.");
@@ -173,28 +278,33 @@ namespace ZonderqOS
 
             lock (_accountLock)
             {
-                try
-                {
-                    string passwdDisk = ToDiskPath(PasswdPath);
-                    if (!File.Exists(passwdDisk))
-                        return false;
-
-                    string[] lines = File.ReadAllLines(passwdDisk);
-                    for (int i = 0; i < lines.Length; i++)
-                    {
-                        string line = lines[i];
-                        int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
-                        if (separator > 0 && line.Substring(0, separator) == username)
-                            return true;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    SecurityLogger.LogEvent("ERR", "Passwd file read error: " + ex.Message);
-                }
-
-                return false;
+                return UserExistsLocked(username);
             }
+        }
+
+        private static bool UserExistsLocked(string username)
+        {
+            try
+            {
+                string passwdDisk = ToDiskPath(PasswdPath);
+                if (!File.Exists(passwdDisk))
+                    return false;
+
+                string[] lines = File.ReadAllLines(passwdDisk);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string line = lines[i];
+                    int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
+                    if (separator > 0 && line.Substring(0, separator) == username)
+                        return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                SecurityLogger.LogEvent("ERR", "Passwd file read error: " + ex.Message);
+            }
+
+            return false;
         }
 
         public static bool ValidateCredentials(string username, string password)
@@ -367,6 +477,7 @@ namespace ZonderqOS
                 string shadowTempDisk = ToDiskPath(ShadowTempPath);
                 string shadowBakDisk = ToDiskPath(ShadowBackupPath);
 
+                accountCreationDepth++;
                 try
                 {
                     if (!AreAccountDatabasesPresentLocked())
@@ -375,7 +486,7 @@ namespace ZonderqOS
                         return false;
                     }
 
-                    if (UserExists(username))
+                    if (UserExistsLocked(username))
                         return false;
 
                     int uid = FindNextUidLocked();
@@ -388,8 +499,7 @@ namespace ZonderqOS
                     if (string.IsNullOrEmpty(credential))
                         return false;
 
-                    if (IntegrityGuard.IsInitialized &&
-                        !IntegrityGuard.TryBeginManagedFilesUpdate(
+                    if (!IntegrityGuard.TryBeginManagedFilesUpdate(
                             ManagedOperationKind.AccountCreation,
                             new[] { PasswdPath, ShadowPath },
                             out lease))
@@ -465,7 +575,7 @@ namespace ZonderqOS
                         throw;
                     }
 
-                    if (lease != null && !IntegrityGuard.CommitManagedFilesUpdate(lease))
+                    if (!IntegrityGuard.CommitManagedFilesUpdate(lease))
                     {
                         RestoreFromBackup(passwdDisk, passwdBakDisk);
                         RestoreFromBackup(shadowDisk, shadowBakDisk);
@@ -507,6 +617,28 @@ namespace ZonderqOS
                     SecurityLogger.LogEvent("ERR", "CreateUser failed for '" + username + "': " + ex.Message);
                     return false;
                 }
+                finally
+                {
+                    accountCreationDepth--;
+                }
+            }
+        }
+
+        private static void WriteSwappedContent(string activeDisk, string tempDisk, string bakDisk, string content)
+        {
+            if (File.Exists(tempDisk)) File.Delete(tempDisk);
+            File.WriteAllText(tempDisk, content);
+            if (File.Exists(bakDisk)) File.Delete(bakDisk);
+            if (File.Exists(activeDisk)) File.Move(activeDisk, bakDisk);
+            try
+            {
+                File.Move(tempDisk, activeDisk);
+            }
+            catch
+            {
+                if (!File.Exists(activeDisk) && File.Exists(bakDisk))
+                    File.Move(bakDisk, activeDisk);
+                throw;
             }
         }
 
@@ -517,23 +649,27 @@ namespace ZonderqOS
             bool homeExisted)
         {
             string passwdDisk = ToDiskPath(PasswdPath);
-            string shadowDisk = ToDiskPath(ShadowPath);
+            string passwdTempDisk = ToDiskPath(PasswdTempPath);
             string passwdBakDisk = ToDiskPath(PasswdBackupPath);
+            string shadowDisk = ToDiskPath(ShadowPath);
+            string shadowTempDisk = ToDiskPath(ShadowTempPath);
             string shadowBakDisk = ToDiskPath(ShadowBackupPath);
             ManagedFileUpdateLease rollbackLease = null;
 
             try
             {
-                if (!IntegrityGuard.IsInitialized ||
-                    IntegrityGuard.TryBeginManagedFilesUpdate(
+                if (IntegrityGuard.TryBeginManagedFilesUpdate(
                         ManagedOperationKind.AccountCreation,
                         new[] { PasswdPath, ShadowPath },
                         out rollbackLease))
                 {
-                    File.WriteAllText(passwdDisk, oldPasswd);
-                    File.WriteAllText(shadowDisk, oldShadow);
-                    if (rollbackLease != null)
-                        IntegrityGuard.CommitManagedFilesUpdate(rollbackLease);
+                    WriteSwappedContent(passwdDisk, passwdTempDisk, passwdBakDisk, oldPasswd);
+                    WriteSwappedContent(shadowDisk, shadowTempDisk, shadowBakDisk, oldShadow);
+                    if (!IntegrityGuard.CommitManagedFilesUpdate(rollbackLease))
+                    {
+                        RestoreFromBackup(passwdDisk, passwdBakDisk);
+                        RestoreFromBackup(shadowDisk, shadowBakDisk);
+                    }
                 }
             }
             catch
@@ -544,6 +680,8 @@ namespace ZonderqOS
 
             try
             {
+                if (File.Exists(passwdTempDisk)) File.Delete(passwdTempDisk);
+                if (File.Exists(shadowTempDisk)) File.Delete(shadowTempDisk);
                 if (File.Exists(passwdBakDisk)) File.Delete(passwdBakDisk);
                 if (File.Exists(shadowBakDisk)) File.Delete(shadowBakDisk);
                 if (!homeExisted && Directory.Exists(homeDisk))
@@ -587,7 +725,7 @@ namespace ZonderqOS
                     return false;
                 }
 
-                if (!UserExists(username))
+                if (!UserExistsLocked(username))
                     return false;
 
                 if (!VerifyCredentialsLocked(actor, authorizationPassword, allowLegacyUpgrade: true))
@@ -596,8 +734,16 @@ namespace ZonderqOS
                     return false;
                 }
 
-                if (!RewritePasswordEntryLocked(username, newPassword, ManagedOperationKind.PasswordChange))
-                    return false;
+                passwordChangeDepth++;
+                try
+                {
+                    if (!RewritePasswordEntryLocked(username, newPassword, ManagedOperationKind.PasswordChange))
+                        return false;
+                }
+                finally
+                {
+                    passwordChangeDepth--;
+                }
 
                 AuthenticationGuard.Reset(username);
                 SecurityLogger.LogEvent("INFO", "Password changed for '" + username + "' by '" + actor + "'.");
@@ -674,15 +820,27 @@ namespace ZonderqOS
                 }
 
                 string credential = BuildCredential(password);
-                if (!string.IsNullOrEmpty(credential) &&
-                    ReplaceShadowCredentialLocked(username, credential, ManagedOperationKind.LegacyCredentialUpgrade))
+                if (!string.IsNullOrEmpty(credential))
                 {
-                    SecurityLogger.LogEvent("INFO", "Credential hash upgraded for local user '" + username + "'.");
+                    bool upgraded;
+                    legacyUpgradeDepth++;
+                    try
+                    {
+                        upgraded = ReplaceShadowCredentialLocked(username, credential, ManagedOperationKind.LegacyCredentialUpgrade);
+                    }
+                    finally
+                    {
+                        legacyUpgradeDepth--;
+                    }
+
+                    if (upgraded)
+                    {
+                        SecurityLogger.LogEvent("INFO", "Credential hash upgraded for local user '" + username + "'.");
+                        return;
+                    }
                 }
-                else
-                {
-                    SecurityLogger.LogEvent("WARN", "Credential upgrade aborted for '" + username + "': shadow or integrity sync failed.");
-                }
+
+                SecurityLogger.LogEvent("WARN", "Credential upgrade aborted for '" + username + "': shadow or integrity sync failed.");
             }
             catch (Exception ex)
             {
@@ -726,8 +884,7 @@ namespace ZonderqOS
                 if (!AreAccountDatabasesPresentLocked())
                     return false;
 
-                if (IntegrityGuard.IsInitialized &&
-                    !IntegrityGuard.TryBeginManagedFilesUpdate(operation, new[] { ShadowPath }, out lease))
+                if (!IntegrityGuard.TryBeginManagedFilesUpdate(operation, new[] { ShadowPath }, out lease))
                 {
                     SecurityLogger.LogEvent("CRITICAL", "Refused /etc/shadow update: pre-write integrity verification failed.");
                     return false;
@@ -785,7 +942,7 @@ namespace ZonderqOS
                     throw;
                 }
 
-                if (lease != null && !IntegrityGuard.CommitManagedFilesUpdate(lease))
+                if (!IntegrityGuard.CommitManagedFilesUpdate(lease))
                 {
                     RestoreFromBackup(shadowDisk, shadowBakDisk);
                     SecurityLogger.LogEvent("ERR", "Aborted /etc/shadow update: integrity baseline update failed.");

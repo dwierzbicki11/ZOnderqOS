@@ -17,7 +17,9 @@ namespace ZonderqOS.Commands
                 return;
             }
 
-            if (SecurityContext.CurrentUser != "root")
+            if (!SecurityContext.IsAuthenticated ||
+                SecurityContext.CurrentUid != 0 ||
+                !string.Equals(SecurityContext.CurrentUser, "root", StringComparison.Ordinal))
             {
                 WriteMessage.WriteError("Permission denied. Only root can change permissions.", "SEC");
                 SecurityLogger.LogEvent("WARN", $"Unauthorized chmod attempt by {SecurityContext.CurrentUser}.");
@@ -41,7 +43,12 @@ namespace ZonderqOS.Commands
             }
 
             var currentAcl = PermissionManager.GetPermission(path);
-            PermissionManager.SetPermission(path, currentAcl.Owner, perms);
+            if (!PermissionManager.SetPermission(path, currentAcl.Owner, perms))
+            {
+                WriteMessage.WriteError($"Failed to update permissions for {path}.", "SEC");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
 
             WriteMessage.WriteOK($"Permissions for {path} changed to {perms:D3}", "SEC");
             SecurityLogger.LogEvent("INFO", $"Permissions of {path} changed to {perms:D3} by root.");

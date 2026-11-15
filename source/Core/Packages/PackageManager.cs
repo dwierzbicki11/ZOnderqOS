@@ -491,13 +491,19 @@ namespace ZonderqOS.SystemCore.Packages
                 if (!Directory.Exists(RegistryRoot))
                 {
                     Directory.CreateDirectory(RegistryRoot);
-                    PermissionManager.SetPermission(RegistryRoot, "root", 755);
+                    if (SecurityContext.IsBootInitializationActive)
+                        PermissionManager.SetBootSystemPermissionInternal(RegistryRoot, 755);
+                    else
+                        PermissionManager.SetPermission(RegistryRoot, "root", 755);
                 }
 
                 if (!Directory.Exists(StoreRoot))
                 {
                     Directory.CreateDirectory(StoreRoot);
-                    PermissionManager.SetPermission(StoreRoot, "root", 755);
+                    if (SecurityContext.IsBootInitializationActive)
+                        PermissionManager.SetBootSystemPermissionInternal(StoreRoot, 755);
+                    else
+                        PermissionManager.SetPermission(StoreRoot, "root", 755);
                 }
 
                 return true;

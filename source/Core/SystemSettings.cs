@@ -42,7 +42,56 @@ namespace ZonderqOS
         }
 #endif
 
-        private static void TryRollbackSettingsWrite(bool hadExisting, string settingsDisk, string settingsBakDisk)
+        private static bool IsAuthenticatedRoot() =>
+            SecurityContext.IsAuthenticated &&
+            SecurityContext.CurrentUid == 0 &&
+            string.Equals(SecurityContext.CurrentUser, "root", StringComparison.Ordinal);
+
+        private static void TryRecoverInterruptedSettingsSwap(string settingsDisk, string settingsTempDisk, string settingsBakDisk)
+        {
+            if (File.Exists(settingsTempDisk))
+                File.Delete(settingsTempDisk);
+
+            bool activeValid = File.Exists(settingsDisk) && new FileInfo(settingsDisk).Length > 0;
+            bool bakValid = File.Exists(settingsBakDisk) && new FileInfo(settingsBakDisk).Length > 0;
+
+            if (!activeValid && bakValid)
+            {
+                File.Copy(settingsBakDisk, settingsDisk, true);
+                File.Delete(settingsBakDisk);
+                return;
+            }
+
+            if (activeValid && bakValid)
+            {
+                string expectedHash;
+                if (ZonderqOS.Security.IntegrityGuard.TryReadCommittedHashForRecovery(SettingsPath, out expectedHash))
+                {
+                    string activeHash = Crypto.ComputeSha256(File.ReadAllBytes(settingsDisk));
+                    string bakHash = Crypto.ComputeSha256(File.ReadAllBytes(settingsBakDisk));
+                    if (!Crypto.FixedTimeEquals(activeHash, expectedHash) &&
+                        Crypto.FixedTimeEquals(bakHash, expectedHash))
+                    {
+                        File.Copy(settingsBakDisk, settingsDisk, true);
+                        SecurityLogger.LogEvent("WARN",
+                            "Rolled back interrupted /etc/zonderq/settings.conf swap to committed integrity baseline.");
+                    }
+                }
+
+                File.Delete(settingsBakDisk);
+            }
+        }
+
+        private static bool EnsureRootSettingsAcl()
+        {
+            var current = PermissionManager.GetPermission(SettingsPath);
+            if (string.Equals(current.Owner, "root", StringComparison.Ordinal) && current.Perms == 644)
+                return true;
+
+            return PermissionManager.SetPermission(SettingsPath, "root", 644);
+        }
+
+        private static void TryRollbackSettingsWrite(bool hadExisting, string settingsDisk, string settingsBakDisk, (string Owner, int Perms)? priorAcl)
         {
             try
             {
@@ -51,17 +100,20 @@ namespace ZonderqOS
                     if (File.Exists(settingsDisk))
                         File.Delete(settingsDisk);
                     File.Move(settingsBakDisk, settingsDisk);
+                    if (priorAcl.HasValue &&
+                        (priorAcl.Value.Owner != "root" || priorAcl.Value.Perms != 644))
+                    {
+                        PermissionManager.SetPermission(SettingsPath, priorAcl.Value.Owner, priorAcl.Value.Perms);
+                    }
                 }
                 else if (!hadExisting && File.Exists(settingsDisk))
                 {
                     File.Delete(settingsDisk);
-                    PermissionManager.RemovePermission(SettingsPath);
+                    if (!priorAcl.HasValue)
+                        PermissionManager.RemovePermission(SettingsPath);
                 }
             }
             catch { }
-
-            PermissionManager.RemovePermission(SettingsTempPath);
-            PermissionManager.RemovePermission(SettingsBackupPath);
         }
 
         // 0 = oszczedny, 1 = zrownowazony, 2 = responsywny.
@@ -200,6 +252,10 @@ namespace ZonderqOS
             try
             {
                 string settingsDisk = ToDiskPath(SettingsPath);
+                string settingsTempDisk = ToDiskPath(SettingsTempPath);
+                string settingsBakDisk = ToDiskPath(SettingsBackupPath);
+                TryRecoverInterruptedSettingsSwap(settingsDisk, settingsTempDisk, settingsBakDisk);
+
                 if (!File.Exists(settingsDisk))
                 {
                     loaded = true;
@@ -247,10 +303,19 @@ namespace ZonderqOS
 
         public static bool Save()
         {
+            if (!IsAuthenticatedRoot())
+            {
+                SecurityLogger.LogEvent("WARN",
+                    "Blocked unauthorized SystemSettings.Save() by '" +
+                    (SecurityContext.CurrentUser ?? "unknown") + "'.");
+                return false;
+            }
+
             string settingsDirDisk = ToDiskPath(SettingsDirectory);
             string settingsDisk = ToDiskPath(SettingsPath);
             string settingsTempDisk = ToDiskPath(SettingsTempPath);
             string settingsBakDisk = ToDiskPath(SettingsBackupPath);
+            (string Owner, int Perms)? priorAcl = File.Exists(settingsDisk) ? PermissionManager.GetPermission(SettingsPath) : null;
 
             try
             {
@@ -283,8 +348,6 @@ namespace ZonderqOS
                     File.Delete(settingsTempDisk);
 
                 File.WriteAllText(settingsTempDisk, content);
-                if (!PermissionManager.SetPermission(SettingsTempPath, "root", 600))
-                    throw new IOException("Failed to assign temporary settings ACL.");
 
                 if (File.Exists(settingsBakDisk))
                     File.Delete(settingsBakDisk);
@@ -305,10 +368,10 @@ namespace ZonderqOS
                     throw;
                 }
 
-                if (!PermissionManager.SetPermission(SettingsPath, "root", 600) ||
+                if (!EnsureRootSettingsAcl() ||
                     !ZonderqOS.Security.IntegrityGuard.NotifyManagedFileSaved(SettingsPath))
                 {
-                    TryRollbackSettingsWrite(hadExisting, settingsDisk, settingsBakDisk);
+                    TryRollbackSettingsWrite(hadExisting, settingsDisk, settingsBakDisk, priorAcl);
                     WriteMessage.WriteError("Settings save aborted: ACL or integrity baseline sync failed.", "CFG");
                     SystemLogger.Log(SystemLogLevel.Error, "CFG", "Settings save aborted: ACL or integrity baseline sync failed.");
                     return false;
@@ -316,9 +379,6 @@ namespace ZonderqOS
 
                 if (File.Exists(settingsBakDisk))
                     File.Delete(settingsBakDisk);
-
-                PermissionManager.RemovePermission(SettingsTempPath);
-                PermissionManager.RemovePermission(SettingsBackupPath);
 
                 SecurityLogger.LogEvent("INFO", "System settings updated atomically.");
                 return true;
@@ -329,7 +389,6 @@ namespace ZonderqOS
                 {
                     if (File.Exists(settingsTempDisk))
                         File.Delete(settingsTempDisk);
-                    PermissionManager.RemovePermission(SettingsTempPath);
                 }
                 catch { }
 
@@ -373,8 +432,17 @@ namespace ZonderqOS
 
         public static bool SetBootToGui(bool enabled)
         {
+            if (!IsAuthenticatedRoot())
+                return false;
+
+            bool prev = BootToGui;
             BootToGui = enabled;
-            return Save();
+            if (!Save())
+            {
+                BootToGui = prev;
+                return false;
+            }
+            return true;
         }
 
         public static void SetDesktopBackground(int id)
@@ -419,6 +487,9 @@ namespace ZonderqOS
 
         public static void CycleAutoLockTimeout()
         {
+            if (!IsAuthenticatedRoot())
+                return;
+
             switch (AutoLockMinutes)
             {
                 case 0: AutoLockMinutes = 1; break;
@@ -444,12 +515,18 @@ namespace ZonderqOS
 
         public static void SetNetworkModeDhcp(bool useDhcp)
         {
+            if (!IsAuthenticatedRoot())
+                return;
+
             NetworkUseDhcp = useDhcp;
             Save();
         }
 
         public static bool SetStaticNetwork(string ip, string mask, string gateway, string dns)
         {
+            if (!IsAuthenticatedRoot())
+                return false;
+
             if (!IsValidIPv4(ip) || !IsValidSubnetMask(mask) || !IsValidIPv4(gateway) || !IsValidIPv4(dns))
                 return false;
 
@@ -463,6 +540,9 @@ namespace ZonderqOS
 
         public static void RestoreDefaults()
         {
+            if (!IsAuthenticatedRoot())
+                return;
+
             RestoreDefaultsInternal();
             Save();
         }
@@ -481,6 +561,12 @@ namespace ZonderqOS
         public static bool BackupTo(string destinationPath, out string error)
         {
             error = string.Empty;
+            if (!SecurityContext.IsAuthenticated)
+            {
+                error = "Authentication required to export system settings.";
+                return false;
+            }
+
             try
             {
                 if (string.IsNullOrWhiteSpace(destinationPath))
@@ -546,6 +632,7 @@ namespace ZonderqOS
             string settingsTempDisk = ToDiskPath(SettingsTempPath);
             string settingsBakDisk = ToDiskPath(SettingsBackupPath);
             string sourceDisk = ToDiskPath(sourcePath);
+            (string Owner, int Perms)? priorAcl = File.Exists(settingsDisk) ? PermissionManager.GetPermission(SettingsPath) : null;
 
             try
             {
@@ -556,8 +643,6 @@ namespace ZonderqOS
                     File.Delete(settingsTempDisk);
 
                 File.Copy(sourceDisk, settingsTempDisk, true);
-                if (!PermissionManager.SetPermission(SettingsTempPath, "root", 600))
-                    throw new IOException("Failed to assign temporary settings ACL.");
 
                 if (File.Exists(settingsBakDisk))
                     File.Delete(settingsBakDisk);
@@ -577,19 +662,16 @@ namespace ZonderqOS
                     throw;
                 }
 
-                if (!PermissionManager.SetPermission(SettingsPath, "root", 600) ||
+                if (!EnsureRootSettingsAcl() ||
                     !ZonderqOS.Security.IntegrityGuard.NotifyManagedFileSaved(SettingsPath))
                 {
-                    TryRollbackSettingsWrite(hadExisting, settingsDisk, settingsBakDisk);
+                    TryRollbackSettingsWrite(hadExisting, settingsDisk, settingsBakDisk, priorAcl);
                     error = "Settings restore aborted: ACL or integrity baseline sync failed.";
                     return false;
                 }
 
                 if (File.Exists(settingsBakDisk))
                     File.Delete(settingsBakDisk);
-
-                PermissionManager.RemovePermission(SettingsTempPath);
-                PermissionManager.RemovePermission(SettingsBackupPath);
 
                 loaded = false;
                 Load();
@@ -604,7 +686,6 @@ namespace ZonderqOS
                 {
                     if (File.Exists(settingsTempDisk))
                         File.Delete(settingsTempDisk);
-                    PermissionManager.RemovePermission(SettingsTempPath);
                 }
                 catch { }
 

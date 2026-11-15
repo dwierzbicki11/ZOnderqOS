@@ -39,8 +39,10 @@ namespace ZonderqOS
 
         public static bool EnsureProfile(string home)
         {
-            string owner = SecurityContext.IsAuthenticated ? SecurityContext.CurrentUser : "root";
-            return EnsureProfile(owner, home);
+            if (!SecurityContext.IsAuthenticated)
+                return false;
+
+            return EnsureProfile(SecurityContext.CurrentUser, home);
         }
 
         public static bool EnsureProfile(string owner, string home)
@@ -66,15 +68,21 @@ namespace ZonderqOS
                 EnsureDirectory(zonderqConfig);
 
                 // The VFS itself does not provide Unix ownership metadata, so ZOnderqOS
-                // keeps ownership in PermissionManager. Without these ACLs a freshly-created
-                // user's own home would fall back to root:600 and be unusable to that account.
-                return EnsurePermission(home, owner, 700) &&
-                       EnsurePermission(desktop, owner, 700) &&
-                       EnsurePermission(documents, owner, 700) &&
-                       EnsurePermission(downloads, owner, 700) &&
-                       EnsurePermission(pictures, owner, 700) &&
-                       EnsurePermission(config, owner, 700) &&
-                       EnsurePermission(zonderqConfig, owner, 700);
+                // keeps ownership in PermissionManager. Commit all profile ACLs atomically
+                // in one guarded transaction rather than partial per-folder writes.
+                return PermissionManager.EnsureUserProfileAclsInternal(
+                    owner,
+                    home,
+                    new[]
+                    {
+                        home,
+                        desktop,
+                        documents,
+                        downloads,
+                        pictures,
+                        config,
+                        zonderqConfig
+                    });
             }
             catch (Exception ex)
             {
@@ -120,15 +128,6 @@ namespace ZonderqOS
             {
                 return null;
             }
-        }
-
-        private static bool EnsurePermission(string path, string owner, int permissions)
-        {
-            var current = PermissionManager.GetPermission(path);
-            if (current.Owner == owner && current.Perms == permissions)
-                return true;
-
-            return PermissionManager.SetPermission(path, owner, permissions);
         }
 
         private static bool IsSafeHome(string home)

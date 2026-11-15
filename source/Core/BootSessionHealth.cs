@@ -150,7 +150,6 @@ namespace ZonderqOS.SystemCore
                     File.Delete(TempPath);
 
                 File.WriteAllText(TempPath, content);
-                PermissionManager.SetPermission(TempPath, "root", 600);
 
                 if (File.Exists(BackupPath))
                     File.Delete(BackupPath);
@@ -169,13 +168,11 @@ namespace ZonderqOS.SystemCore
                     throw;
                 }
 
-                PermissionManager.SetPermission(StatePath, "root", 600);
+                PermissionManager.SetKernelTelemetryAclInternal(StatePath, 600);
 
                 if (File.Exists(BackupPath))
                     File.Delete(BackupPath);
 
-                PermissionManager.RemovePermission(TempPath);
-                PermissionManager.RemovePermission(BackupPath);
                 return true;
             }
             catch
@@ -184,7 +181,6 @@ namespace ZonderqOS.SystemCore
                 {
                     if (File.Exists(TempPath))
                         File.Delete(TempPath);
-                    PermissionManager.RemovePermission(TempPath);
                 }
                 catch { }
 

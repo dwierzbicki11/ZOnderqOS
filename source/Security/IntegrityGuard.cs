@@ -14,6 +14,13 @@ namespace ZonderqOS.Security
         NotCreated = 5
     }
 
+    public enum IntegrityInitializationState
+    {
+        Uninitialized = 0,
+        Initialized = 1,
+        Failed = 2
+    }
+
     internal enum ManagedOperationKind
     {
         InitialRootPasswordSetup = 1,
@@ -66,6 +73,9 @@ namespace ZonderqOS.Security
         private const string DatabasePath = "/etc/integrity.db";
         private const string DatabaseTempPath = "/etc/integrity.db.new";
         private const string DatabaseBackupPath = "/etc/integrity.db.bak";
+        private const string ProvisionedMarkerPath = "/etc/zonderq/.integrity-sealed";
+        private const string LastUserMarkerPath = "/etc/zonderq/last-user";
+        private const long MaxDatabaseBytes = 256 * 1024;
 
         private static readonly string[] MonitoredPaths = new string[]
         {
@@ -81,7 +91,8 @@ namespace ZonderqOS.Security
             new Dictionary<string, FileIntegrityRecord>(StringComparer.OrdinalIgnoreCase);
 
         private static readonly object _lock = new object();
-        private static bool isInitialized = false;
+        private static IntegrityInitializationState initializationState = IntegrityInitializationState.Uninitialized;
+        private static string initializationError = string.Empty;
 
         internal static bool IsInitialized
         {
@@ -89,7 +100,40 @@ namespace ZonderqOS.Security
             {
                 lock (_lock)
                 {
-                    return isInitialized;
+                    return initializationState == IntegrityInitializationState.Initialized;
+                }
+            }
+        }
+
+        public static IntegrityInitializationState InitializationState
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return initializationState;
+                }
+            }
+        }
+
+        public static bool HasInitializationError
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return initializationState == IntegrityInitializationState.Failed;
+                }
+            }
+        }
+
+        public static string InitializationError
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return initializationError;
                 }
             }
         }
@@ -108,14 +152,68 @@ namespace ZonderqOS.Security
         {
             if (string.IsNullOrEmpty(path))
                 return string.Empty;
-            string normalized = path.Replace('\\', '/').Trim();
-            while (normalized.Length > 1 && normalized.EndsWith("/", StringComparison.Ordinal))
-                normalized = normalized.Substring(0, normalized.Length - 1);
-            return normalized;
+
+            string raw = path.Replace('\\', '/').Trim();
+            if (raw.Length == 0 || raw[0] != '/')
+                return string.Empty;
+
+            string[] segments = raw.Split('/');
+            var canonical = new List<string>(segments.Length);
+            for (int i = 0; i < segments.Length; i++)
+            {
+                string seg = segments[i];
+                if (string.IsNullOrEmpty(seg) || seg == ".")
+                    continue;
+                if (seg == "..")
+                {
+                    if (canonical.Count > 0)
+                        canonical.RemoveAt(canonical.Count - 1);
+                    continue;
+                }
+                canonical.Add(seg);
+            }
+
+            return canonical.Count == 0 ? "/" : "/" + string.Join("/", canonical);
         }
 
         private static bool IsOptionalUntilCreated(string path) =>
             string.Equals(path, SettingsConfigPath, StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsMonitoredPath(string path)
+        {
+            for (int i = 0; i < MonitoredPaths.Length; i++)
+            {
+                if (string.Equals(MonitoredPaths[i], path, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool IsValidSha256Hex(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length != 64)
+                return false;
+
+            for (int i = 0; i < value.Length; i++)
+            {
+                char c = value[i];
+                bool isHex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+                if (!isHex)
+                    return false;
+            }
+            return true;
+        }
+
+        private static bool IsValidPermissionMode(int perms)
+        {
+            if (perms <= 0 || perms > 777)
+                return false;
+
+            int owner = (perms / 100) % 10;
+            int group = (perms / 10) % 10;
+            int others = perms % 10;
+            return owner <= 7 && group <= 7 && others <= 7;
+        }
 
         private static int DefaultExpectedPerms(string path) =>
             (string.Equals(path, ShadowPath, StringComparison.OrdinalIgnoreCase) ||
@@ -157,20 +255,112 @@ namespace ZonderqOS.Security
             lock (_lock)
             {
                 records.Clear();
-                isInitialized = false;
+                initializationState = IntegrityInitializationState.Uninitialized;
+                initializationError = string.Empty;
                 SimulatedWriteFailurePath = null;
                 SimulateDatabaseWriteFailure = false;
             }
         }
 #endif
 
+        internal static bool HasSeededProvisioningMarker()
+        {
+            return File.Exists(ToDiskPath(DatabasePath)) ||
+                   File.Exists(ToDiskPath(DatabaseBackupPath)) ||
+                   File.Exists(ToDiskPath(DatabaseTempPath)) ||
+                   File.Exists(ToDiskPath(ProvisionedMarkerPath)) ||
+                   File.Exists(ToDiskPath(SettingsConfigPath)) ||
+                   File.Exists(ToDiskPath(LastUserMarkerPath));
+        }
+
+        private static bool DetectPreExistingSystemOutsideLock(out string evidence)
+        {
+            evidence = string.Empty;
+
+            if (File.Exists(ToDiskPath(ProvisionedMarkerPath)))
+            {
+                evidence = "provisioned integrity marker exists";
+                return true;
+            }
+
+            if (File.Exists(ToDiskPath(SettingsConfigPath)))
+            {
+                evidence = "existing settings.conf";
+                return true;
+            }
+
+            if (File.Exists(ToDiskPath(LastUserMarkerPath)))
+            {
+                evidence = "existing last-user marker";
+                return true;
+            }
+
+            if (UserManager.HasExistingInstallationAccountsInternal(out string accountEvidence))
+            {
+                evidence = accountEvidence;
+                return true;
+            }
+
+            try
+            {
+                string homeDisk = ToDiskPath("/home");
+                if (Directory.Exists(homeDisk))
+                {
+                    string[] dirs = Directory.GetDirectories(homeDisk);
+                    if (dirs != null && dirs.Length > 0)
+                    {
+                        evidence = "existing user home directories";
+                        return true;
+                    }
+                }
+            }
+            catch { }
+
+            return false;
+        }
+
+        internal static bool TryReadCommittedHashForRecovery(string logicalPath, out string expectedHash)
+        {
+            expectedHash = string.Empty;
+            string normalized = NormalizePath(logicalPath);
+            if (string.IsNullOrEmpty(normalized))
+                return false;
+
+            Dictionary<string, FileIntegrityRecord> loaded;
+            string err;
+            string dbDisk = ToDiskPath(DatabasePath);
+            string bakDisk = ToDiskPath(DatabaseBackupPath);
+
+            if (File.Exists(dbDisk) && TryLoadAndValidateBaseline(dbDisk, out loaded, out err) &&
+                loaded.TryGetValue(normalized, out FileIntegrityRecord dbRec) &&
+                !string.IsNullOrEmpty(dbRec.ExpectedHash))
+            {
+                expectedHash = dbRec.ExpectedHash;
+                return true;
+            }
+
+            if (File.Exists(bakDisk) && TryLoadAndValidateBaseline(bakDisk, out loaded, out err) &&
+                loaded.TryGetValue(normalized, out FileIntegrityRecord bakRec) &&
+                !string.IsNullOrEmpty(bakRec.ExpectedHash))
+            {
+                expectedHash = bakRec.ExpectedHash;
+                return true;
+            }
+
+            return false;
+        }
+
         public static void Initialize()
         {
             Dictionary<string, int> initialPerms = SnapshotMonitoredPerms();
+            bool preExistingSystem = DetectPreExistingSystemOutsideLock(out string preExistingEvidence);
+
             lock (_lock)
             {
-                if (isInitialized)
+                if (initializationState == IntegrityInitializationState.Initialized)
                     return;
+
+                initializationError = string.Empty;
 
                 try
                 {
@@ -182,38 +372,137 @@ namespace ZonderqOS.Security
                     string dbTempDisk = ToDiskPath(DatabaseTempPath);
                     string bakDisk = ToDiskPath(DatabaseBackupPath);
 
+                    bool hadOrphanTempDb = false;
                     // Incomplete temporary baseline writes are never authoritative across boots.
                     if (File.Exists(dbTempDisk))
-                        File.Delete(dbTempDisk);
-
-                    if ((!File.Exists(dbDisk) || new FileInfo(dbDisk).Length == 0) &&
-                        File.Exists(bakDisk) && new FileInfo(bakDisk).Length > 0)
                     {
-                        File.Copy(bakDisk, dbDisk, true);
+                        hadOrphanTempDb = true;
+                        File.Delete(dbTempDisk);
+                        SecurityLogger.LogEvent("WARN", "Discarded orphaned temporary integrity database (/etc/integrity.db.new).");
                     }
 
-                    if (!File.Exists(dbDisk))
+                    bool dbExists = File.Exists(dbDisk);
+                    bool bakExists = File.Exists(bakDisk);
+
+                    if (dbExists || bakExists)
                     {
-                        CreateDefaultBaselineLocked();
+                        Dictionary<string, FileIntegrityRecord> loaded;
+                        string dbErr = "primary database missing";
+                        if (dbExists && TryLoadAndValidateBaseline(dbDisk, out loaded, out dbErr))
+                        {
+                            ApplyLoadedRecordsLocked(loaded);
+                            if (!bakExists)
+                            {
+                                try { File.Copy(dbDisk, bakDisk, true); } catch { }
+                            }
+                        }
+                        else
+                        {
+                            Dictionary<string, FileIntegrityRecord> bakLoaded;
+                            string bakErr = "backup database missing";
+                            if (bakExists && TryLoadAndValidateBaseline(bakDisk, out bakLoaded, out bakErr))
+                            {
+                                File.Copy(bakDisk, dbDisk, true);
+                                ApplyLoadedRecordsLocked(bakLoaded);
+                                SecurityLogger.LogEvent("WARN",
+                                    "Recovered integrity baseline from verified /etc/integrity.db.bak (primary error: " + dbErr + ").");
+                            }
+                            else
+                            {
+                                MarkFailedLocked("Integrity baseline unusable (" + dbErr + "; backup: " + bakErr + ").");
+                                return;
+                            }
+                        }
                     }
                     else
                     {
-                        LoadBaselineLocked();
+                        if (hadOrphanTempDb)
+                        {
+                            MarkFailedLocked("Missing integrity baseline while orphaned /etc/integrity.db.new existed; refusing unverified baseline creation.");
+                            return;
+                        }
+
+                        if (preExistingSystem)
+                        {
+                            MarkFailedLocked("Integrity baseline missing on existing system (" + preExistingEvidence + "); refusing to auto-generate baseline.");
+                            return;
+                        }
+
+                        if (!CreateDefaultBaselineLocked())
+                        {
+                            MarkFailedLocked("Failed to persist initial integrity baseline (/etc/integrity.db).");
+                            return;
+                        }
                     }
 
-                    isInitialized = true;
+                    initializationState = IntegrityInitializationState.Initialized;
+                    initializationError = string.Empty;
+                    TryWriteProvisionedMarker();
                     ScanAllLocked(initialPerms);
                 }
                 catch (Exception ex)
                 {
-                    SecurityLogger.LogEvent("WARN", "IntegrityGuard init warning: " + ex.Message);
+                    MarkFailedLocked("IntegrityGuard initialization failed: " + ex.Message);
                 }
             }
         }
 
-        private static void CreateDefaultBaselineLocked()
+        private static void MarkFailedLocked(string reason)
+        {
+            initializationState = IntegrityInitializationState.Failed;
+            initializationError = reason ?? "IntegrityGuard initialization failed.";
+            PopulateUnknownRecordsLocked();
+            SecurityLogger.LogEvent("CRITICAL", initializationError);
+        }
+
+        private static void PopulateUnknownRecordsLocked()
         {
             records.Clear();
+            for (int i = 0; i < MonitoredPaths.Length; i++)
+            {
+                string path = MonitoredPaths[i];
+                records[path] = new FileIntegrityRecord
+                {
+                    Path = path,
+                    ExpectedHash = string.Empty,
+                    CurrentHash = string.Empty,
+                    ExpectedPerms = DefaultExpectedPerms(path),
+                    CurrentPerms = 0,
+                    Status = IntegrityStatus.Unknown,
+                    FileSize = 0
+                };
+            }
+        }
+
+        private static void ApplyLoadedRecordsLocked(Dictionary<string, FileIntegrityRecord> loaded)
+        {
+            records.Clear();
+            foreach (var kvp in loaded)
+                records[kvp.Key] = kvp.Value;
+        }
+
+        private static void TryWriteProvisionedMarker()
+        {
+            try
+            {
+                string markerDisk = ToDiskPath(ProvisionedMarkerPath);
+                if (File.Exists(markerDisk))
+                    return;
+
+                string dir = Path.GetDirectoryName(markerDisk);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                File.WriteAllText(markerDisk, "sealed=1\n");
+            }
+            catch { }
+        }
+
+        private static bool BuildBaselineRecordsFromDiskLocked(out Dictionary<string, FileIntegrityRecord> candidate, out string error)
+        {
+            candidate = new Dictionary<string, FileIntegrityRecord>(MonitoredPaths.Length, StringComparer.OrdinalIgnoreCase);
+            error = string.Empty;
+
             for (int i = 0; i < MonitoredPaths.Length; i++)
             {
                 string path = MonitoredPaths[i];
@@ -232,13 +521,19 @@ namespace ZonderqOS.Security
                         size = data.Length;
                         status = IntegrityStatus.Match;
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        status = IntegrityStatus.Unknown;
+                        error = "Cannot hash " + path + ": " + ex.Message;
+                        return false;
                     }
                 }
+                else if (!IsOptionalUntilCreated(path))
+                {
+                    error = "Required monitored file is missing: " + path;
+                    return false;
+                }
 
-                records[path] = new FileIntegrityRecord
+                candidate[path] = new FileIntegrityRecord
                 {
                     Path = path,
                     ExpectedHash = hash,
@@ -250,57 +545,130 @@ namespace ZonderqOS.Security
                 };
             }
 
-            if (SaveBaselineLocked())
-                SecurityLogger.LogEvent("INFO", "Host integrity baseline created with " + records.Count + " entries.");
+            return true;
         }
 
-        private static void LoadBaselineLocked()
+        private static bool CreateDefaultBaselineLocked()
         {
-            records.Clear();
-            string dbDisk = ToDiskPath(DatabasePath);
-            if (!File.Exists(dbDisk))
-                return;
-
-            string[] lines = File.ReadAllLines(dbDisk);
-            for (int i = 0; i < lines.Length; i++)
+            Dictionary<string, FileIntegrityRecord> candidate;
+            string error;
+            if (!BuildBaselineRecordsFromDiskLocked(out candidate, out error))
             {
-                string line = lines[i];
-                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
-                    continue;
+                SecurityLogger.LogEvent("ERROR", "Initial baseline build failed: " + error);
+                records.Clear();
+                return false;
+            }
 
-                string[] parts = line.Split('|');
-                if (parts.Length >= 3)
+            ApplyLoadedRecordsLocked(candidate);
+            if (!SaveBaselineLocked())
+            {
+                records.Clear();
+                return false;
+            }
+
+            SecurityLogger.LogEvent("INFO", "Host integrity baseline created with " + records.Count + " entries.");
+            return true;
+        }
+
+        private static bool TryLoadAndValidateBaseline(
+            string dbFileDisk,
+            out Dictionary<string, FileIntegrityRecord> loaded,
+            out string error)
+        {
+            loaded = null;
+            error = string.Empty;
+
+            try
+            {
+                if (!File.Exists(dbFileDisk))
                 {
-                    string path = NormalizePath(parts[0]);
-                    string expectedHash = parts[1].Trim();
-                    int perms = DefaultExpectedPerms(path);
-                    int parsedPerms;
-                    if (int.TryParse(parts[2].Trim(), out parsedPerms) && parsedPerms > 0)
-                        perms = parsedPerms;
+                    error = "file missing";
+                    return false;
+                }
 
-                    records[path] = new FileIntegrityRecord
+                FileInfo info = new FileInfo(dbFileDisk);
+                if (info.Length <= 0 || info.Length > MaxDatabaseBytes)
+                {
+                    error = info.Length <= 0 ? "file is empty" : "file exceeds maximum size";
+                    return false;
+                }
+
+                string[] lines = File.ReadAllLines(dbFileDisk);
+                var parsed = new Dictionary<string, FileIntegrityRecord>(StringComparer.OrdinalIgnoreCase);
+
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string line = lines[i];
+                    if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
+                        continue;
+
+                    string[] parts = line.Split('|');
+                    if (parts.Length != 3)
+                    {
+                        error = "malformed record at line " + (i + 1);
+                        return false;
+                    }
+
+                    string path = NormalizePath(parts[0]);
+                    if (string.IsNullOrEmpty(path) || !IsMonitoredPath(path))
+                    {
+                        error = "invalid or unsupported monitored path at line " + (i + 1);
+                        return false;
+                    }
+
+                    if (parsed.ContainsKey(path))
+                    {
+                        error = "duplicate entry for " + path;
+                        return false;
+                    }
+
+                    string expectedHash = parts[1].Trim();
+                    if (IsOptionalUntilCreated(path))
+                    {
+                        if (!string.IsNullOrEmpty(expectedHash) && !IsValidSha256Hex(expectedHash))
+                        {
+                            error = "invalid hash for " + path;
+                            return false;
+                        }
+                    }
+                    else if (!IsValidSha256Hex(expectedHash))
+                    {
+                        error = "invalid or missing SHA-256 hash for " + path;
+                        return false;
+                    }
+
+                    int parsedPerms;
+                    if (!int.TryParse(parts[2].Trim(), out parsedPerms) || !IsValidPermissionMode(parsedPerms))
+                    {
+                        error = "invalid mode for " + path;
+                        return false;
+                    }
+
+                    parsed[path] = new FileIntegrityRecord
                     {
                         Path = path,
                         ExpectedHash = expectedHash,
-                        ExpectedPerms = perms,
+                        ExpectedPerms = parsedPerms,
                         Status = IntegrityStatus.Unknown
                     };
                 }
-            }
 
-            for (int i = 0; i < MonitoredPaths.Length; i++)
-            {
-                string path = MonitoredPaths[i];
-                if (!records.ContainsKey(path))
+                for (int i = 0; i < MonitoredPaths.Length; i++)
                 {
-                    records[path] = new FileIntegrityRecord
+                    if (!parsed.ContainsKey(MonitoredPaths[i]))
                     {
-                        Path = path,
-                        ExpectedHash = string.Empty,
-                        ExpectedPerms = DefaultExpectedPerms(path),
-                        Status = IntegrityStatus.Unknown
-                    };
+                        error = "missing required baseline entry for " + MonitoredPaths[i];
+                        return false;
+                    }
                 }
+
+                loaded = parsed;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = "unreadable database: " + ex.Message;
+                return false;
             }
         }
 
@@ -341,6 +709,10 @@ namespace ZonderqOS.Security
 
                 try
                 {
+#if ZIG_HOST_TESTS
+                    if (string.Equals(SimulatedWriteFailurePath, DatabasePath + ".swap", StringComparison.OrdinalIgnoreCase))
+                        throw new IOException("Simulated integrity database swap failure.");
+#endif
                     File.Move(dbTempDisk, dbDisk);
                 }
                 catch
@@ -351,7 +723,16 @@ namespace ZonderqOS.Security
                 }
 
                 // Retain a synchronized backup copy for power-loss recovery across boots.
-                File.Copy(dbDisk, bakDisk, true);
+                // Do not abort a committed primary DB swap if mirroring to .bak encounters an error.
+                try
+                {
+                    File.Copy(dbDisk, bakDisk, true);
+                }
+                catch (Exception bakEx)
+                {
+                    SecurityLogger.LogEvent("WARN", "Failed to mirror integrity backup: " + bakEx.Message);
+                }
+
                 return true;
             }
             catch (Exception ex)
@@ -379,6 +760,16 @@ namespace ZonderqOS.Security
 
         private static void ScanAllLocked(Dictionary<string, int> permsSnapshot)
         {
+            if (initializationState != IntegrityInitializationState.Initialized)
+            {
+                if (records.Count == 0)
+                    PopulateUnknownRecordsLocked();
+                SecurityLogger.LogEvent("CRITICAL",
+                    "Integrity scan cannot verify files: " +
+                    (string.IsNullOrEmpty(initializationError) ? "IntegrityGuard is not initialized." : initializationError));
+                return;
+            }
+
             int violations = 0;
 
             foreach (var kvp in records)
@@ -483,15 +874,24 @@ namespace ZonderqOS.Security
             switch (operation)
             {
                 case ManagedOperationKind.AccountCreation:
-                    return IsAuthenticatedRoot();
+                    return IsAuthenticatedRoot() && UserManager.IsAccountCreationInProgressOnThread;
 
                 case ManagedOperationKind.PasswordChange:
-                    return SecurityContext.IsAuthenticated;
+                    return SecurityContext.IsAuthenticated &&
+                           SecurityContext.CurrentUid >= 0 &&
+                           UserManager.IsPasswordChangeInProgressOnThread;
 
                 case ManagedOperationKind.InitialRootPasswordSetup:
+                    return !SecurityContext.IsAuthenticated && UserManager.IsInitialRootSetupInProgressOnThread;
+
                 case ManagedOperationKind.LegacyCredentialUpgrade:
+                    return UserManager.IsLegacyUpgradeInProgressOnThread;
+
                 case ManagedOperationKind.AclSave:
-                    return true;
+                    return PermissionManager.IsSavingAclOnThread &&
+                           (SecurityContext.IsAuthenticated ||
+                            SecurityContext.IsBootInitializationActive ||
+                            PermissionManager.IsSavingKernelTelemetryAclOnThread);
 
                 default:
                     return false;
@@ -540,8 +940,22 @@ namespace ZonderqOS.Security
 
             lock (_lock)
             {
-                if (!isInitialized)
-                    return true;
+                if (initializationState == IntegrityInitializationState.Failed)
+                {
+                    SecurityLogger.LogEvent("CRITICAL",
+                        "Blocked managed update (" + operation + "): IntegrityGuard is in failed state.");
+                    return false;
+                }
+
+                if (initializationState != IntegrityInitializationState.Initialized)
+                {
+                    if (SecurityContext.IsBootInitializationActive && !SecurityContext.IsAuthenticated)
+                        return true;
+
+                    SecurityLogger.LogEvent("CRITICAL",
+                        "Blocked managed update (" + operation + "): IntegrityGuard is not initialized.");
+                    return false;
+                }
 
                 string[] beforeHashes = new string[normalizedPaths.Length];
                 for (int i = 0; i < normalizedPaths.Length; i++)
@@ -615,7 +1029,21 @@ namespace ZonderqOS.Security
         internal static bool CommitManagedFilesUpdate(ManagedFileUpdateLease lease)
         {
             if (lease == null)
-                return !IsInitialized;
+            {
+                lock (_lock)
+                {
+                    return initializationState == IntegrityInitializationState.Uninitialized &&
+                           SecurityContext.IsBootInitializationActive &&
+                           !SecurityContext.IsAuthenticated;
+                }
+            }
+
+            if (!IsOperationAuthorized(lease.Operation))
+            {
+                SecurityLogger.LogEvent("CRIT",
+                    "Unauthorized managed integrity commit blocked (" + lease.Operation + ").");
+                return false;
+            }
 
             int[] newPerms = new int[lease.Paths.Length];
             for (int i = 0; i < lease.Paths.Length; i++)
@@ -623,19 +1051,11 @@ namespace ZonderqOS.Security
 
             lock (_lock)
             {
-                if (!isInitialized)
+                if (initializationState != IntegrityInitializationState.Initialized)
                     return false;
 
                 if (lease.Consumed)
                     return false;
-
-                if (!IsOperationAuthorized(lease.Operation))
-                {
-                    lease.Consumed = true;
-                    SecurityLogger.LogEvent("CRIT",
-                        "Unauthorized managed integrity commit blocked (" + lease.Operation + ").");
-                    return false;
-                }
 
                 var backups = new FileIntegrityRecord[lease.Paths.Length];
                 var stagedHashes = new string[lease.Paths.Length];
@@ -725,22 +1145,30 @@ namespace ZonderqOS.Security
                 return false;
             }
 
-            if (!IsInitialized)
-                return true;
-
-            if (!SecurityContext.IsAuthenticated)
+            if (!IsAuthenticatedRoot())
             {
                 SecurityLogger.LogEvent("CRIT",
-                    "Blocked unauthenticated NotifyManagedFileSaved for " + normalized + ".");
+                    "Blocked unauthorized NotifyManagedFileSaved for " + normalized +
+                    " by user '" + (SecurityContext.CurrentUser ?? "unknown") + "'.");
                 return false;
             }
 
             int actualPerms = ReadActualPerms(normalized);
+            if (actualPerms != DefaultExpectedPerms(SettingsConfigPath))
+            {
+                SecurityLogger.LogEvent("CRITICAL",
+                    "Refused NotifyManagedFileSaved for " + normalized + ": invalid ACL mode " + actualPerms + ".");
+                return false;
+            }
 
             lock (_lock)
             {
-                if (!isInitialized)
-                    return true;
+                if (initializationState != IntegrityInitializationState.Initialized)
+                {
+                    SecurityLogger.LogEvent("CRITICAL",
+                        "Refused NotifyManagedFileSaved for " + normalized + ": IntegrityGuard is not initialized.");
+                    return false;
+                }
 
                 FileIntegrityRecord rec;
                 if (!records.TryGetValue(normalized, out rec))
@@ -767,8 +1195,7 @@ namespace ZonderqOS.Security
                     rec.ExpectedHash = Crypto.ComputeSha256(data);
                     rec.CurrentHash = rec.ExpectedHash;
                     rec.FileSize = data.Length;
-                    if (actualPerms != 0)
-                        rec.ExpectedPerms = actualPerms;
+                    rec.ExpectedPerms = DefaultExpectedPerms(SettingsConfigPath);
                     rec.CurrentPerms = rec.ExpectedPerms;
                     rec.Status = IntegrityStatus.Match;
 
@@ -791,8 +1218,20 @@ namespace ZonderqOS.Security
 
         public static bool UpdateBaseline()
         {
+            return RebuildAndSaveBaseline(allowRecoveryFromFailedState: false, out _);
+        }
+
+        public static bool RecoverBaseline(out string error)
+        {
+            return RebuildAndSaveBaseline(allowRecoveryFromFailedState: true, out error);
+        }
+
+        private static bool RebuildAndSaveBaseline(bool allowRecoveryFromFailedState, out string error)
+        {
+            error = string.Empty;
             if (!IsAuthenticatedRoot())
             {
+                error = "Root privileges are required to update integrity baseline.";
                 SecurityLogger.LogEvent("CRIT",
                     "Unauthorized integrity baseline update blocked for user '" +
                     (SecurityContext.CurrentUser ?? "unknown") + "'.");
@@ -802,8 +1241,14 @@ namespace ZonderqOS.Security
             Dictionary<string, int> permsSnapshot = SnapshotMonitoredPerms();
             lock (_lock)
             {
-                if (!isInitialized)
+                if (initializationState != IntegrityInitializationState.Initialized &&
+                    !(allowRecoveryFromFailedState && initializationState == IntegrityInitializationState.Failed))
+                {
+                    error = initializationState == IntegrityInitializationState.Failed
+                        ? "IntegrityGuard is in failed state; explicit admin recovery is required."
+                        : "IntegrityGuard is not initialized.";
                     return false;
+                }
 
                 var backups = new List<FileIntegrityRecord>(records.Count);
                 foreach (var kvp in records)
@@ -823,12 +1268,21 @@ namespace ZonderqOS.Security
 
                 try
                 {
-                    foreach (var kvp in records)
+                    for (int i = 0; i < MonitoredPaths.Length; i++)
                     {
-                        FileIntegrityRecord rec = kvp.Value;
-                        string p = rec.Path;
-                        string diskPath = ToDiskPath(p);
+                        string p = MonitoredPaths[i];
+                        FileIntegrityRecord rec;
+                        if (!records.TryGetValue(p, out rec))
+                        {
+                            rec = new FileIntegrityRecord
+                            {
+                                Path = p,
+                                ExpectedPerms = DefaultExpectedPerms(p)
+                            };
+                            records[p] = rec;
+                        }
 
+                        string diskPath = ToDiskPath(p);
                         if (File.Exists(diskPath))
                         {
                             byte[] data = File.ReadAllBytes(diskPath);
@@ -838,8 +1292,16 @@ namespace ZonderqOS.Security
                             int perms;
                             if (permsSnapshot.TryGetValue(p, out perms) && perms != 0)
                                 rec.ExpectedPerms = perms;
+                            else
+                                rec.ExpectedPerms = DefaultExpectedPerms(p);
                             rec.CurrentPerms = rec.ExpectedPerms;
                             rec.Status = IntegrityStatus.Match;
+                        }
+                        else if (!IsOptionalUntilCreated(p) && allowRecoveryFromFailedState)
+                        {
+                            RestoreRecordSnapshotsLocked(backups.ToArray());
+                            error = "Cannot recover baseline: required file is missing (" + p + ").";
+                            return false;
                         }
                         else
                         {
@@ -853,16 +1315,25 @@ namespace ZonderqOS.Security
                     if (!SaveBaselineLocked())
                     {
                         RestoreRecordSnapshotsLocked(backups.ToArray());
+                        error = "Failed to save updated integrity baseline database.";
                         return false;
                     }
 
-                    SecurityLogger.LogEvent("INFO", "Integrity baseline re-calculated by user " + SecurityContext.CurrentUser);
+                    initializationState = IntegrityInitializationState.Initialized;
+                    initializationError = string.Empty;
+                    TryWriteProvisionedMarker();
+
+                    SecurityLogger.LogEvent(
+                        allowRecoveryFromFailedState ? "CRITICAL" : "INFO",
+                        (allowRecoveryFromFailedState ? "Integrity baseline recovered by root user " : "Integrity baseline re-calculated by user ") +
+                        SecurityContext.CurrentUser);
                     return true;
                 }
                 catch (Exception ex)
                 {
                     RestoreRecordSnapshotsLocked(backups.ToArray());
-                    SecurityLogger.LogEvent("ERROR", "Integrity baseline update failed: " + ex.Message);
+                    error = "Integrity baseline update failed: " + ex.Message;
+                    SecurityLogger.LogEvent("ERROR", error);
                     return false;
                 }
             }

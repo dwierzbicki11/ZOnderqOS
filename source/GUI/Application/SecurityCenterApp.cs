@@ -205,18 +205,31 @@ namespace ZonderqOS.GUI.Apps
                         IntegrityGuard.GetReportSummary(out _, out _, out int mod, out int mis, out int perm);
                         int issues = mod + mis + perm;
                         RefreshAllData();
-                        statusMessage = issues == 0
-                            ? "Przeskanowano pliki systemowe: 0 anomalii."
-                            : "Przeskanowano pliki systemowe: wykryto " + issues + " anomalii!";
+                        if (IntegrityGuard.HasInitializationError || !IntegrityGuard.IsInitialized)
+                        {
+                            statusMessage = "Błąd bazy integralności: " + IntegrityGuard.InitializationError;
+                        }
+                        else
+                        {
+                            statusMessage = issues == 0
+                                ? "Przeskanowano pliki systemowe: 0 anomalii."
+                                : "Przeskanowano pliki systemowe: wykryto " + issues + " anomalii!";
+                        }
                         return;
                     }
                     // [ Przełącz Zaporę ]
                     if (Hit(mouseX, mouseY, wx + 196, btnY, 170, 30))
                     {
                         FirewallMode next = FirewallManager.Mode == FirewallMode.Enabled ? FirewallMode.Strict : (FirewallManager.Mode == FirewallMode.Strict ? FirewallMode.Disabled : FirewallMode.Enabled);
-                        FirewallManager.SetMode(next);
-                        RefreshAllData();
-                        statusMessage = "Zmieniono tryb zapory na: " + ModeLabel(next);
+                        if (FirewallManager.SetMode(next))
+                        {
+                            RefreshAllData();
+                            statusMessage = "Zmieniono tryb zapory na: " + ModeLabel(next);
+                        }
+                        else
+                        {
+                            statusMessage = "Błąd: Zmiana trybu zapory wymaga zalogowanego konta root.";
+                        }
                         return;
                     }
                     // [ Odśwież Logi ]
@@ -236,7 +249,9 @@ namespace ZonderqOS.GUI.Apps
                     {
                         IntegrityGuard.ScanAll();
                         RefreshAllData();
-                        statusMessage = "Zakonczono skanowanie integralnosci.";
+                        statusMessage = (IntegrityGuard.HasInitializationError || !IntegrityGuard.IsInitialized)
+                            ? "Błąd bazy integralności: " + IntegrityGuard.InitializationError
+                            : "Zakonczono skanowanie integralnosci.";
                         return;
                     }
                     // [ Zaktualizuj Bazę (Re-baseline) ]
@@ -251,7 +266,20 @@ namespace ZonderqOS.GUI.Apps
                             return;
                         }
 
-                        if (IntegrityGuard.UpdateBaseline())
+                        if (IntegrityGuard.HasInitializationError || !IntegrityGuard.IsInitialized)
+                        {
+                            if (IntegrityGuard.RecoverBaseline(out string recoverError))
+                            {
+                                RefreshAllData();
+                                statusMessage = "Odzyskano i zapisano bazę sum kontrolnych SHA-256.";
+                            }
+                            else
+                            {
+                                RefreshAllData();
+                                statusMessage = "Błąd odzyskiwania bazy: " + recoverError;
+                            }
+                        }
+                        else if (IntegrityGuard.UpdateBaseline())
                         {
                             RefreshAllData();
                             statusMessage = "Baza sum kontrolnych SHA-256 zaktualizowana.";
@@ -271,23 +299,41 @@ namespace ZonderqOS.GUI.Apps
                     int modeY = wy + 70;
                     if (Hit(mouseX, mouseY, wx + 26, modeY, 130, 24))
                     {
-                        FirewallManager.SetMode(FirewallMode.Enabled);
-                        RefreshAllData();
-                        statusMessage = "Ustawiono tryb: STANDARDOWY.";
+                        if (FirewallManager.SetMode(FirewallMode.Enabled))
+                        {
+                            RefreshAllData();
+                            statusMessage = "Ustawiono tryb: STANDARDOWY.";
+                        }
+                        else
+                        {
+                            statusMessage = "Błąd: Zmiana zapory wymaga konta root.";
+                        }
                         return;
                     }
                     if (Hit(mouseX, mouseY, wx + 162, modeY, 130, 24))
                     {
-                        FirewallManager.SetMode(FirewallMode.Strict);
-                        RefreshAllData();
-                        statusMessage = "Ustawiono tryb: SCISLY (STEALTH).";
+                        if (FirewallManager.SetMode(FirewallMode.Strict))
+                        {
+                            RefreshAllData();
+                            statusMessage = "Ustawiono tryb: SCISLY (STEALTH).";
+                        }
+                        else
+                        {
+                            statusMessage = "Błąd: Zmiana zapory wymaga konta root.";
+                        }
                         return;
                     }
                     if (Hit(mouseX, mouseY, wx + 298, modeY, 130, 24))
                     {
-                        FirewallManager.SetMode(FirewallMode.Disabled);
-                        RefreshAllData();
-                        statusMessage = "UWAGA: Zapora zostala wylaczona.";
+                        if (FirewallManager.SetMode(FirewallMode.Disabled))
+                        {
+                            RefreshAllData();
+                            statusMessage = "UWAGA: Zapora zostala wylaczona.";
+                        }
+                        else
+                        {
+                            statusMessage = "Błąd: Wylaczenie zapory wymaga konta root.";
+                        }
                         return;
                     }
 
@@ -295,9 +341,15 @@ namespace ZonderqOS.GUI.Apps
                     int btnY = wy + FooterButtonYOffset;
                     if (Hit(mouseX, mouseY, wx + 16, btnY, 200, 30))
                     {
-                        FirewallManager.ResetDefaultRules();
-                        RefreshAllData();
-                        statusMessage = "Przywrocono domyslne reguly zapory.";
+                        if (FirewallManager.ResetDefaultRules())
+                        {
+                            RefreshAllData();
+                            statusMessage = "Przywrocono domyslne reguly zapory.";
+                        }
+                        else
+                        {
+                            statusMessage = "Błąd: Reset regul zapory wymaga konta root.";
+                        }
                         return;
                     }
                 }
@@ -476,7 +528,7 @@ namespace ZonderqOS.GUI.Apps
         {
             IntegrityGuard.GetReportSummary(out int total, out int passed, out int modified, out int missing, out int permIssues);
             int anomalies = modified + missing + permIssues;
-            bool isIntegrityClean = (anomalies == 0);
+            bool isIntegrityClean = (anomalies == 0) && IntegrityGuard.IsInitialized && !IntegrityGuard.HasInitializationError;
             bool isFirewallActive = (FirewallManager.Mode != FirewallMode.Disabled);
             EnsureIntegrityCache(total, passed, anomalies);
             EnsureFirewallCache();
@@ -604,6 +656,7 @@ namespace ZonderqOS.GUI.Apps
                 if (r.Status == IntegrityStatus.Modified) { st = "⚠ ZMODYFIKOWANY"; stCol = RedColor; }
                 else if (r.Status == IntegrityStatus.Missing) { st = "✕ BRAK PLIKU"; stCol = RedColor; }
                 else if (r.Status == IntegrityStatus.PermissionMismatch) { st = "⚠ ZLY CHMOD"; stCol = GoldColor; }
+                else if (r.Status == IntegrityStatus.Unknown) { st = "⚠ BŁĄD BAZY"; stCol = RedColor; }
                 else if (r.Status == IntegrityStatus.NotCreated) { st = "DOMYSLNE"; stCol = MutedColor; }
 
                 SmallTextRenderer.Draw(canvas, st, wx + 270, rowY + 4, stCol);

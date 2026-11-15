@@ -40,10 +40,10 @@ namespace ZonderqOS.SystemCore
                         "\"\nPRETTY_NAME=\"ZOnderqOS 1.0 Alpha (Gen3)\"\n");
                 }
 
-                PermissionManager.SetPermission(HostnamePath, "root", 644);
-                PermissionManager.SetPermission(IssuePath, "root", 644);
-                PermissionManager.SetPermission(MotdPath, "root", 644);
-                PermissionManager.SetPermission(OsReleasePath, "root", 644);
+                PermissionManager.SetBootSystemPermissionInternal(HostnamePath, 644);
+                PermissionManager.SetBootSystemPermissionInternal(IssuePath, 644);
+                PermissionManager.SetBootSystemPermissionInternal(MotdPath, 644);
+                PermissionManager.SetBootSystemPermissionInternal(OsReleasePath, 644);
 
                 string error;
                 if (!ReloadHostname(out error))
