@@ -1,7 +1,7 @@
 # ZonderqOS Gen 3 — Kompleksowy Audyt Gotowości Alpha
 
 **Data:** 2026-11-15  
-**Branch:** `fix/alpha-readiness-audit` (baza: `main` @ `b51d0544`, aktualny kod kernela @ `229de96d`, bez merge do `main`).  
+**Branch:** `fix/alpha-readiness-audit` (baza: `main` @ `b51d0544`, kod kernela i testów @ `fb3ec64d`, bez auto-merge do `main`).  
 **Legenda źródeł:** **S** = analiza statyczna/kontraktowa, **H** = test hostowy (C#/C/.NET), **Q** = QEMU (TCG, bez KVM), **HW** = real hardware.
 
 ---
@@ -11,7 +11,7 @@
 1. **Kompilacja ARM64 (`source/GUI/GuiManager.cs:571`):** użyto niezdefiniowanego `#if !ARM64` zamiast `#if !ZONDERQ_ARCH_ARM64`. Kod x64 (`Platform.X64.SerialMemoryTelemetry`) trafiał do buildu ARM64 mimo wykluczenia `source/Platform/X64/**/*.cs` w `ZonderqOS.csproj`. **Naprawione (`22ecbbe9`).**
 2. **Zgadywanie zainstalowanego RAM-u (`source/Hardware/PhysicalMemoryDetector.cs`):** funkcja `EstimateInstalledCapacity()` zaokrąglała pamięć z mapy Limine w górę do rozmiarów modułów (1, 2, 4, ..., 128 GiB) i prezentowała wynik jako zainstalowany RAM. Pakiet Cosmos 3.0.95 `Cosmos.Kernel.Boot.Limine` nie eksponuje żądania SMBIOS. **Naprawione (`351d4aaf`)** — zainstalowany RAM raportowany uczciwie jako nieznany (`0` / `"nieznany (brak SMBIOS)"`), a Usable (Limine `Usable`), Firmware-visible oraz Heap Pool (`PageAllocator`) są rozdzielone.
 3. **Błąd `cosmos build -a x64` / `verify-builds.sh` (10× `CS0246 KeyEvent`):** narzędzie `cosmos build` wywołuje MSBuild z globalnym `-p:DefineConstants=ARCH_<X>`, co nadpisywało wszystkie symbole w `ZonderqOS.csproj` (w tym `ZONDERQ_COSMOS_INPUT_API`). **Naprawione (`229de96d`)** przez `TreatAsLocalProperty="DefineConstants"` w `ZonderqOS.csproj`.
-4. **`Integrity scan detected 1 file status violation(s)` na świeżym systemie:** potwierdzone bezpośrednio z `/etc/integrity.db` na dysku `ZONDERQDATA`. `IntegrityGuard.MonitoredPaths` (`source/Security/IntegrityGuard.cs:39`) zawiera `/etc/zonderq/settings.conf`, którego `SystemSettings.Load()` (`source/Core/SystemSettings.cs:157-161`) nie tworzy przy pierwszym uruchomieniu (plik powstaje dopiero po zapisie ustawień). W efekcie `CreateDefaultBaseline()` zapisuje `/etc/zonderq/settings.conf||644` ze statusem `Missing`, a `ScanAll()` (`IntegrityGuard.cs:202-208`) zlicza brakujący plik jako naruszenie. Ponadto `InitialSetupManager` po zmianie hasła `root` nie odświeża `IntegrityGuard.UpdateBaseline()` dla `/etc/shadow`. **Otwarte (niski priorytet / kosmetyczne ostrzeżenie przy pierwszym starcie).**
+4. **`Integrity scan detected 1 file status violation(s)` na świeżym systemie:** potwierdzone bezpośrednio z `/etc/integrity.db` na dysku `ZONDERQDATA`. `IntegrityGuard.MonitoredPaths` (`source/Security/IntegrityGuard.cs`) zawiera `/etc/zonderq/settings.conf`, którego `SystemSettings.Load()` (`source/Core/SystemSettings.cs`) nie tworzy przy pierwszym uruchomieniu (plik powstaje dopiero po zapisie ustawień). W efekcie `CreateDefaultBaseline()` zapisywało `/etc/zonderq/settings.conf||644` ze statusem `Missing`, a `ScanAll()` zliczało brakujący plik jako naruszenie. **Naprawione (`fb3ec64d`):** dodano `IntegrityStatus.NotCreated = 5`, `IsOptionalUntilCreated("/etc/zonderq/settings.conf")` oraz `NotifyManagedFileSaved(string path)` wywoływane z `SystemSettings.Save()` i `ImportSettings()` (synchronizujące hash i `ExpectedPerms = 600` zgodnie z `PermissionManager.SetPermission(SettingsPath, "root", 600)`), a także obsługę `NotCreated` w `SecurityCenterApp` i `CmdIntegrity`. Brakujący `settings.conf` przy świeżej instalacji nie daje już naruszenia (`0 violations`), natomiast usunięcie/modyfikacja po zapisie, utworzenie pliku poza `NotifyManagedFileSaved` lub naruszenie wymaganych plików bazowych są nadal wykrywane; w QEMU (1 i 8 vCPU na `fb3ec64d`) log startowy jest wolny od `Integrity scan detected`. *(Uwaga otwarta niższego priorytetu: `InitialSetupManager` po zmianie hasła `root` modyfikuje `/etc/shadow` bez wywołania `UpdateBaseline()`, co może zostać zgłoszone przy kolejnych skanach po restarcie.)*
 5. **Pauza telemetrii `MEM_SAMPLE` na ekranie blokady:** `SerialMemoryTelemetry.SampleIfDue()` jest wywoływane wyłącznie w głównej pętli pulpitu (`GuiManager.cs:572`). Po uruchomieniu automatycznej blokady (`SystemSettings.AutoLockMinutes = 5`, `GuiManager.cs:355` `RunLockScreen()`) `MEM_SAMPLE` przestaje być emitowane mimo prawidłowego działania kernela (ticki LAPIC idą dalej). Podczas testu bezczynności utrzymano aktywność przez QMP `input-send-event` (ruch myszy co 120 s).
 6. **Niedostępność KVM na hoście audytowym:** `/dev/kvm` nie istnieje; procesor hosta (`Intel Core i3-5005U`) nie wystawia flagi `vmx`/`svm` w `/proc/cpuinfo`, więc wszystkie testy QEMU działały pod TCG.
 
@@ -24,6 +24,8 @@
 | `22ecbbe9` | `#if !ZONDERQ_ARCH_ARM64` w `GuiManager.cs:571` + testy regresyjne w `tests/test_p0_platform_compile_contract.py` wykrywające niezdefiniowane symbole arch i niechronione odwołania `Platform.X64.*`. |
 | `351d4aaf` | Usunięcie zgadywania RAM-u w `PhysicalMemoryDetector.cs`; rozdzielenie `InstalledBytes` (`0` bez SMBIOS), `UsableBytes`, `TotalPhysicalBytes` (firmware-visible), `HeapPoolBytes` oraz aktualizacja konsumentów (`HardwareSnapshot`, `SettingsApp`, `TaskManagerMemoryCache`, `TaskManagerModernApp`, `CmdHwInfo`). |
 | `229de96d` | `TreatAsLocalProperty="DefineConstants"` w `ZonderqOS.csproj` + test kontraktowy; odblokowanie `cosmos build -a x64` i `cosmos build -a arm64`. |
+| `c164dd9c` | Zapis wyników 65-minutowego testu pamięciowego QEMU oraz wykresu (`docs/ALPHA_READINESS_AUDIT.md`, `docs/alpha-mem-soak.csv`, `docs/alpha-mem-soak.png`). |
+| `fb3ec64d` | `IntegrityGuard.cs`, `SystemSettings.cs`, `SecurityCenterApp.cs`, `CmdIntegrity.cs`: obsługa opcjonalnego przed pierwszym zapisem `/etc/zonderq/settings.conf` (`IntegrityStatus.NotCreated`, `NotifyManagedFileSaved`), testy `tests/IntegrityGuardSmoke` (6 scenariuszy) oraz `tests/test_integrity_guard.py`. |
 
 ---
 
@@ -43,25 +45,26 @@ Warunki: 2048 MiB RAM (`pool_mb=2025`), świeży dysk `ZONDERQDATA`, pierwsza ko
 Scenariusz na tej samej zalogowanej instancji: zamknięcie `WelcomeApp` + 100× (`Ctrl+Shift+Esc` otwierające Task Managera -> `Alt+F4` zamykające okno).
 - **PageAllocator Used:** `157.75 -> 159.37 MiB` (**`+1.62 MiB`** dla 100 cykli = **`+16.6 KiB/cykl`**), potem stabilizacja (`delta_p=0` przy `sec=3936`).
 - **Strony:** `p_gc: 38832 -> 39248` (`+416` stron), **`p_rat: 13 -> 13` (0)**, **`p_sys: 1539 -> 1539` (0)**.
-- **OrionGC:** `gc_heap_kb: 150379 -> 151795` (`+14.16 KiB/cykl`), `gc_gen=0` (sterta nie przekroczyła jeszcze pierwszego progu Gen0 przy puli 2025 MiB, więc nie można tu rozdzielić martwego śmiecia od ewentualnych żywych referencji obiektów GUI).
-- **Wniosek P0.2:** na obecnym `main` nie występuje gwałtowny wzrost RAM-u z ASUS X540LA (`265 -> 300 MiB` / 25 min ≈ `~82 MiB/h`); przyrost idle to **`~0.31–0.36 MiB/h`** wyłącznie w stercie `OrionGC` (`p_gc`), przy zerowym wzroście `p_rat` i `p_sys`.
+- **OrionGC:** `gc_heap_kb: 150379 -> 151795` (`+14.16 KiB/cykl`), `gc_gen=0`, `gc_freed=0`. W puli `2025 MiB` sterta nie przekroczyła jeszcze pierwszego progu kolekcji Gen0, więc krótkotrwałe obiekty ze stu otwartych/zamkniętych okien pozostały nieuprzątnięte; analiza kodu (`GuiManager.LaunchTaskManager`, `TaskManagerModernApp.Close()`, `ApplicationManager.RequestCloseActiveWindow()`) nie wykazuje statycznych kolekcji ani delegatów utrzymujących zamknięte okna (szczegóły w sekcji P1.6).
+- **Wniosek P0.2:** na obecnym `main` nie występuje gwałtowny wzrost RAM-u z ASUS X540LA (`265 -> 300 MiB` / 25 min ≈ `~82 MiB/h`); przyrost idle to **`~0.31–0.36 MiB/h`** wyłącznie w stercie `OrionGC` (`p_gc`), przy zerowym wzroście `p_rat` i `p_sys`, a przyrost `+1.62 MiB` po 100 cyklach Task Managera nie jest potwierdzonym wyciekiem pamięci.
 
 ---
 
-## 4. Wyniki testów (tylko faktycznie wykonane po ostatnich zmianach kodu `229de96d`)
+## 4. Wyniki testów (po ostatnich zmianach kodu `fb3ec64d`)
 
 | Test / Build | Typ | Wynik | Uwagi |
 |---|---|---|---|
-| `cosmos build -a x64` (`output-x64/ZonderqOS.iso`) | build | **PASS** (0 błędów) | — |
-| `cosmos build -a arm64` (`output-arm64/ZonderqOS.iso`) | build | **PASS** (0 błędów) | — |
-| `python3 -m unittest discover -s tests -p "test_*.py"` | S / H | **PASS** | 510 testów w 7.455 s (`OK`) |
-| `UpdateEngineSmoke` (Ed25519 RFC 8032, manifest v2, HMAC reject, A/B) | H | **PASS** | Host .NET 10, nie NativeAOT |
-| `ServiceRuntimeSmoke`, `ServiceConfigSmoke`, `ProcessSignalsSmoke` | H | **PASS** | — |
-| `RunFs.Tests`, `TmpFs.Tests` | H | **PASS** | — |
-| `GuiTaskManagerRefreshSmoke` (2199 asercji), `GuiApplicationManagerSmoke` (105 asercji) | H | **PASS** | — |
-| `tests/test_bootguard_policy.c` (gcc `-Wall -Wextra -Werror`) | H | **PASS** | — |
-| QEMU 1 vCPU soak (3946 s uptime + 100 cykli aplikacji + ZONDERQDATA) | Q | **PASS** | `PERF_BOOT_INIT_MS=1388`, 0 błędów |
-| QEMU 8 vCPU smoke (stock Cosmos 3.0.95) | Q | **PASS** | `Mounted ZONDERQDATA`, `PERF_BOOT_INIT_MS=1370` |
+| `./verify-builds.sh` — `cosmos build -a x64` (`output-x64/ZonderqOS.iso`) | build | **PASS** (0 błędów) | `18462720` B na `fb3ec64d` |
+| `./verify-builds.sh` — `cosmos build -a arm64` (`output-arm64/ZonderqOS.iso`) | build | **PASS** (0 błędów) | `17922048` B na `fb3ec64d` |
+| `python3 -m unittest discover -s tests -p "test_*.py"` | S / H | **PASS** | 512 testów w 15.879 s (`OK`) na `fb3ec64d` (w tym `test_integrity_guard.py` 2/2) |
+| `IntegrityGuardSmoke` (6 scenariuszy: świeży start, zapis, tamper, usunięcie) | H | **PASS** | `[INTEGRITY-GUARD] PASS (6/6)` na `fb3ec64d` |
+| `UpdateEngineSmoke` (Ed25519 RFC 8032, manifest v2, HMAC reject, A/B) | H | **PASS** | Host .NET 10, nie NativeAOT, na `fb3ec64d` |
+| `ServiceRuntimeSmoke`, `ServiceConfigSmoke`, `ProcessSignalsSmoke` | H | **PASS** | Na `fb3ec64d` |
+| `RunFs.Tests`, `TmpFs.Tests` (`dotnet run`) | H | **PASS** | `RunFs deterministic tests passed`, `TmpFs deterministic tests passed` na `fb3ec64d` |
+| `GuiTaskManagerRefreshSmoke` (2199 asercji), `GuiApplicationManagerSmoke` (105 asercji) | H | **PASS** | Na `fb3ec64d` |
+| `tests/test_bootguard_policy.c` (cc `-Wall -Wextra -Werror`) | H | **PASS** | `BOOTGUARD POLICY PASS: third attempted boot and preboot fallback` |
+| QEMU 1 i 8 vCPU smoke na `fb3ec64d` (`output-x64/ZonderqOS.iso`) | Q | **PASS** | SMP=1 (`PERF_BOOT_INIT_MS=1347`), SMP=8 (`PERF_BOOT_INIT_MS=1322`), `0` naruszeń `Integrity scan detected` |
+| QEMU 1 vCPU soak (3946 s uptime + 100 cykli aplikacji + ZONDERQDATA) | Q | **PASS** (baza `229de96d`) | `PERF_BOOT_INIT_MS=1388`, 0 błędów; po `fb3ec64d` brak zmian w alokacji pętli GUI/GC |
 | `tools/bootguard` + `tests/test_bootguard_ovmf.sh` (OVMF) | Q | **NIE URUCHOMIONO** | Brak pakietu `gnu-efi` (`/usr/include/efi/efi.h`) |
 | QEMU ARM64 boot | Q | **NIE URUCHOMIONO** | Brak `qemu-system-aarch64` w systemie |
 | Test produkcyjny Limine A/B + uszkodzony ELF w slocie | Q | **NIE URUCHOMIONO** | — |
@@ -81,9 +84,10 @@ Scenariusz na tej samej zalogowanej instancji: zamknięcie `WelcomeApp` + 100× 
 - `BootSlotManager.SyncLimineConfig()` generuje nazwy wpisów `ZonderqOS Slot A` i `ZonderqOS Slot B` zgodne z `bootguard_efi.c:210`.
 - **Luka / bloker:** weryfikacja Ed25519 nie była testowana pod **Cosmos NativeAOT** na żywej aktualizacji; w CI BootGuard sprawdza się z testowym stubem (`limine_stub.efi`), nie z produkcyjnym `LIMINE.EFI` na jednym obrazie dysku.
 
-### P1.6 GUI
-- `GuiManager` używa `CursorDamageRenderer` (`CanMoveCursorWithoutSceneRedraw`) do unikania pełnego odrysowania przy ruchu kursora, obsługuje `800x600` i `1366x768`, a `IconManager` ogranicza cache pikseli do 256 wpisów LRU. `ApplicationManager.Close()`/`CloseAll()` odpinają okna i czyszczą przechwycenie myszy.
-- Pozostała uwaga: 100 cykli Task Managera zwiększyło `gc_heap_kb` o `+14.16 KiB/cykl` bez uruchomienia GC (`gc_gen=0`) — warto w osobnym teście wymusić alokację aż do wyzwolenia Gen0, aby potwierdzić pełne odzyskiwanie zamkniętych okien.
+### P1.6 GUI i analiza `+1.62 MiB` po 100 cyklach Task Managera
+- `GuiManager` używa `CursorDamageRenderer` (`CanMoveCursorWithoutSceneRedraw`) do unikania pełnego odrysowania przy ruchu kursora, obsługuje `800x600` i `1366x768`, a `IconManager` ogranicza cache pikseli do 256 wpisów LRU.
+- **Analiza zamknięcia Task Managera:** `GuiManager.LaunchTaskManager` tworzy nową instancję `new TaskManagerModernApp(x, y, applicationManager, null)`. `TaskManagerModernApp.Close()` wywołuje `base.Close()` i czyści kolekcje wewnętrzne (`rowPool`, `allRows`, `visibleRows`, `processSnapshot`), natomiast `ApplicationManager.RequestCloseActiveWindow()` odpina `active` z listy `applications` i zeruje `mouseCapture`. W przejrzanych klasach GUI nie stwierdzono statycznych kolekcji ani zarejestrowanych event handlerów/delegatów utrzymujących referencje do zamkniętych okien `TaskManagerModernApp` lub `Window`.
+- **Wniosek:** wzrost `+1.62 MiB` po 100 cyklach (`+14.16 KiB/cykl` w `gc_heap_kb`) wystąpił wyłącznie w stronach sterty `p_gc` (`38832 -> 39248`, `+416` stron) przy stałych **`p_rat = 13`** i **`p_sys = 1539`**, **`gc_gen = 0`** oraz **`gc_freed = 0`**. W puli `2025 MiB` `OrionGC` nie osiągnął jeszcze pierwszego progu kolekcji Gen0, więc krótkotrwałe obiekty ze stu otwartych/zamkniętych okien nie zostały jeszcze odśmiecone — nie jest to potwierdzony wyciek pamięci *(udowodnienie pełnego odzysku wymaga osobnego testu przekraczającego próg Gen0)*.
 
 ### P1.7 Ethernet (PR #189 — bez modyfikacji)
 - Produkcyjny `main` ma wyłączoną sieć (`CosmosEnableNetwork=false`, `ZONDERQ_NETWORK_DISABLED`).
@@ -103,7 +107,10 @@ Scenariusz na tej samej zalogowanej instancji: zamknięcie `WelcomeApp` + 100× 
 2. Brak end-to-end testu aktualizacji A/B z podpisanym pakietem Ed25519 w NativeAOT i prawdziwym `LIMINE.EFI` + BootGuard w OVMF (lokalnie brak `gnu-efi`).
 3. Brak uruchomienia i smoke testu **ARM64 w QEMU** (kompilacja przechodzi, brak binarki `qemu-system-aarch64` na hoście).
 4. Brak weryfikacji na **realnym sprzęcie** (ASUS X540LA + drugi komputer) oraz brak sterownika TX/RX RTL810xE.
-5. Kosmetyczne: fałszywy alarm `Integrity scan detected 1 file status violation(s)` przy pierwszym rozruchu (`/etc/zonderq/settings.conf`).
 
-**Szacunek gotowości do Alpha: ~60–65 %** *(ocena jakościowa, nie metryka automatyczna)*.  
-Uzasadnienie: krytyczne blokery kompilacji (`ARM64`, `cosmos build` `KeyEvent`), zgadywanie RAM-u oraz podejrzenie ciężkiego wycieku idle zostały wyjaśnione/naprawione i potwierdzone 65-minutowym biegiem QEMU + 100 cyklami aplikacji oraz buildem x64/ARM64; nadal jednak brakuje testów odporności FAT32, pełnego testu A/B z produkcyjnym Limine/Ed25519 pod NativeAOT, uruchomienia ARM64 oraz testów na fizycznym sprzęcie.
+**Drobne uwagi nieblokujące / do dokończenia:**
+- `InitialSetupManager` zmienia hasło `root` w `/etc/shadow` bez wywołania `IntegrityGuard.UpdateBaseline()` (może skutkować alertem zmiany `/etc/shadow` po restarcie po pierwszej konfiguracji).
+- Warto w osobnym teście przeciążeniowym wymusić przekroczenie pierwszego progu Gen0 w `OrionGC`, aby potwierdzić odzysk pamięci po zamykaniu okien GUI.
+
+**Szacunek gotowości do Alpha: ~65–70 %** *(ocena jakościowa, nie metryka automatyczna)*.  
+Uzasadnienie: krytyczne blokery kompilacji (`ARM64`, `cosmos build` `KeyEvent`), zgadywanie RAM-u, fałszywy alarm `IntegrityGuard` (`settings.conf`) oraz podejrzenie ciężkiego wycieku idle zostały wyjaśnione/naprawione i potwierdzone 65-minutowym biegiem QEMU + 100 cyklami Task Managera, smoke testami 1/8 vCPU oraz buildem x64/ARM64; nadal jednak brakuje testów odporności FAT32, pełnego testu A/B z produkcyjnym Limine/Ed25519 pod NativeAOT, uruchomienia ARM64 oraz testów na fizycznym sprzęcie.
