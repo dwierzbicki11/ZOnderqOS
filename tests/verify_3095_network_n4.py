@@ -67,7 +67,7 @@ def tcp_frame(frame: bytes):
     if ihl < 20 or len(frame) < 14 + ihl + 20:
         return None
     length = int.from_bytes(frame[16:18], "big")
-    if (int.from_bytes(frame[20:22], "big") & 0x3FFF) or length < ihl + 20:
+    if (int.from_bytes(frame[20:22], "big") & 0xBFFF) or length < ihl + 20:
         return None
     if len(frame) < 14 + length:
         return None
@@ -217,7 +217,7 @@ def self_test() -> None:
         PING_START, PING_PASS, TCP_START, TCP_PASS,
     ])
     assert "PASS" in validate(serial, synthetic_capture(frames))
-    # Synthetic packet bit flips must not be ignored or rescued by later
+    # IPv4 reserved flag (0x8000) is invalid even when DF/MF/offset are clear.\n    # Recompute the IP checksum so this negative case isolates flag validation.\n    reserved = bytearray(frames[-1])\n    reserved[20:22] = (0x8000).to_bytes(2, "big")\n    reserved[24:26] = b"\\x00\\x00"\n    reserved[24:26] = internet_checksum(reserved[14:34]).to_bytes(2, "big")\n    try:\n        validate(serial, synthetic_capture(frames[:-1] + [bytes(reserved)]))\n    except ValueError:\n        pass\n    else:\n        raise AssertionError("accepted TCP IPv4 reserved fragmentation flag")\n    # Synthetic packet bit flips must not be ignored or rescued by later
     # valid frames with the same sequence/port tuple.
     for offset in (22, 24, 50, len(frames[-1]) - 1):
         corrupted = bytearray(frames[-1])
