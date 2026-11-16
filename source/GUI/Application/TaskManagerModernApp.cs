@@ -119,6 +119,7 @@ namespace ZonderqOS.GUI.Apps
         private string dateText = "--.--.----";
 
         private readonly TaskManagerMemoryCache memoryCache = new TaskManagerMemoryCache();
+        private MemoryOptimizerSnapshot optimizerSnapshot;
         private readonly string baseMaxSpeedText;
 
         private readonly string baseSpeedText;
@@ -550,6 +551,7 @@ namespace ZonderqOS.GUI.Apps
             UpdateMemorySnapshot();
             UpdateCpuSnapshot();
             UpdateSystemSnapshot();
+            optimizerSnapshot = MemoryOptimizer.GetSnapshot();
             // Start the interval after expensive sampling completes, including
             // F5 and toolbar refreshes, rather than immediately sampling again.
             lastRefreshTicks = Stopwatch.GetTimestamp();
@@ -1020,6 +1022,11 @@ namespace ZonderqOS.GUI.Apps
         internal string GcCollectionsText => memoryCache.GcCollectionsText;
         internal string PageBreakdownText => memoryCache.PageBreakdownText;
         internal string GraphicsBuffersText => memoryCache.GraphicsBuffersText;
+        internal ulong OptimizerSamples => (ulong)Math.Max(0L, optimizerSnapshot.Samples);
+        internal ulong OptimizerRequests => (ulong)Math.Max(0L, optimizerSnapshot.Requests);
+        internal ulong OptimizerSweeps => (ulong)Math.Max(0L, optimizerSnapshot.Sweeps);
+        internal ulong OptimizerDetachedBuffers => (ulong)Math.Max(0L, optimizerSnapshot.DetachedBuffers);
+        internal ulong OptimizerCandidateKiB => optimizerSnapshot.CandidateBytes / 1024UL;
         internal string MemoryDeltaText => memoryCache.MemoryDeltaText;
         internal string InstalledRamText => memoryCache.InstalledRamText;
         internal string UsableRamText => memoryCache.UsableRamText;
@@ -1774,6 +1781,11 @@ namespace ZonderqOS.GUI.Apps
             DrawKeyText(canvas, x, stats + 80, half, "STRONY GC/RAT/SYS", app.PageBreakdownText);
             DrawKeyText(canvas, x, stats + 100, half, "BUFORY GRAFICZNE", app.GraphicsBuffersText);
             DrawKeyText(canvas, x, stats + 120, half, "DELTA PAMIECI", app.MemoryDeltaText);
+            // Optimizer counters: numeric drawing avoids a fresh string on
+            // each telemetry refresh. "Candidate" is unrooted cache memory,
+            // NOT physical RAM already reclaimed by OrionGC.
+            DrawKey(canvas, x, stats + 140, half, "MEMOPT PROBKI", app.OptimizerSamples, null);
+            DrawKey(canvas, x, stats + 160, half, "MEMOPT ZADANIA", app.OptimizerRequests, null);
 
             // Cosmos Heap Allocator & GC Diagnostics
             DrawKeyText(canvas, x + half, stats, half, "HEAP UZYTY", app.MemoryDetailText);
@@ -1782,6 +1794,9 @@ namespace ZonderqOS.GUI.Apps
             DrawKeyText(canvas, x + half, stats + 60, half, "GC ZATWIERDZONE", app.GcCommittedText);
             DrawKeyText(canvas, x + half, stats + 80, half, "GC FRAGMENTACJA", app.GcFragmentationText);
             DrawKeyText(canvas, x + half, stats + 100, half, "GC KOLEKCJE / ZWOL.", app.GcCollectionsText);
+            DrawKey(canvas, x + half, stats + 120, half, "CACHE SWEEPS", app.OptimizerSweeps, null);
+            DrawKey(canvas, x + half, stats + 140, half, "ODPIETE BUFORY", app.OptimizerDetachedBuffers, null);
+            DrawKey(canvas, x + half, stats + 160, half, "GC KANDYDAT KiB", app.OptimizerCandidateKiB, null);
         }
 
         private void RenderSystem(Canvas canvas, int x, int y, int width)
