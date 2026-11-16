@@ -98,30 +98,61 @@ sync
 [[ "$(sudo blkid -p -s LABEL -o value "${DEVICE}4" || true)" == ZONDERQDATA ]] || fail "Weryfikacja ZONDERQDATA nieudana. NIE FORMATUJ"
 [[ "$(sudo lsblk -dn -o START "${DEVICE}4" | xargs)" == "$DATA_START" ]] || fail "Zly sektor startowy partycji danych"
 
-# Synchronize A/B boot slots on ZONDERQDATA with the newly flashed kernel ELF
-# so Limine default_entry: 1 (fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf)
-# boots the exact kernel matching the flashed ISO instead of a stale slot binary.
+# Synchronize the active boot slot on ZONDERQDATA with the newly flashed kernel ELF
+# so Limine boots the exact kernel matching the flashed ISO, while preserving any
+# existing non-empty fallback slot for A/B rollback.
 KERNEL_ELF="$(dirname "$ISO")/ZonderqOS.elf"
 if [[ ! -f "$KERNEL_ELF" && -f "$HOME/Pulpit/ZOnderqOS/output-x64/ZonderqOS.elf" ]]; then
     KERNEL_ELF="$HOME/Pulpit/ZOnderqOS/output-x64/ZonderqOS.elf"
 fi
 if [[ -f "$KERNEL_ELF" && -s "$KERNEL_ELF" ]]; then
     MOUNT_DATA="$(mktemp -d /tmp/zonderq-data-sync.XXXXXX)"
+    UPDATED_DESC=""
     if sudo mount -t vfat "${DEVICE}4" "$MOUNT_DATA"; then
         sudo mkdir -p "$MOUNT_DATA/boot/slot_a" "$MOUNT_DATA/boot/slot_b"
-        sudo cp -f "$KERNEL_ELF" "$MOUNT_DATA/boot/slot_a/ZonderqOS.elf"
-        sudo cp -f "$KERNEL_ELF" "$MOUNT_DATA/boot/slot_b/ZonderqOS.elf"
+        ACTIVE_SLOT="A"
+        if sudo test -f "$MOUNT_DATA/boot/boot_state.cfg"; then
+            CFG_SLOT="$(sudo awk -F= '/^ACTIVE_SLOT=/{gsub(/[[:space:]\r]/,"",$2); print toupper($2); exit}' "$MOUNT_DATA/boot/boot_state.cfg")"
+            if [[ "$CFG_SLOT" == "B" ]]; then
+                ACTIVE_SLOT="B"
+            fi
+        fi
+        if [[ "$ACTIVE_SLOT" == "B" ]]; then
+            ACTIVE_SLOT_ELF="/boot/slot_b/ZonderqOS.elf"
+            ACTIVE_SLOT_SHA="/boot/slot_b/kernel.sha256"
+            FALLBACK_SLOT_ELF="/boot/slot_a/ZonderqOS.elf"
+            FALLBACK_SLOT_SHA="/boot/slot_a/kernel.sha256"
+        else
+            ACTIVE_SLOT_ELF="/boot/slot_a/ZonderqOS.elf"
+            ACTIVE_SLOT_SHA="/boot/slot_a/kernel.sha256"
+            FALLBACK_SLOT_ELF="/boot/slot_b/ZonderqOS.elf"
+            FALLBACK_SLOT_SHA="/boot/slot_b/kernel.sha256"
+        fi
+
+        sudo cp -f "$KERNEL_ELF" "$MOUNT_DATA$ACTIVE_SLOT_ELF"
         sudo cp -f "$KERNEL_ELF" "$MOUNT_DATA/boot/ZonderqOS.elf"
+        KERNEL_SHA=""
         if command -v sha256sum >/dev/null 2>&1; then
             KERNEL_SHA="$(sha256sum "$KERNEL_ELF" | awk '{print $1}')"
-            printf '%s\n' "$KERNEL_SHA" | sudo tee "$MOUNT_DATA/boot/slot_a/kernel.sha256" >/dev/null
-            printf '%s\n' "$KERNEL_SHA" | sudo tee "$MOUNT_DATA/boot/slot_b/kernel.sha256" >/dev/null
+            printf '%s\n' "$KERNEL_SHA" | sudo tee "$MOUNT_DATA$ACTIVE_SLOT_SHA" >/dev/null
+        fi
+
+        if ! sudo test -s "$MOUNT_DATA$FALLBACK_SLOT_ELF"; then
+            sudo cp -f "$KERNEL_ELF" "$MOUNT_DATA$FALLBACK_SLOT_ELF"
+            if [[ -n "$KERNEL_SHA" ]]; then
+                printf '%s\n' "$KERNEL_SHA" | sudo tee "$MOUNT_DATA$FALLBACK_SLOT_SHA" >/dev/null
+            fi
+            UPDATED_DESC="$ACTIVE_SLOT_ELF i zainicjalizowano pusty slot zapasowy $FALLBACK_SLOT_ELF"
+        else
+            UPDATED_DESC="$ACTIVE_SLOT_ELF (zachowano istniejacy slot zapasowy $FALLBACK_SLOT_ELF do rollbacku A/B)"
         fi
         sync
         sudo umount "$MOUNT_DATA" || fail "Nie mozna odmontowac $MOUNT_DATA"
     fi
     rmdir "$MOUNT_DATA" 2>/dev/null || true
-    printf '[OK] Zsynchronizowano /boot/slot_a/ZonderqOS.elf i /boot/slot_b/ZonderqOS.elf z: %s\n' "$KERNEL_ELF"
+    if [[ -n "$UPDATED_DESC" ]]; then
+        printf '[OK] Zsynchronizowano %s z: %s\n' "$UPDATED_DESC" "$KERNEL_ELF"
+    fi
 fi
 
 printf '\n[OK] Wgrano istniejacy obraz ISO, ZONDERQDATA zachowana bez formatowania.\n'

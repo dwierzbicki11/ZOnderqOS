@@ -43,6 +43,7 @@ namespace ZonderqOS.GUI.Apps
         private ulong lastGfxBufferBytes = ulong.MaxValue;
         private bool hasBaselineDelta = false;
         private long lastDeltaPages = long.MinValue;
+        private bool pendingDetailSync = false;
 
         private const string ZeroDeltaLabel = "0 B (0 stron)";
 
@@ -73,40 +74,57 @@ namespace ZonderqOS.GUI.Apps
                            ulong gcHeapBytes, ulong gcCommittedBytes,
                            ulong physicalInstalledBytes, ulong physicalUsableBytes)
         {
+            Update(usedPages, freePages, totalPages,
+                   gcHeapBytes, gcCommittedBytes,
+                   physicalInstalledBytes, physicalUsableBytes,
+                   includeDetail: true, includeFullPoolLabels: true);
+        }
+
+        public void Update(ulong usedPages, ulong freePages, ulong totalPages,
+                           ulong gcHeapBytes, ulong gcCommittedBytes,
+                           ulong physicalInstalledBytes, ulong physicalUsableBytes,
+                           bool includeDetail, bool includeFullPoolLabels)
+        {
             ulong usedBytes = usedPages * PageSize;
             ulong usedMiB = usedBytes / MiB;
             ulong usedHundredths = (usedBytes % MiB) * 100UL / MiB;
             bool usedChanged = false;
 
-            if (usedMiB != lastDisplayedUsedMiB || usedHundredths != lastDisplayedUsedHundredths)
+            if (includeDetail)
             {
-                lastDisplayedUsedMiB = usedMiB;
-                lastDisplayedUsedHundredths = usedHundredths;
-                UsedMemoryText = FormatMiBPrecise(usedBytes);
-                usedChanged = true;
-                FormattedLabelCount++;
+                if (usedMiB != lastDisplayedUsedMiB || usedHundredths != lastDisplayedUsedHundredths)
+                {
+                    lastDisplayedUsedMiB = usedMiB;
+                    lastDisplayedUsedHundredths = usedHundredths;
+                    UsedMemoryText = FormatMiBPrecise(usedBytes);
+                    usedChanged = true;
+                    FormattedLabelCount++;
+                }
             }
 
-            ulong freeBytes = freePages * PageSize;
-            ulong freeMiB = freeBytes / MiB;
-            ulong freeHundredths = (freeBytes % MiB) * 100UL / MiB;
-            if (freeMiB != lastDisplayedFreeMiB || freeHundredths != lastDisplayedFreeHundredths)
+            if (includeFullPoolLabels)
             {
-                lastDisplayedFreeMiB = freeMiB;
-                lastDisplayedFreeHundredths = freeHundredths;
-                FreeMemoryText = FormatMiBPrecise(freeBytes);
-                FormattedLabelCount++;
-            }
+                ulong freeBytes = freePages * PageSize;
+                ulong freeMiB = freeBytes / MiB;
+                ulong freeHundredths = (freeBytes % MiB) * 100UL / MiB;
+                if (freeMiB != lastDisplayedFreeMiB || freeHundredths != lastDisplayedFreeHundredths)
+                {
+                    lastDisplayedFreeMiB = freeMiB;
+                    lastDisplayedFreeHundredths = freeHundredths;
+                    FreeMemoryText = FormatMiBPrecise(freeBytes);
+                    FormattedLabelCount++;
+                }
 
-            ulong totalBytes = totalPages * PageSize;
-            ulong totalMiB = totalBytes / MiB;
-            ulong totalHundredths = (totalBytes % MiB) * 100UL / MiB;
-            if (totalMiB != lastDisplayedTotalMiB || totalHundredths != lastDisplayedTotalHundredths)
-            {
-                lastDisplayedTotalMiB = totalMiB;
-                lastDisplayedTotalHundredths = totalHundredths;
-                TotalMemoryText = FormatMiBPrecise(totalBytes);
-                FormattedLabelCount++;
+                ulong totalBytes = totalPages * PageSize;
+                ulong totalMiB = totalBytes / MiB;
+                ulong totalHundredths = (totalBytes % MiB) * 100UL / MiB;
+                if (totalMiB != lastDisplayedTotalMiB || totalHundredths != lastDisplayedTotalHundredths)
+                {
+                    lastDisplayedTotalMiB = totalMiB;
+                    lastDisplayedTotalHundredths = totalHundredths;
+                    TotalMemoryText = FormatMiBPrecise(totalBytes);
+                    FormattedLabelCount++;
+                }
             }
 
             ulong scaledUsage = totalPages == 0 ? 0 : (usedPages >= totalPages ? 10000UL : Math.Min(9999UL, (ulong)((double)usedPages / totalPages * 10000.0)));
@@ -119,57 +137,73 @@ namespace ZonderqOS.GUI.Apps
                 FormattedLabelCount++;
             }
 
-            if (usedChanged || usageChanged)
-            {
-                MemoryDetailText = UsedMemoryText + " (" + MemoryUsageText + ")";
-                FormattedLabelCount++;
-            }
+            if (!includeDetail && usageChanged)
+                pendingDetailSync = true;
 
-            if (gcHeapBytes == 0)
+            if (includeDetail)
             {
-                if (lastDisplayedGcHeapBytes != 0)
+                if (usedChanged || usageChanged)
                 {
-                    lastDisplayedGcHeapBytes = 0;
-                    GcHeapText = "N/A";
+                    pendingDetailSync = false;
+                    MemoryDetailText = UsedMemoryText + " (" + MemoryUsageText + ")";
+                    FormattedLabelCount++;
                 }
-            }
-            else
-            {
-                ulong heapMiB = gcHeapBytes / MiB;
-                ulong heapHundredths = (gcHeapBytes % MiB) * 100UL / MiB;
-                if (lastDisplayedGcHeapBytes == 0 || heapMiB != lastDisplayedGcHeapMiB || heapHundredths != lastDisplayedGcHeapHundredths)
+                else if (pendingDetailSync)
                 {
-                    lastDisplayedGcHeapBytes = gcHeapBytes;
-                    lastDisplayedGcHeapMiB = heapMiB;
-                    lastDisplayedGcHeapHundredths = heapHundredths;
-                    GcHeapText = FormatMiBPrecise(gcHeapBytes);
+                    pendingDetailSync = false;
+                    MemoryDetailText = UsedMemoryText + " (" + MemoryUsageText + ")";
                     FormattedLabelCount++;
                 }
             }
 
-            if (gcCommittedBytes == 0)
+            if (includeFullPoolLabels)
             {
-                if (lastDisplayedGcCommittedBytes != 0)
+                if (gcHeapBytes == 0)
                 {
-                    lastDisplayedGcCommittedBytes = 0;
-                    GcCommittedText = "N/A";
+                    if (lastDisplayedGcHeapBytes != 0)
+                    {
+                        lastDisplayedGcHeapBytes = 0;
+                        GcHeapText = "N/A";
+                    }
                 }
-            }
-            else
-            {
-                ulong commMiB = gcCommittedBytes / MiB;
-                ulong commHundredths = (gcCommittedBytes % MiB) * 100UL / MiB;
-                if (lastDisplayedGcCommittedBytes == 0 || commMiB != lastDisplayedGcCommittedMiB || commHundredths != lastDisplayedGcCommittedHundredths)
+                else
                 {
-                    lastDisplayedGcCommittedBytes = gcCommittedBytes;
-                    lastDisplayedGcCommittedMiB = commMiB;
-                    lastDisplayedGcCommittedHundredths = commHundredths;
-                    GcCommittedText = FormatMiBPrecise(gcCommittedBytes);
-                    FormattedLabelCount++;
+                    ulong heapMiB = gcHeapBytes / MiB;
+                    ulong heapHundredths = (gcHeapBytes % MiB) * 100UL / MiB;
+                    if (lastDisplayedGcHeapBytes == 0 || heapMiB != lastDisplayedGcHeapMiB || heapHundredths != lastDisplayedGcHeapHundredths)
+                    {
+                        lastDisplayedGcHeapBytes = gcHeapBytes;
+                        lastDisplayedGcHeapMiB = heapMiB;
+                        lastDisplayedGcHeapHundredths = heapHundredths;
+                        GcHeapText = FormatMiBPrecise(gcHeapBytes);
+                        FormattedLabelCount++;
+                    }
+                }
+
+                if (gcCommittedBytes == 0)
+                {
+                    if (lastDisplayedGcCommittedBytes != 0)
+                    {
+                        lastDisplayedGcCommittedBytes = 0;
+                        GcCommittedText = "N/A";
+                    }
+                }
+                else
+                {
+                    ulong commMiB = gcCommittedBytes / MiB;
+                    ulong commHundredths = (gcCommittedBytes % MiB) * 100UL / MiB;
+                    if (lastDisplayedGcCommittedBytes == 0 || commMiB != lastDisplayedGcCommittedMiB || commHundredths != lastDisplayedGcCommittedHundredths)
+                    {
+                        lastDisplayedGcCommittedBytes = gcCommittedBytes;
+                        lastDisplayedGcCommittedMiB = commMiB;
+                        lastDisplayedGcCommittedHundredths = commHundredths;
+                        GcCommittedText = FormatMiBPrecise(gcCommittedBytes);
+                        FormattedLabelCount++;
+                    }
                 }
             }
 
-            if (physicalInstalledBytes != lastSnapInstalledBytes || physicalUsableBytes != lastSnapUsableBytes || totalPages != lastSnapTotalPages)
+            if (includeDetail && (physicalInstalledBytes != lastSnapInstalledBytes || physicalUsableBytes != lastSnapUsableBytes || totalPages != lastSnapTotalPages))
             {
                 lastSnapInstalledBytes = physicalInstalledBytes;
                 lastSnapUsableBytes = physicalUsableBytes;

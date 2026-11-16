@@ -29,21 +29,63 @@ fi
 
 echo "-> Zamontowano w: $MOUNT_PATH"
 
-# 1. Update boot kernel in both slots and root
+# 1. Update boot kernel in active slot and root while preserving existing A/B fallback slot
 mkdir -p "$MOUNT_PATH/boot/slot_a"
 mkdir -p "$MOUNT_PATH/boot/slot_b"
-echo "-> Kopiowanie nowego kernela do Slotu A ($MOUNT_PATH/boot/slot_a/ZonderqOS.elf)..."
-cp -f "$KERNEL_BIN" "$MOUNT_PATH/boot/slot_a/ZonderqOS.elf"
-echo "-> Kopiowanie nowego kernela do Slotu B ($MOUNT_PATH/boot/slot_b/ZonderqOS.elf)..."
-cp -f "$KERNEL_BIN" "$MOUNT_PATH/boot/slot_b/ZonderqOS.elf"
+
+read_boot_cfg() {
+  local key="$1"
+  local fallback="$2"
+  local cfg="$MOUNT_PATH/boot/boot_state.cfg"
+  if [[ -f "$cfg" ]]; then
+    local val
+    val="$(awk -F= -v k="$key" '$1 ~ "^[[:space:]]*" k "[[:space:]]*$"{gsub(/^[[:space:]]+|[[:space:]\r]+$/,"",$2); print $2; exit}' "$cfg")"
+    if [[ -n "$val" ]]; then
+      printf '%s\n' "$val"
+      return
+    fi
+  fi
+  printf '%s\n' "$fallback"
+}
+
+ACTIVE_SLOT="$(printf '%s' "$(read_boot_cfg "ACTIVE_SLOT" "A")" | tr '[:lower:]' '[:upper:]')"
+if [[ "$ACTIVE_SLOT" == "B" ]]; then
+  ACTIVE_SLOT="B"
+  FALLBACK_SLOT="A"
+  ACTIVE_DIR="slot_b"
+  FALLBACK_DIR="slot_a"
+else
+  ACTIVE_SLOT="A"
+  FALLBACK_SLOT="B"
+  ACTIVE_DIR="slot_a"
+  FALLBACK_DIR="slot_b"
+fi
+
+echo "-> Kopiowanie nowego kernela do aktywnego Slotu $ACTIVE_SLOT ($MOUNT_PATH/boot/$ACTIVE_DIR/ZonderqOS.elf)..."
+cp -f "$KERNEL_BIN" "$MOUNT_PATH/boot/$ACTIVE_DIR/ZonderqOS.elf"
 echo "-> Kopiowanie nowego kernela do /boot/ZonderqOS.elf..."
 cp -f "$KERNEL_BIN" "$MOUNT_PATH/boot/ZonderqOS.elf"
 
 KERNEL_SHA="$(sha256sum "$KERNEL_BIN" | awk '{print $1}')"
-echo "$KERNEL_SHA" > "$MOUNT_PATH/boot/slot_a/kernel.sha256"
-echo "$KERNEL_SHA" > "$MOUNT_PATH/boot/slot_b/kernel.sha256"
+echo "$KERNEL_SHA" > "$MOUNT_PATH/boot/$ACTIVE_DIR/kernel.sha256"
 
-# 2. Update /etc/os-release and /boot/boot_state.cfg to prevent kernel-disk mismatch
+if [[ ! -s "$MOUNT_PATH/boot/$FALLBACK_DIR/ZonderqOS.elf" ]]; then
+  echo "-> Inicjalizacja pustego slota zapasowego $FALLBACK_SLOT ($MOUNT_PATH/boot/$FALLBACK_DIR/ZonderqOS.elf)..."
+  cp -f "$KERNEL_BIN" "$MOUNT_PATH/boot/$FALLBACK_DIR/ZonderqOS.elf"
+  echo "$KERNEL_SHA" > "$MOUNT_PATH/boot/$FALLBACK_DIR/kernel.sha256"
+  FALLBACK_STATUS="Healthy"
+  FALLBACK_VERSION="1.0.2"
+  FALLBACK_BUILD="3120"
+else
+  echo "-> Zachowano istniejacy slot zapasowy $FALLBACK_SLOT ($MOUNT_PATH/boot/$FALLBACK_DIR/ZonderqOS.elf) dla rollbacku A/B."
+  FALLBACK_STATUS="$(read_boot_cfg "SLOT_${FALLBACK_SLOT}_STATUS" "Healthy")"
+  FALLBACK_VERSION="$(read_boot_cfg "SLOT_${FALLBACK_SLOT}_VERSION" "1.0.1")"
+  FALLBACK_BUILD="$(read_boot_cfg "SLOT_${FALLBACK_SLOT}_BUILD" "3100")"
+fi
+
+BOOTGUARD_PREBOOT="$(read_boot_cfg "BOOTGUARD_PREBOOT" "0")"
+
+# 2. Update /etc/os-release and /boot/boot_state.cfg preserving fallback slot rollback metadata
 mkdir -p "$MOUNT_PATH/etc"
 cat > "$MOUNT_PATH/etc/os-release" <<'EOF'
 NAME="ZOnderqOS"
@@ -68,23 +110,41 @@ INSTALLED_BUILD=3120
 LAST_NOTIFIED=
 EOF
 
-cat > "$MOUNT_PATH/boot/boot_state.cfg" <<'EOF'
-ACTIVE_SLOT=A
-FALLBACK_SLOT=B
+if [[ "$ACTIVE_SLOT" == "A" ]]; then
+  SLOT_A_STATUS="Healthy"
+  SLOT_A_VERSION="1.0.2"
+  SLOT_A_BUILD="3120"
+  SLOT_B_STATUS="$FALLBACK_STATUS"
+  SLOT_B_VERSION="$FALLBACK_VERSION"
+  SLOT_B_BUILD="$FALLBACK_BUILD"
+else
+  SLOT_B_STATUS="Healthy"
+  SLOT_B_VERSION="1.0.2"
+  SLOT_B_BUILD="3120"
+  SLOT_A_STATUS="$FALLBACK_STATUS"
+  SLOT_A_VERSION="$FALLBACK_VERSION"
+  SLOT_A_BUILD="$FALLBACK_BUILD"
+fi
+
+cat > "$MOUNT_PATH/boot/boot_state.cfg" <<EOF
+ACTIVE_SLOT=$ACTIVE_SLOT
+FALLBACK_SLOT=$FALLBACK_SLOT
 PENDING_SLOT=
 BOOT_ATTEMPTS=0
+BOOTGUARD_PREBOOT=$BOOTGUARD_PREBOOT
+BOOTGUARD_FALLBACK=0
 MAX_BOOT_ATTEMPTS=3
-SLOT_A_STATUS=Healthy
-SLOT_B_STATUS=Healthy
-SLOT_A_VERSION=1.0.2
-SLOT_A_BUILD=3120
-SLOT_B_VERSION=1.0.2
-SLOT_B_BUILD=3120
+SLOT_A_STATUS=$SLOT_A_STATUS
+SLOT_B_STATUS=$SLOT_B_STATUS
+SLOT_A_VERSION=$SLOT_A_VERSION
+SLOT_A_BUILD=$SLOT_A_BUILD
+SLOT_B_VERSION=$SLOT_B_VERSION
+SLOT_B_BUILD=$SLOT_B_BUILD
 EOF
 
-# 2.5. Write autonomous Limine configuration pointing Entry 1 to active Slot A
+# 2.5. Write autonomous Limine configuration pointing Entry 1 to active slot and Entry 2 to fallback
 mkdir -p "$MOUNT_PATH/boot/limine"
-cat > "$MOUNT_PATH/boot/limine.conf" <<'EOF'
+cat > "$MOUNT_PATH/boot/limine.conf" <<EOF
 # Cosmos Gen3 / Limine v10 A/B dual-slot boot configuration.
 timeout: 2
 default_entry: 1
@@ -92,12 +152,12 @@ default_entry: 1
 /ZOnderqOS
     protocol: limine
     resolution: 1366x768x32
-    path: fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf
+    path: fslabel(ZONDERQDATA):/boot/$ACTIVE_DIR/ZonderqOS.elf
 
-/ZOnderqOS (Poprzednia wersja / Slot B)
+/ZOnderqOS (Poprzednia wersja / Slot $FALLBACK_SLOT)
     protocol: limine
     resolution: 1366x768x32
-    path: fslabel(ZONDERQDATA):/boot/slot_b/ZonderqOS.elf
+    path: fslabel(ZONDERQDATA):/boot/$FALLBACK_DIR/ZonderqOS.elf
 
 /ZOnderqOS (Kopia zapasowa ISO / Ratunkowa)
     protocol: limine

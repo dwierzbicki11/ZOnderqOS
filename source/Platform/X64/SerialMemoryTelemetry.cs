@@ -1,5 +1,6 @@
 using System;
 using Cosmos.Kernel.Core.Memory;
+using Cosmos.Kernel.System.Diagnostics;
 using CosmosGc = Cosmos.Kernel.Core.Memory.GarbageCollector.GarbageCollector;
 
 namespace ZonderqOS.Platform.X64
@@ -147,6 +148,9 @@ namespace ZonderqOS.Platform.X64
                 WriteUInt(gcGen);
                 WriteAscii(" gc_freed=");
                 WriteUInt(gcFreed);
+                ulong threadCount = 0;
+                try { threadCount = (ulong)Math.Max(0, SchedulerDiagnostics.ThreadCount); } catch { }
+
                 WriteAscii(" p_gc=");
                 WriteUInt(pGc);
                 WriteAscii(" p_rat=");
@@ -155,6 +159,8 @@ namespace ZonderqOS.Platform.X64
                 WriteUInt(pSys);
                 WriteAscii(" delta_p=");
                 WriteInt(deltaPages);
+                WriteAscii(" threads=");
+                WriteUInt(threadCount);
                 WriteChar('\n');
             }
             catch { }

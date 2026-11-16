@@ -30,9 +30,11 @@ namespace ZonderqOS.Platform
         public bool VirtualizationSupported;
         public bool CpuidAvailable;
 
+        private static CpuHardwareInfo cachedInfo;
+        private static int cachedCpuCount = -1;
+
         public static CpuHardwareInfo Detect()
         {
-            CpuHardwareInfo info = new CpuHardwareInfo();
             int managedCpuCount = 1;
 
             try
@@ -44,12 +46,19 @@ namespace ZonderqOS.Platform
                 managedCpuCount = 1;
             }
 
+            if (cachedInfo != null && cachedCpuCount == managedCpuCount)
+                return cachedInfo;
+
+            CpuHardwareInfo info = new CpuHardwareInfo();
+
             // Cosmos ARM64 currently exposes the scheduler-managed CPU count.
             // Do not pretend QEMU vCPUs are online until the HAL actually brings
             // secondary processors up and registers them with the scheduler.
             info.PhysicalCores = managedCpuCount;
             info.LogicalProcessors = managedCpuCount;
             info.ThreadsPerCore = 1;
+            cachedCpuCount = managedCpuCount;
+            cachedInfo = info;
             return info;
         }
     }

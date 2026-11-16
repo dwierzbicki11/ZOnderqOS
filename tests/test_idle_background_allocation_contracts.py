@@ -13,6 +13,7 @@ GUARDIAN = (ROOT / "source/Core/MemoryGuardian.cs").read_text()
 LOCK_SCREEN = (ROOT / "source/GUI/LockScreenManager.cs").read_text()
 SERVICE_MGR = (ROOT / "source/Core/Services/ServiceManager.cs").read_text()
 FLASH_ISO = (ROOT / "zonderq-wgraj-iso.sh").read_text()
+DEPLOY_USB = (ROOT / "tools/deploy-to-usb.sh").read_text()
 
 
 class IdleMemoryBackgroundContracts(unittest.TestCase):
@@ -66,6 +67,13 @@ class IdleMemoryBackgroundContracts(unittest.TestCase):
     def test_usb_iso_flasher_syncs_ab_slots_on_zonderqdata(self):
         self.assertIn("/boot/slot_a/ZonderqOS.elf", FLASH_ISO)
         self.assertIn("/boot/slot_b/ZonderqOS.elf", FLASH_ISO)
+        self.assertIn("ACTIVE_SLOT", FLASH_ISO)
+        self.assertIn('! sudo test -s "$MOUNT_DATA$FALLBACK_SLOT_ELF"', FLASH_ISO)
+
+    def test_deploy_to_usb_preserves_existing_fallback_slot(self):
+        self.assertIn('ACTIVE_SLOT="$(printf', DEPLOY_USB)
+        self.assertIn('[[ ! -s "$MOUNT_PATH/boot/$FALLBACK_DIR/ZonderqOS.elf" ]]', DEPLOY_USB)
+        self.assertIn("BOOTGUARD_PREBOOT=$BOOTGUARD_PREBOOT", DEPLOY_USB)
 
     def test_no_forced_gc_was_added(self):
         self.assertNotIn("GC.Collect(", GUARDIAN)
