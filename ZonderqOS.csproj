@@ -19,6 +19,9 @@
          No host disk can receive a write from root setup or icon caches. -->
     <ZonderqRamRoot Condition="'$(ZonderqRamRoot)' == ''">false</ZonderqRamRoot>
     <DefineConstants Condition="'$(ZonderqRamRoot)' == 'true'">$(DefineConstants);ZONDERQ_3094_RAM_ROOT</DefineConstants>
+    <!-- High-risk QEMU RAM-root experiment ONLY; disabled in every production build. -->
+    <ZonderqGcProbe Condition="'$(ZonderqGcProbe)' == ''">false</ZonderqGcProbe>
+    <DefineConstants Condition="'$(ZonderqGcProbe)' == 'true'">$(DefineConstants);ZONDERQ_EXPERIMENTAL_GC_PROBE</DefineConstants>
     <!-- Explicit CI-only ISO: preserve the real Limine framebuffer to exercise
          small display layouts. Production builds never enable this symbol. -->
     <ZonderqGuiTestNativeFramebuffer Condition="'$(ZonderqGuiTestNativeFramebuffer)' == ''">false</ZonderqGuiTestNativeFramebuffer>
@@ -110,6 +113,8 @@
   </ItemGroup>
 
   <Target Name="GuardRamRootProfile" BeforeTargets="CoreCompile">
+    <Error Condition="'$(ZonderqGcProbe)' == 'true' and ('$(ZonderqRamRoot)' != 'true' or '$(CosmosArch)' != 'x64' or '$(ZonderqInputDiagnosticBoot)' == 'true' or '$(ZonderqReadOnlyHardwareProbe)' == 'true')"
+           Text="Experimental GC collection is restricted to x64 RAM-root GUI QEMU test profile. Never use in production or on USB." />
     <Error Condition="'$(ZonderqRamRoot)' == 'true' and '$(ZonderqReadOnlyHardwareProbe)' == 'true'"
            Text="RAM-root GUI and read-only probe are mutually exclusive." />
     <Error Condition="'$(ZonderqRamRoot)' == 'true' and '$(ZonderqInputDiagnosticBoot)' == 'true'"
