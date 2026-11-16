@@ -399,6 +399,7 @@ namespace ZonderqOS
                         }
                         byte[] response = new byte[expected.Length];
                         int received = 0;
+                        int readCalls = 0;
                         // A five-second per-read socket timeout does not
                         // prevent a slow peer from keeping the TCP echo open
                         // indefinitely. Bound the entire response as well.
@@ -425,6 +426,20 @@ namespace ZonderqOS
                             int read = stream.Read(response, received, response.Length - received);
                             if (read <= 0)
                                 break;
+                            // A valid response may be fragmented, but an excessive
+                            // number of tiny reads is a diagnostic failure, not
+                            // evidence of healthy RX progress.
+                            if (++readCalls > 16)
+                            {
+                                Log("[NET3095-N4][FAIL] TCP echo excessive RX fragmentation");
+                                return;
+                            }
+                            long afterReadTicks = Stopwatch.GetTimestamp() - echoStart;
+                            if (afterReadTicks < 0 || afterReadTicks / echoFrequency >= 20)
+                            {
+                                Log("[NET3095-N4][FAIL] TCP echo total deadline exceeded after RX");
+                                return;
+                            }
                             int chunkStart = received;
                             received += read;
                             // Fail at the first corrupted TCP RX fragment rather
