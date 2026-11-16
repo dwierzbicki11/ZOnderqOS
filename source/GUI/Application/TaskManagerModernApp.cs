@@ -161,6 +161,7 @@ namespace ZonderqOS.GUI.Apps
         private bool rawGcEnabled;
 
         private readonly TaskManagerMemoryCache memoryCache;
+        private MemoryOptimizerSnapshot optimizerSnapshot;
         private readonly string baseMaxSpeedText;
 
         private readonly string baseSpeedText;
@@ -580,6 +581,8 @@ namespace ZonderqOS.GUI.Apps
             if (activePage != PagePerformance)
                 return;
             UpdateMemorySnapshot(performanceResource == PerfMemory);
+            if (performanceResource == PerfMemory)
+                optimizerSnapshot = MemoryOptimizer.GetSnapshot();
             if (performanceResource == PerfSystem || (performanceResource == PerfCpu && cpuGraphMode == CpuGraphLogical))
                 UpdateCpuSnapshot();
             if (performanceResource == PerfSystem)
@@ -687,6 +690,8 @@ namespace ZonderqOS.GUI.Apps
             UpdateCpuSnapshot();
             if (activePage == PagePerformance && performanceResource == PerfSystem)
                 UpdateSystemSnapshot();
+            if (forceFullMemory || (activePage == PagePerformance && performanceResource == PerfMemory))
+                optimizerSnapshot = MemoryOptimizer.GetSnapshot();
             // Start the interval after expensive sampling completes, including
             // F5 and toolbar refreshes, rather than immediately sampling again.
             lastRefreshTicks = Stopwatch.GetTimestamp();
@@ -1246,6 +1251,11 @@ namespace ZonderqOS.GUI.Apps
         internal string GcCollectionsText => memoryCache.GcCollectionsText;
         internal string PageBreakdownText => memoryCache.PageBreakdownText;
         internal string GraphicsBuffersText => memoryCache.GraphicsBuffersText;
+        internal ulong OptimizerSamples => (ulong)Math.Max(0L, optimizerSnapshot.Samples);
+        internal ulong OptimizerRequests => (ulong)Math.Max(0L, optimizerSnapshot.Requests);
+        internal ulong OptimizerSweeps => (ulong)Math.Max(0L, optimizerSnapshot.Sweeps);
+        internal ulong OptimizerDetachedBuffers => (ulong)Math.Max(0L, optimizerSnapshot.DetachedBuffers);
+        internal ulong OptimizerCandidateKiB => optimizerSnapshot.CandidateBytes / 1024UL;
         internal string MemoryDeltaText => memoryCache.MemoryDeltaText;
         internal string InstalledRamText => memoryCache.InstalledRamText;
         internal string UsableRamText => memoryCache.UsableRamText;
@@ -2025,6 +2035,11 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.DrawByteSizeSmart(canvas, app.RawGfxBufferBytes, leftValX, stats + 100, Text);
             DrawKeyLabel(canvas, x, stats + 120, half, "DELTA PAMIECI");
             SmallTextRenderer.DrawMemoryDeltaPages(canvas, app.RawDeltaPages, PageAllocator.PageSize, leftValX, stats + 120, Text);
+            // Optimizer counters: numeric drawing avoids a fresh string on
+            // each telemetry refresh. "Candidate" is unrooted cache memory,
+            // NOT physical RAM already reclaimed by OrionGC.
+            DrawKey(canvas, x, stats + 140, half, "MEMOPT PROBKI", app.OptimizerSamples, null);
+            DrawKey(canvas, x, stats + 160, half, "MEMOPT ZADANIA", app.OptimizerRequests, null);
 
             // Cosmos Heap Allocator & GC Diagnostics
             DrawKeyText(canvas, x + half, stats, half, "HEAP UZYTY", app.MemoryDetailText);
@@ -2035,6 +2050,9 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.DrawMiBOrNa(canvas, app.RawGcFragmentedBytes, app.RawGcEnabled, rightValX, stats + 80, Text);
             DrawKeyLabel(canvas, x + half, stats + 100, half, "GC KOLEKCJE / ZWOL.");
             SmallTextRenderer.DrawGcCollections(canvas, app.RawGcCollectionIndex, app.RawGcObjectsFreed, app.RawGcEnabled, rightValX, stats + 100, Text);
+            DrawKey(canvas, x + half, stats + 120, half, "CACHE SWEEPS", app.OptimizerSweeps, null);
+            DrawKey(canvas, x + half, stats + 140, half, "ODPIETE BUFORY", app.OptimizerDetachedBuffers, null);
+            DrawKey(canvas, x + half, stats + 160, half, "GC KANDYDAT KiB", app.OptimizerCandidateKiB, null);
         }
 
         private void RenderSystem(Canvas canvas, int x, int y, int width)

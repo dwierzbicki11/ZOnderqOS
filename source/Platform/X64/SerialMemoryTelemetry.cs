@@ -161,6 +161,21 @@ namespace ZonderqOS.Platform.X64
                 WriteInt(deltaPages);
                 WriteAscii(" threads=");
                 WriteUInt(threadCount);
+
+                // Optimizer counters are numeric/readonly and do not allocate
+                // strings or touch FAT32. Candidate bytes are GC-eligible cache
+                // references, NOT proof of returned PageAllocator pages.
+                var optimizer = global::ZonderqOS.SystemCore.MemoryOptimizer.GetSnapshot();
+                WriteAscii(" mo_checks=");
+                WriteUInt((ulong)optimizer.Samples);
+                WriteAscii(" mo_req=");
+                WriteUInt((ulong)optimizer.Requests);
+                WriteAscii(" mo_sweep=");
+                WriteUInt((ulong)optimizer.Sweeps);
+                WriteAscii(" mo_detached=");
+                WriteUInt((ulong)optimizer.DetachedBuffers);
+                WriteAscii(" mo_candidate_kb=");
+                WriteUInt(optimizer.CandidateBytes / 1024UL);
                 WriteChar('\n');
             }
             catch { }
