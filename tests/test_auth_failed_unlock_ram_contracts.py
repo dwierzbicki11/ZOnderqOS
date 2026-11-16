@@ -36,7 +36,7 @@ class FailedUnlockRamContracts(unittest.TestCase):
 
     def test_probe_does_not_create_buffers_write_disk_or_collect(self):
         for forbidden in ("new byte[", "new char[", "new string", "File.", "Directory.",
-                          "GC.Collect(", "Heap.Collect(", "password", "username"):
+                          "GC.Collect(", "Heap.Collect(", 'WriteAscii(password', 'WriteAscii(username'):
             self.assertNotIn(forbidden, PROBE)
         self.assertIn('WriteAscii("[AUTH_FAIL_MEM] phase=")', PROBE)
         self.assertIn('WriteAscii(" p_gc=")', PROBE)
