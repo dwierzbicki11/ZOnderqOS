@@ -1176,14 +1176,26 @@ namespace ZonderqOS.GUI
             if (!SecurityContext.IsAuthenticated || canvas == null)
                 return false;
 
+#if !ZONDERQ_ARCH_ARM64
+            global::ZonderqOS.Platform.X64.SerialMemoryTelemetry.TraceLockPhase("before_lock_log");
+#endif
             SecurityLogger.LogEvent("INFO", "Graphical session locked for user " +
                 SecurityContext.CurrentUser + ".");
+#if !ZONDERQ_ARCH_ARM64
+            global::ZonderqOS.Platform.X64.SerialMemoryTelemetry.TraceLockPhase("after_lock_log");
+#endif
             bool unlocked = LockScreenManager.Run(canvas);
+#if !ZONDERQ_ARCH_ARM64
+            global::ZonderqOS.Platform.X64.SerialMemoryTelemetry.TraceLockPhase("after_lock_screen");
+#endif
             if (unlocked)
             {
                 SessionManager.MarkUnlock();
                 SecurityLogger.LogEvent("INFO", "Graphical session unlocked for user " +
                     SecurityContext.CurrentUser + ".");
+#if !ZONDERQ_ARCH_ARM64
+                global::ZonderqOS.Platform.X64.SerialMemoryTelemetry.TraceLockPhase("after_unlock_log");
+#endif
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Security,
                     "BEZPIECZENSTWO",
