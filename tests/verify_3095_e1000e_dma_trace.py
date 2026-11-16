@@ -42,8 +42,9 @@ def count_dma(stderr: str) -> tuple[int, int, int, int]:
         raise ValueError("bare carriage return in QEMU DMA trace")
     # Terminal control bytes can erase or rewrite displayed evidence in logs.
     # QEMU DMA trace records are printable ASCII plus line endings only.
-    if any(ord(char) < 32 and char not in "\r\n" for char in stderr):
-        raise ValueError("control byte in QEMU DMA trace")
+    if any((ord(char) < 32 and char not in "\r\n") or ord(char) > 126
+           for char in stderr):
+        raise ValueError("non-printable or non-ASCII character in QEMU DMA trace")
     for line in stderr.replace("\r\n", "\n").split("\n"):
         # Do not promote indented or padded log text into authentic trace events.
         if TERMINATED.match(line):
@@ -221,11 +222,11 @@ def self_test() -> None:
             raise AssertionError("accepted carriage-return trace injection")
     # Reject terminal escape/backspace/NUL spoofing even when the malicious
     # bytes occur on an otherwise unrelated line beside valid DMA events.
-    for control in ("\x00", "\x08", "\x09", "\x1b[2K"):
+    for control in ("\x00", "\x08", "\x09", "\x1b[2K", "\x7f", "\u202e", "\u2066", "\ufffd"):
         try:
             report(trace + "unrelated" + control + "\n")
         except ValueError as exc:
-            assert "control byte" in str(exc)
+            assert "non-printable or non-ASCII" in str(exc)
         else:
             raise AssertionError("accepted terminal control-byte injection")
     # Ordinary CRLF logs remain valid; no terminal control bytes are needed.
