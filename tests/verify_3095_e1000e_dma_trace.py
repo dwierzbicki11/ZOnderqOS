@@ -40,6 +40,10 @@ def count_dma(stderr: str) -> tuple[int, int, int, int]:
     # Bare CR can overwrite a visible trace line; do not erase it before parsing.
     if "\r" in stderr.replace("\r\n", ""):
         raise ValueError("bare carriage return in QEMU DMA trace")
+    # Terminal control bytes can erase or rewrite displayed evidence in logs.
+    # QEMU DMA trace records are printable ASCII plus line endings only.
+    if any(ord(char) < 32 and char not in "\r\n" for char in stderr):
+        raise ValueError("control byte in QEMU DMA trace")
     for line in stderr.replace("\r\n", "\n").split("\n"):
         line = line.strip()
         if TERMINATED.match(line):
@@ -215,6 +219,17 @@ def self_test() -> None:
             assert "bare carriage return" in str(exc)
         else:
             raise AssertionError("accepted carriage-return trace injection")
+    # Reject terminal escape/backspace/NUL spoofing even when the malicious
+    # bytes occur on an otherwise unrelated line beside valid DMA events.
+    for control in ("\x00", "\x08", "\x09", "\x1b[2K"):
+        try:
+            report(trace + "unrelated" + control + "\n")
+        except ValueError as exc:
+            assert "control byte" in str(exc)
+        else:
+            raise AssertionError("accepted terminal control-byte injection")
+    # Ordinary CRLF logs remain valid; no terminal control bytes are needed.
+    assert count_dma(trace.replace("\n", "\r\n")) == (128, 1, 64, 1)
     # Do not count events after the emulator has terminated.
     assert count_dma(trace + "qemu-system-x86_64: terminating on signal 15\n" + trace) == (128, 1, 64, 1)
     # QEMU -trace may timestamp the termination record; subsequent lines
