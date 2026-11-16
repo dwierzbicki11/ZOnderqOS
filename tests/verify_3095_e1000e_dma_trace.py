@@ -45,7 +45,7 @@ def count_dma(stderr: str) -> tuple[int, int, int, int]:
     if any(ord(char) < 32 and char not in "\r\n" for char in stderr):
         raise ValueError("control byte in QEMU DMA trace")
     for line in stderr.replace("\r\n", "\n").split("\n"):
-        line = line.strip()
+        # Do not promote indented or padded log text into authentic trace events.
         if TERMINATED.match(line):
             break
         match = TX.fullmatch(line)
@@ -242,6 +242,10 @@ def self_test() -> None:
     else:
         raise AssertionError("accepted RX evidence after timestamped QEMU termination")
     assert count_dma("unrelated e1000e_tx_descr 0x1 : 1 1\n") == (0, 0, 0, 0)
+    # Leading/trailing whitespace must not authenticate a forged QEMU event.
+    assert count_dma((" " + tx) * 128 + write + commit) == (0, 1, 64, 1)
+    assert count_dma(tx * 128 + " " + write + commit) == (128, 0, 0, 0)
+    assert count_dma(tx * 128 + write + commit.rstrip("\n") + " \n") == (128, 1, 64, 0)
     for min_tx, min_rx in ((0, 1), (128, 0), (128, -1)):
         try:
             report(trace, min_tx=min_tx, min_rx_commits=min_rx)
