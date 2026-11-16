@@ -52,9 +52,12 @@ namespace ZonderqOS.SystemCore
             lock (Gate)
             {
                 hasBaseline = false;
-                // Reset the startup baseline. Boot allocations must not cause a
-                // spurious trim after the authenticated desktop becomes ready.
+                // Reset session baselines and timers. Boot/lock allocations must
+                // not trigger a spurious trim or delta after desktop becomes ready.
                 lastRequestTicks = 0;
+                lastSampleTicks = 0;
+                lastUsedPages = 0;
+                lastDeltaPages = 0;
             }
         }
 
@@ -121,9 +124,18 @@ namespace ZonderqOS.SystemCore
                     Volatile.Read(ref pendingTrim) != 0)
                     return;
 
-                if (lastRequestTicks > 0 && nowTicks >= lastRequestTicks &&
-                    nowTicks - lastRequestTicks < cooldown)
-                    return;
+                if (lastRequestTicks > 0)
+                {
+                    if (nowTicks < lastRequestTicks)
+                    {
+                        // Guard against backward tick jitter so cooldown is never bypassed.
+                        lastRequestTicks = nowTicks;
+                        return;
+                    }
+
+                    if (nowTicks - lastRequestTicks < cooldown)
+                        return;
+                }
 
                 if (Interlocked.CompareExchange(ref pendingTrim, 1, 0) != 0)
                     return;

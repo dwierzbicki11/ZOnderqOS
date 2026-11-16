@@ -672,6 +672,17 @@ namespace ZonderqOS.GUI.Apps
         {
             if (applicationManager == null)
                 return;
+
+            for (int i = 0; i < applicationManager.Applications.Count; i++)
+            {
+                if (applicationManager.Applications[i] is TaskManagerModernApp existing && existing.IsRunning)
+                {
+                    applicationManager.Activate(existing);
+                    SetStatus("OTWARTO MANAGER ZADAN", Good);
+                    return;
+                }
+            }
+
             applicationManager.Launch(new TaskManagerModernApp(Window.X + 40, Window.Y + 30, applicationManager, null));
             SetStatus("OTWARTO MANAGER ZADAN", Good);
         }

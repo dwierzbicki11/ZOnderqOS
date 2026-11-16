@@ -27,6 +27,10 @@ namespace ZonderqOS.GUI.Apps
         private ulong gcCollections;
         private ulong uptimeSeconds;
         private HardwareSnapshot hardwareSnapshot;
+        private string cachedTopologyText = "0 / 0 / 0";
+        private string cachedCacheText = "0 B / 0 B / 0 B";
+        private string cachedMemoryStatus = "ORIONGC: COMMITTED 0 MB; RECZNE COLLECT ZABLOKOWANE";
+        private ulong lastStatusGcCommittedMb = ulong.MaxValue;
 
         private int pageMode; // 0 kernel, 1 memory/gc, 2 hardware
 
@@ -87,19 +91,23 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderHardware(Canvas canvas)
         {
-            HardwareSnapshot info = hardwareSnapshot ?? HardwareSnapshot.Capture();
+            HardwareSnapshot info = hardwareSnapshot;
+            if (info == null)
+            {
+                info = HardwareSnapshot.Capture();
+                hardwareSnapshot = info;
+                UpdateHardwareStrings(info);
+            }
             DrawRow(canvas, 1, IconType.Settings,
                 "ARCHITEKTURA", "Backend platformy", info.Architecture, Text);
             DrawRow(canvas, 2, IconType.Settings,
                 "CPU", info.CpuVendor, info.CpuBrand, Text);
             DrawRow(canvas, 3, IconType.Settings,
                 "TOPOLOGIA", "Rdzenie / logiczne / watki na rdzen",
-                info.PhysicalCores + " / " + info.LogicalProcessors + " / " + info.ThreadsPerCore, Text);
+                cachedTopologyText, Text);
             DrawRow(canvas, 4, IconType.Settings,
                 "CACHE", "L1 / L2 / L3",
-                FormatHardwareBytes(info.L1Bytes) + " / " +
-                FormatHardwareBytes(info.L2Bytes) + " / " +
-                FormatHardwareBytes(info.L3Bytes), Text);
+                cachedCacheText, Text);
             DrawRow(canvas, 5, IconType.Settings,
                 "WIRTUALIZACJA",
                 info.HypervisorPresent ? "Wykryto hypervisor" : "Brak wykrytego hypervisora",
@@ -107,6 +115,17 @@ namespace ZonderqOS.GUI.Apps
             DrawRow(canvas, 6, IconType.Settings,
                 "FEATURES", "Flagi CPU raportowane przez backend platformy",
                 info.CpuFeatures, Text);
+        }
+
+        private void UpdateHardwareStrings(HardwareSnapshot info)
+        {
+            if (info == null)
+                return;
+
+            cachedTopologyText = info.PhysicalCores + " / " + info.LogicalProcessors + " / " + info.ThreadsPerCore;
+            cachedCacheText = FormatHardwareBytes(info.L1Bytes) + " / " +
+                              FormatHardwareBytes(info.L2Bytes) + " / " +
+                              FormatHardwareBytes(info.L3Bytes);
         }
 
         private static string FormatHardwareBytes(ulong bytes)
@@ -183,12 +202,23 @@ namespace ZonderqOS.GUI.Apps
                 uptimeSeconds = 0;
             }
 
-            hardwareSnapshot = HardwareSnapshot.Capture();
+            if (hardwareSnapshot == null)
+            {
+                hardwareSnapshot = HardwareSnapshot.Capture();
+                UpdateHardwareStrings(hardwareSnapshot);
+            }
 
             if (pageMode == 0)
                 SetStatus("KERNEL: ODCZYT TYLKO - BRAK RYZYKOWNYCH ZMIAN SCHEDULERA", Good);
             else if (pageMode == 1)
-                SetStatus("ORIONGC: COMMITTED " + gcCommittedMb + " MB; RECZNE COLLECT ZABLOKOWANE", Warning);
+            {
+                if (lastStatusGcCommittedMb != gcCommittedMb)
+                {
+                    lastStatusGcCommittedMb = gcCommittedMb;
+                    cachedMemoryStatus = "ORIONGC: COMMITTED " + gcCommittedMb + " MB; RECZNE COLLECT ZABLOKOWANE";
+                }
+                SetStatus(cachedMemoryStatus, Warning);
+            }
             else
                 SetStatus("HARDWARE: SNAPSHOT TYLKO DO ODCZYTU", Good);
         }

@@ -16,13 +16,36 @@ namespace ZonderqOS.Platform.X64
         private static long lastSampleTicks = -1;
         private static ulong prevUsedPages = 0;
         private static bool hasPrevSample = false;
+        private static int com1TimeoutStreak = 0;
+        private static bool com1Unavailable = false;
 
         public static void WriteChar(char c)
         {
+            if (com1Unavailable)
+                return;
+
             try
             {
+                byte lsr = X64PortIo.ReadByte(Com1LineStatus);
+                // Floating LPC/ISA bus without physical UART reads all 1s.
+                if (lsr == 0xFF)
+                {
+                    com1Unavailable = true;
+                    return;
+                }
+
                 int spin = 10000;
-                while ((X64PortIo.ReadByte(Com1LineStatus) & 0x20) == 0 && --spin > 0) { }
+                while ((lsr & 0x20) == 0 && --spin > 0)
+                    lsr = X64PortIo.ReadByte(Com1LineStatus);
+
+                if (spin == 0)
+                {
+                    if (++com1TimeoutStreak >= 4)
+                        com1Unavailable = true;
+                    return;
+                }
+
+                com1TimeoutStreak = 0;
                 X64PortIo.WriteByte(Com1Data, (byte)c);
             }
             catch { }

@@ -14,13 +14,19 @@ from pathlib import Path
 from pyfatfs.PyFatFS import PyFatFS
 
 ROOT = Path("/home/zonderq/Pulpit/ZOnderqOS")
+DEFAULT_OUTPUT_ISO = ROOT / "output-x64/ZonderqOS.iso"
+DEFAULT_OUTPUT_ELF = ROOT / "output-x64/ZonderqOS.elf"
 DEFAULT_DEBUG_ISO = ROOT / "bin/Debug/net10.0/linux-x64/cosmos/ZonderqOS.iso"
 DEFAULT_DEBUG_ELF = ROOT / "obj/Debug/net10.0/linux-x64/cosmos/iso_root/boot/ZonderqOS.elf"
 DEFAULT_RELEASE_ISO = ROOT / "bin/Release/net10.0/linux-x64/cosmos/ZonderqOS.iso"
 DEFAULT_RELEASE_ELF = ROOT / "obj/Release/net10.0/linux-x64/cosmos/iso_root/boot/ZonderqOS.elf"
 
-ISO = DEFAULT_DEBUG_ISO if DEFAULT_DEBUG_ISO.exists() else DEFAULT_RELEASE_ISO
-KERNEL_ELF = DEFAULT_DEBUG_ELF if DEFAULT_DEBUG_ELF.exists() else DEFAULT_RELEASE_ELF
+ISO = DEFAULT_OUTPUT_ISO if DEFAULT_OUTPUT_ISO.exists() else (
+    DEFAULT_DEBUG_ISO if DEFAULT_DEBUG_ISO.exists() else DEFAULT_RELEASE_ISO
+)
+KERNEL_ELF = DEFAULT_OUTPUT_ELF if DEFAULT_OUTPUT_ELF.exists() else (
+    DEFAULT_DEBUG_ELF if DEFAULT_DEBUG_ELF.exists() else DEFAULT_RELEASE_ELF
+)
 
 
 def prepare_disk(disk_path, kernel_elf=None):
@@ -247,7 +253,7 @@ def setup_workload(channel, workload, cycles=8):
         time.sleep(2.0)
 
 
-def run_scenario(scenario_name, smp=1, duration_sec=300, out_dir=None, iso_path=None, kernel_elf=None, cycles=8, workload=None):
+def run_scenario(scenario_name, smp=1, duration_sec=300, out_dir=None, iso_path=None, kernel_elf=None, cycles=8, workload=None, ram="2048M"):
     iso = Path(iso_path) if iso_path else ISO
     elf = Path(kernel_elf) if kernel_elf else KERNEL_ELF
     if not iso.exists():
@@ -276,7 +282,7 @@ def run_scenario(scenario_name, smp=1, duration_sec=300, out_dir=None, iso_path=
     cmd = [
         "qemu-system-x86_64",
         "-M", "q35", "-accel", "tcg", "-cpu", "Nehalem",
-        "-smp", str(smp), "-m", "2048M",
+        "-smp", str(smp), "-m", ram,
         "-vga", "std",
         "-drive", f"file={iso},if=none,id=cosmoscd,format=raw,readonly=on",
         "-device", "ide-cd,drive=cosmoscd,bootindex=0", "-boot", "d",
@@ -454,6 +460,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--scenario", default="B", choices=["A", "B", "C", "D", "E", "F", "ALL"])
     parser.add_argument("--smp", type=int, default=None)
+    parser.add_argument("--ram", default="2048M")
     parser.add_argument("--duration", type=int, default=300)
     parser.add_argument("--cycles", type=int, default=8)
     parser.add_argument("--workload", default=None, choices=["A", "B", "C", "D", "E"])
@@ -486,6 +493,7 @@ if __name__ == "__main__":
                 kernel_elf=args.kernel,
                 cycles=args.cycles,
                 workload=wl,
+                ram=args.ram,
             )
         with open(base_out / "results_summary.json", "w") as f:
             json.dump(suite, f, indent=2)
@@ -504,6 +512,7 @@ if __name__ == "__main__":
                 kernel_elf=args.kernel,
                 cycles=args.cycles,
                 workload=args.workload or "B",
+                ram=args.ram,
             )
         with open(base_out / "results_summary.json", "w") as f:
             json.dump(suite, f, indent=2)
@@ -518,4 +527,5 @@ if __name__ == "__main__":
             kernel_elf=args.kernel,
             cycles=args.cycles,
             workload=args.workload,
+            ram=args.ram,
         )

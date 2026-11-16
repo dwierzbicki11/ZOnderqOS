@@ -293,6 +293,19 @@ namespace ZonderqOS.GUI.Icons
                 return 0;
 
             int oldCount = scaledCacheCount;
+            bool anyTouchedSinceLastSweep = false;
+            for (int i = 0; i < oldCount; i++)
+            {
+                if (scaledTouchedSinceSweep[i])
+                {
+                    anyTouchedSinceLastSweep = true;
+                    break;
+                }
+            }
+            // Do not evict visible desktop icons if GUI skipped scene redraws across sweeps.
+            if (!anyTouchedSinceLastSweep)
+                return 0;
+
             int write = 0;
             int removed = 0;
 
@@ -334,9 +347,12 @@ namespace ZonderqOS.GUI.Icons
             if (write < MaxScaledCacheEntries)
                 nextScaledEvictionSlot = 0;
 
-            // Compaction changes slot indices; discard hints, never image data.
-            System.Array.Clear(scaledRecentSlots, 0, scaledRecentSlots.Length);
-            System.Array.Clear(scaledPreviousSlots, 0, scaledPreviousSlots.Length);
+            if (removed > 0)
+            {
+                // Compaction changes slot indices; discard hints, never image data.
+                System.Array.Clear(scaledRecentSlots, 0, scaledRecentSlots.Length);
+                System.Array.Clear(scaledPreviousSlots, 0, scaledPreviousSlots.Length);
+            }
             return removed;
         }
 

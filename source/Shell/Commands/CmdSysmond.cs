@@ -1,5 +1,5 @@
 using System;
-using System.IO;
+using System.Threading;
 using Cosmos.Kernel.Core.Memory;
 using ZonderqOS.SystemCore;
 
@@ -8,15 +8,21 @@ namespace ZonderqOS.Commands
     public class CmdSysmond : ICommand
     {
         public string Name { get; } = "sysmond";
-        public string Description { get; } = "Spawns background telemetry daemon (mem logger)";
+        public string Description { get; } = "Spawns background telemetry daemon (in-memory sampler)";
 
-        private const long MaxLogBytes = 64 * 1024;
+        private static long sampleCount;
+        private static ulong lastFreePages;
+        private static ulong lastFreeRamMiB;
+
+        public static long SampleCount => Volatile.Read(ref sampleCount);
+        public static ulong LastFreePages => Volatile.Read(ref lastFreePages);
+        public static ulong LastFreeRamMiB => Volatile.Read(ref lastFreeRamMiB);
 
         public void Execute(string[] args, ref string currentPath)
         {
             if (ProcessManager.IsRunning("sysmond"))
             {
-                CommandIO.WriteLine("[INFO] Demon sysmond już działa.");
+                CommandIO.WriteLine("[INFO] Demon sysmond już działa (próbki: " + SampleCount + ", wolny RAM: " + LastFreeRamMiB + " MB).");
                 CommandIO.LastCommandSuccess = true;
                 return;
             }
@@ -25,29 +31,20 @@ namespace ZonderqOS.Commands
 
             int pid = ProcessManager.Start("sysmond", token =>
             {
-                const string logFile = "/sysmon.log";
-
                 while (!token.IsCancellationRequested)
                 {
+                    // Sample directly into static primitives to avoid periodic
+                    // string allocations and 32 KiB FAT32 cluster buffers.
                     ulong freePages = PageAllocator.FreePageCount;
                     ulong pageSize = PageAllocator.PageSize;
-                    ulong freeRamMiB = (freePages * pageSize) / (1024 * 1024);
-                    string logEntry = $"[DAEMON-TICK] Wolny RAM: {freeRamMiB} MB\n";
+                    ulong freeRamMiB = (freePages * pageSize) / (1024UL * 1024UL);
 
-                    try
-                    {
-                        if (File.Exists(logFile) && new FileInfo(logFile).Length >= MaxLogBytes)
-                            File.WriteAllText(logFile, "=== sysmond log rotated ===\n");
+                    Volatile.Write(ref lastFreePages, freePages);
+                    Volatile.Write(ref lastFreeRamMiB, freeRamMiB);
+                    Interlocked.Increment(ref sampleCount);
 
-                        File.AppendAllText(logFile, logEntry);
-                    }
-                    catch
-                    {
-                        // Telemetria nie może zatrzymać procesu sysmond.
-                    }
-
-                    if (token.WaitHandle.WaitOne(10000))
-                        break;
+                    for (int i = 0; i < 20 && !token.IsCancellationRequested; i++)
+                        Thread.Sleep(500);
                 }
             });
 
