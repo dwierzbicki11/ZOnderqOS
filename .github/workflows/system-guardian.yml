@@ -42,6 +42,17 @@ jobs:
       - name: Clean architecture outputs
         run: rm -rf bin obj
 
+      - name: Compile x64 RAM-root experimental GC probe
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 -p:ZonderqRamRoot=true -p:ZonderqGcProbe=true --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-x64 -p:CosmosArch=x64 -p:ZonderqRamRoot=true -p:ZonderqGcProbe=true -p:GeneratePackageOnBuild=false
+
+      - name: Check experimental GC safeguards
+        run: python3 -m unittest discover -s tests -p 'test_oriongc_collect_probe_contracts.py' -v
+
+      - name: Clean experimental architecture outputs
+        run: rm -rf bin obj
+
       - name: Compile ARM64
         run: |
           dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 --force --no-cache
