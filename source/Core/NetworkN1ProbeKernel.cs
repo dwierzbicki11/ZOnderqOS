@@ -129,7 +129,18 @@ namespace ZonderqOS
                 " resources=" + n1DriverNode.HeldResourceCount +
                 " irq_sources=" + n1DriverNode.InterruptCount +
                 " handler_faults=0 isr_executions=unknown");
-            bool queued = NetworkManager.Send(frame, frame.Length);
+            bool queued;
+            try
+            {
+                queued = NetworkManager.Send(frame, frame.Length);
+            }
+            catch (Exception ex)
+            {
+                // A failing DMA/driver transmit must not escape BeforeRun
+                // and be mistaken for a successful QEMU TX proof.
+                Log("[NET3095-N1][FAIL] E1000E TX exception=" + ex.GetType().Name);
+                return;
+            }
             Log("[NET3095-N1] TX_QUEUED=" + (queued ? "yes" : "no"));
             if (!queued)
             {
