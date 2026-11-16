@@ -328,6 +328,9 @@ namespace ZonderqOS.GUI
                 }
 
                 bool ok;
+#if ZONDERQ_AUTH_FAIL_MEM_DIAG
+                global::ZonderqOS.Platform.X64.AuthFailureMemoryProbe.Mark("before_verify");
+#endif
                 try
                 {
                     ok = UserManager.ValidateCredentialsChars(username, password, passwordLength);
@@ -349,9 +352,18 @@ namespace ZonderqOS.GUI
                     return;
                 }
 
+#if ZONDERQ_AUTH_FAIL_MEM_DIAG
+                global::ZonderqOS.Platform.X64.AuthFailureMemoryProbe.Mark("after_verify_fail");
+#endif
                 AuthenticationGuard.RecordFailure(username);
                 retryAfter = AuthenticationGuard.GetRetryAfterSeconds(username);
+#if ZONDERQ_AUTH_FAIL_MEM_DIAG
+                global::ZonderqOS.Platform.X64.AuthFailureMemoryProbe.Mark("before_failure_log");
+#endif
                 SecurityLogger.LogEvent("WARN", "Failed graphical unlock attempt for user '" + username + "'.");
+#if ZONDERQ_AUTH_FAIL_MEM_DIAG
+                global::ZonderqOS.Platform.X64.AuthFailureMemoryProbe.Mark("after_failure_log");
+#endif
                 if (retryAfter > 0)
                     SetStatus("NIEPRAWIDLOWE HASLO - BLOKADA " + retryAfter + " S", Danger);
                 else

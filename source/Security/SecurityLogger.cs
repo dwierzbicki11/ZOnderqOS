@@ -113,8 +113,17 @@ namespace ZonderqOS
 
         public static void LogEvent(string severity, string message)
         {
+#if ZONDERQ_AUTH_FAIL_MEM_DIAG
+            bool traceBadUnlock = string.Equals(severity, "WARN", StringComparison.Ordinal) &&
+                message != null && message.StartsWith("Failed graphical unlock attempt for user '", StringComparison.Ordinal);
+            if (traceBadUnlock)
+                global::ZonderqOS.Platform.X64.AuthFailureMemoryProbe.Mark("before_system_log");
+#endif
             SystemLogger.Log(MapSeverity(severity), "SEC", message);
-
+#if ZONDERQ_AUTH_FAIL_MEM_DIAG
+            if (traceBadUnlock)
+                global::ZonderqOS.Platform.X64.AuthFailureMemoryProbe.Mark("after_system_log");
+#endif
             try
             {
                 string currentUser = SecurityContext.CurrentUser ?? "unknown";
@@ -123,7 +132,15 @@ namespace ZonderqOS
                 lock (Sync)
                 {
                     FlushPendingLocked();
+#if ZONDERQ_AUTH_FAIL_MEM_DIAG
+                    if (traceBadUnlock)
+                        global::ZonderqOS.Platform.X64.AuthFailureMemoryProbe.Mark("after_auth_queue_flush");
+#endif
                     AppendFormattedEntryLocked(logEntry);
+#if ZONDERQ_AUTH_FAIL_MEM_DIAG
+                    if (traceBadUnlock)
+                        global::ZonderqOS.Platform.X64.AuthFailureMemoryProbe.Mark("after_auth_log_write");
+#endif
                 }
             }
             catch

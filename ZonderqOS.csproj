@@ -19,6 +19,9 @@
          No host disk can receive a write from root setup or icon caches. -->
     <ZonderqRamRoot Condition="'$(ZonderqRamRoot)' == ''">false</ZonderqRamRoot>
     <DefineConstants Condition="'$(ZonderqRamRoot)' == 'true'">$(DefineConstants);ZONDERQ_3094_RAM_ROOT</DefineConstants>
+    <!-- Experimental auth failure RAM trace, QEMU RAM-root only, OFF by default. -->
+    <ZonderqAuthFailMemoryProbe Condition="'$(ZonderqAuthFailMemoryProbe)' == ''">false</ZonderqAuthFailMemoryProbe>
+    <DefineConstants Condition="'$(ZonderqAuthFailMemoryProbe)' == 'true'">$(DefineConstants);ZONDERQ_AUTH_FAIL_MEM_DIAG</DefineConstants>
     <!-- Explicit CI-only ISO: preserve the real Limine framebuffer to exercise
          small display layouts. Production builds never enable this symbol. -->
     <ZonderqGuiTestNativeFramebuffer Condition="'$(ZonderqGuiTestNativeFramebuffer)' == ''">false</ZonderqGuiTestNativeFramebuffer>
@@ -110,6 +113,8 @@
   </ItemGroup>
 
   <Target Name="GuardRamRootProfile" BeforeTargets="CoreCompile">
+    <Error Condition="'$(ZonderqAuthFailMemoryProbe)' == 'true' and ('$(ZonderqRamRoot)' != 'true' or '$(CosmosArch)' != 'x64')"
+           Text="Auth failure RAM probe is restricted to explicit x64 RAM-root diagnostic QEMU builds; NEVER flash to hardware." />
     <Error Condition="'$(ZonderqRamRoot)' == 'true' and '$(ZonderqReadOnlyHardwareProbe)' == 'true'"
            Text="RAM-root GUI and read-only probe are mutually exclusive." />
     <Error Condition="'$(ZonderqRamRoot)' == 'true' and '$(ZonderqInputDiagnosticBoot)' == 'true'"
