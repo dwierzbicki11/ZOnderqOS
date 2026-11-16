@@ -1249,8 +1249,24 @@ namespace ZonderqOS
                 // stale DMA content, truncation and wrong lengths must fail.
                 for (int offset = 17 + tag.Length; offset < frameLength; offset++)
                     burst[offset] = (byte)((sequence * 17 + offset) & 0xFF);
-                if (!NetworkManager.Send(burst, frameLength))
+                bool queued;
+                try
+                {
+                    queued = NetworkManager.Send(burst, frameLength);
+                }
+                catch (Exception ex)
+                {
+                    // A TX ring/DMA fault during the 128-frame stress must
+                    // fail this isolated probe, not escape into the kernel loop.
+                    Log("[NET3095-N6][FAIL] TX burst exception seq=" + sequence +
+                        " type=" + ex.GetType().Name);
                     return false;
+                }
+                if (!queued)
+                {
+                    Log("[NET3095-N6][FAIL] TX burst queue rejected seq=" + sequence);
+                    return false;
+                }
                 Thread.Sleep(5);
             }
             // Include the final descriptor cycle, not just the pre-send
