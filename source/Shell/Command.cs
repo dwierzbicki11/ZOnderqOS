@@ -47,6 +47,9 @@ namespace ZonderqOS
             Register(new CmdPgrep()); Register(new CmdKillall()); Register(new CmdHtop());
             Register(new CmdSmtCheck()); Register(new CmdSysmond()); Register(new CmdKill());
             Register(new CmdEnv()); Register(new CmdExport());
+#if ZONDERQ_EXPERIMENTAL_GC_PROBE
+            Register(new CmdGcProbe());
+#endif
             Register(new CmdLocale());
             Register(new CmdNeofetch()); Register(new CmdMatrix());
         }
