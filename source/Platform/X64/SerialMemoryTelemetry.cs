@@ -70,6 +70,38 @@ namespace ZonderqOS.Platform.X64
             }
         }
 
+        /// <summary>
+        /// One-shot, allocation-free lock/unlock checkpoint. Pair with the
+        /// periodic [MEM_SAMPLE] lines to distinguish an entry-time step
+        /// from continuous growth while the lock screen is idle.
+        /// Does not perform filesystem IO or trigger GC.
+        /// </summary>
+        public static void TraceLockPhase(string phase)
+        {
+            try
+            {
+                ulong totalPages = PageAllocator.TotalPageCount;
+                ulong freePages = PageAllocator.FreePageCount;
+                ulong usedPages = totalPages >= freePages ? totalPages - freePages : 0;
+
+                WriteAscii("[LOCK_MEM] phase=");
+                WriteAscii(phase);
+                WriteAscii(" used_p=");
+                WriteUInt(usedPages);
+                WriteAscii(" free_p=");
+                WriteUInt(freePages);
+                WriteAscii(" gc_heap_kb=");
+                WriteUInt(CosmosGc.IsEnabled ? CosmosGc.GetHeapSizeBytes() / 1024UL : 0UL);
+                WriteAscii(" gc_comm_kb=");
+                WriteUInt(CosmosGc.IsEnabled ? CosmosGc.GetTotalCommittedBytes() / 1024UL : 0UL);
+                WriteChar('\n');
+            }
+            catch
+            {
+                // Telemetry must never change the lock screen's security flow.
+            }
+        }
+
         public static void SampleIfDue(long nowTicks, long frequency)
         {
             if (frequency <= 0) return;
