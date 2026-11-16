@@ -10,11 +10,12 @@ namespace ZonderqOS.Commands
         public string Description => "Change working directory";
         public void Execute(string[] args, ref string currentPath)
         {
-            if (args.Length > 1)
+            CommandIO.LastCommandSuccess = false;
+            try
             {
-                string newPath = PathResolver.GetAbsolutePath(currentPath, args[1]);
-                try
+                if (args.Length > 1)
                 {
+                    string newPath = PathResolver.GetAbsolutePath(currentPath, args[1]);
                     if (newPath == "/" || newPath == "") { currentPath = "/"; CommandIO.LastCommandSuccess = true; return; }
 
                     if (VirtualFs.IsVirtualPath(newPath))
@@ -43,16 +44,15 @@ namespace ZonderqOS.Commands
                         CommandIO.LastCommandSuccess = false;
                     }
                 }
-                catch (Exception ex) 
-                { 
-                    WriteMessage.WriteError($"VFS navigation error: {ex.Message}", "CMD"); 
-                    CommandIO.LastCommandSuccess = false;
+                else
+                {
+                    WriteMessage.WriteError("Usage: cd <path>", "CMD");
                 }
             }
-            else 
+            catch (Exception ex)
             {
-                WriteMessage.WriteError("Usage: cd <path>", "CMD");
                 CommandIO.LastCommandSuccess = false;
+                WriteMessage.WriteError($"VFS navigation error: {ex.Message}", "CMD");
             }
         }
     }

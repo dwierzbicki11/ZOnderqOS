@@ -58,6 +58,7 @@ static class Program
             File.WriteAllText(file, "");
             Run("empty file", file, () => {}, true, "");
             passed += ListingChecks.Run(folder);
+            passed += NavigationChecks.Run(folder);
             Console.WriteLine(passed + " storage read checks passed");
         }
         finally { Directory.Delete(folder, true); }
