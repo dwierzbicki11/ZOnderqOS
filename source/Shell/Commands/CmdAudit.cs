@@ -37,6 +37,7 @@ namespace ZonderqOS.Commands
 
             try
             {
+                SecurityLogger.Flush();
                 if (!File.Exists(logPath))
                 {
                     WriteMessage.WriteError("Audit log file not found.", "SEC");

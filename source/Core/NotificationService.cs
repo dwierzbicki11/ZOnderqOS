@@ -43,6 +43,10 @@ namespace ZonderqOS
         private static int writeIndex;
         private static int count;
         private static int unreadCount;
+        private static readonly char[] TimeTextChars = new char[5] { '0', '0', ':', '0', '0' };
+        private static int lastHour = -1;
+        private static int lastMinute = -1;
+        private static string cachedTimeText = "00:00";
         private static ulong nextId = 1;
         private static int version;
         private static bool doNotDisturb;
@@ -127,7 +131,7 @@ namespace ZonderqOS
                     Source = source,
                     Title = title,
                     Message = message,
-                    TimeText = localTime.ToString("HH:mm"),
+                    TimeText = FormatMinuteCached(localTime.Hour, localTime.Minute),
                     IsRead = false,
                     IsDismissed = false
                 };
@@ -308,10 +312,37 @@ namespace ZonderqOS
             return index;
         }
 
+        private static string FormatMinuteCached(int hour, int minute)
+        {
+            if (hour == lastHour && minute == lastMinute)
+                return cachedTimeText;
+
+            lastHour = hour;
+            lastMinute = minute;
+            TimeTextChars[0] = (char)('0' + (hour / 10) % 10);
+            TimeTextChars[1] = (char)('0' + (hour % 10));
+            TimeTextChars[3] = (char)('0' + (minute / 10) % 10);
+            TimeTextChars[4] = (char)('0' + (minute % 10));
+            cachedTimeText = new string(TimeTextChars);
+            return cachedTimeText;
+        }
+
         private static string Normalize(string value, string fallback, int maxLength)
         {
             if (string.IsNullOrEmpty(value))
                 value = fallback;
+
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+
+            if (value.Length <= maxLength &&
+                !char.IsWhiteSpace(value[0]) &&
+                !char.IsWhiteSpace(value[value.Length - 1]) &&
+                value.IndexOf('\r') < 0 &&
+                value.IndexOf('\n') < 0)
+            {
+                return value;
+            }
 
             value = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
             if (value.Length > maxLength)

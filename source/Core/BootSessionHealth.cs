@@ -253,6 +253,8 @@ namespace ZonderqOS.SystemCore
         {
             BootSessionHealth.MarkCleanExit(reason);
             SystemLogger.Log(SystemLogLevel.Warning, "POWER", "Controlled reboot requested.");
+            SecurityLogger.Flush();
+            SystemLogger.Flush();
             Cosmos.Kernel.System.Power.Reboot();
         }
 
@@ -260,6 +262,8 @@ namespace ZonderqOS.SystemCore
         {
             BootSessionHealth.MarkCleanExit(reason);
             SystemLogger.Log(SystemLogLevel.Warning, "POWER", "Controlled shutdown requested.");
+            SecurityLogger.Flush();
+            SystemLogger.Flush();
 
             // 1. Notify graphical / UI layer to display shutdown screen
             try

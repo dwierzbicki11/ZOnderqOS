@@ -5,6 +5,24 @@ namespace ZonderqOS
 {
     public static class UserManager
     {
+        private struct CachedShadowEntry
+        {
+            public string Username;
+            public int Iterations;
+            public string Salt;
+            public string Hash;
+            public bool IsV2;
+            public string LegacyRaw;
+            public bool Active;
+        }
+
+        private const int MaxCachedCredentials = 32;
+        private static readonly object CredentialCacheSync = new object();
+        private static readonly CachedShadowEntry[] CredentialCache = new CachedShadowEntry[MaxCachedCredentials];
+        private static int cachedCredentialCount;
+        private static bool credentialCacheLoaded;
+        private static bool credentialCacheTruncated;
+
         private const string CredentialVersion = "v2";
         private static readonly string PasswdPath = @"/etc/passwd";
         private static readonly string ShadowPath = @"/etc/shadow";
@@ -23,6 +41,8 @@ namespace ZonderqOS
 
                 if (!File.Exists(ShadowPath))
                     File.WriteAllText(ShadowPath, "root:" + BuildCredential("root") + "\n");
+
+                InvalidateCredentialCache();
             }
             catch (Exception ex)
             {
@@ -117,6 +137,30 @@ namespace ZonderqOS
 
             try
             {
+                CachedShadowEntry cached;
+                bool overflowed;
+                if (TryGetCachedShadowEntry(username, out cached, out overflowed))
+                {
+                    if (cached.IsV2)
+                    {
+                        string computed = Crypto.HashPasswordV2(password, cached.Salt, cached.Iterations);
+                        bool ok = Crypto.FixedTimeEquals(cached.Hash, computed);
+                        computed = null;
+                        return ok;
+                    }
+
+                    bool legacyMatch;
+                    bool validCached = VerifyCredential(password, cached.LegacyRaw, out legacyMatch);
+                    if (!validCached)
+                        return false;
+                    if (legacyMatch)
+                        TryUpgradeLegacyCredential(username, password);
+                    return true;
+                }
+
+                if (!overflowed)
+                    return false;
+
                 if (!File.Exists(ShadowPath))
                     return false;
 
@@ -148,6 +192,153 @@ namespace ZonderqOS
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Zero-allocation credential verification used by LockScreen unlock paths.
+        /// Validates directly from cached struct credentials and a caller char[] buffer.
+        /// </summary>
+        internal static bool ValidateCredentialsChars(string username, char[] passwordChars, int passwordLength)
+        {
+            if (!IsValidUsername(username) || passwordChars == null ||
+                passwordLength < 0 || passwordLength > passwordChars.Length)
+                return false;
+
+            try
+            {
+                CachedShadowEntry cached;
+                bool overflowed;
+                if (TryGetCachedShadowEntry(username, out cached, out overflowed))
+                {
+                    if (cached.IsV2)
+                    {
+                        return Crypto.VerifyPasswordV2(
+                            passwordChars, passwordLength,
+                            cached.Salt, cached.Iterations, cached.Hash);
+                    }
+
+                    string fallbackPass = new string(passwordChars, 0, passwordLength);
+                    bool legacyMatch;
+                    bool validCached = VerifyCredential(fallbackPass, cached.LegacyRaw, out legacyMatch);
+                    if (validCached && legacyMatch)
+                        TryUpgradeLegacyCredential(username, fallbackPass);
+                    fallbackPass = null;
+                    return validCached;
+                }
+
+                if (!overflowed)
+                    return false;
+
+                string overflowPass = new string(passwordChars, 0, passwordLength);
+                bool fallbackOk = ValidateCredentials(username, overflowPass);
+                overflowPass = null;
+                return fallbackOk;
+            }
+            catch (Exception ex)
+            {
+                SecurityLogger.LogEvent("ERR", "Shadow verification error: " + ex.Message);
+                return false;
+            }
+        }
+
+        private static void InvalidateCredentialCache()
+        {
+            lock (CredentialCacheSync)
+            {
+                for (int i = 0; i < CredentialCache.Length; i++)
+                    CredentialCache[i] = default(CachedShadowEntry);
+                cachedCredentialCount = 0;
+                credentialCacheLoaded = false;
+                credentialCacheTruncated = false;
+            }
+        }
+
+        private static bool TryGetCachedShadowEntry(string username, out CachedShadowEntry entry, out bool overflowed)
+        {
+            entry = default(CachedShadowEntry);
+            lock (CredentialCacheSync)
+            {
+                if (!credentialCacheLoaded)
+                    LoadCredentialCacheLocked();
+
+                for (int i = 0; i < cachedCredentialCount; i++)
+                {
+                    if (CredentialCache[i].Active &&
+                        string.Equals(CredentialCache[i].Username, username, StringComparison.Ordinal))
+                    {
+                        entry = CredentialCache[i];
+                        overflowed = false;
+                        return true;
+                    }
+                }
+
+                overflowed = credentialCacheTruncated;
+                return false;
+            }
+        }
+
+        private static void LoadCredentialCacheLocked()
+        {
+            for (int i = 0; i < CredentialCache.Length; i++)
+                CredentialCache[i] = default(CachedShadowEntry);
+            cachedCredentialCount = 0;
+            credentialCacheTruncated = false;
+
+            if (!File.Exists(ShadowPath))
+            {
+                credentialCacheLoaded = true;
+                return;
+            }
+
+            string[] lines = File.ReadAllLines(ShadowPath);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i];
+                int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
+                if (separator <= 0 || separator >= line.Length - 1)
+                    continue;
+
+                if (cachedCredentialCount >= MaxCachedCredentials)
+                {
+                    credentialCacheTruncated = true;
+                    break;
+                }
+
+                string user = line.Substring(0, separator);
+                string credential = line.Substring(separator + 1);
+                CachedShadowEntry item = new CachedShadowEntry
+                {
+                    Username = user,
+                    Active = true
+                };
+
+                if (credential.StartsWith(CredentialVersion + "$", StringComparison.Ordinal))
+                {
+                    string[] parts = credential.Split('$');
+                    int iterations;
+                    if (parts.Length == 4 && parts[0] == CredentialVersion &&
+                        !string.IsNullOrEmpty(parts[2]) && !string.IsNullOrEmpty(parts[3]) &&
+                        Int32.TryParse(parts[1], out iterations) && iterations >= 1 && iterations <= 1000000)
+                    {
+                        item.IsV2 = true;
+                        item.Iterations = iterations;
+                        item.Salt = parts[2];
+                        item.Hash = parts[3];
+                    }
+                    else
+                    {
+                        item.LegacyRaw = credential;
+                    }
+                }
+                else
+                {
+                    item.LegacyRaw = credential;
+                }
+
+                CredentialCache[cachedCredentialCount++] = item;
+            }
+
+            credentialCacheLoaded = true;
         }
 
         public static bool TryStartSession(string username, string password)
@@ -206,6 +397,8 @@ namespace ZonderqOS
             if (SecurityContext.IsAuthenticated)
                 SecurityLogger.LogEvent("INFO", "User '" + user + "' logged out.");
 
+            SecurityLogger.Flush();
+            SystemLogger.Flush();
             PrepareLogin();
         }
 
@@ -277,6 +470,7 @@ namespace ZonderqOS
                 {
                     File.WriteAllText(PasswdPath, AppendLine(oldPasswd, passwdEntry));
                     File.WriteAllText(ShadowPath, AppendLine(oldShadow, shadowEntry));
+                    InvalidateCredentialCache();
                 }
                 catch
                 {
@@ -459,6 +653,7 @@ namespace ZonderqOS
 
             lines[entryIndex] = username + ":" + credential;
             File.WriteAllLines(ShadowPath, lines);
+            InvalidateCredentialCache();
             return true;
         }
 

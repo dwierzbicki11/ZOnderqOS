@@ -17,6 +17,7 @@ namespace ZonderqOS.GUI
     {
         private static CursorDamageRenderer cursorDamageRenderer;
         private static Canvas cursorDamageCanvas;
+        private static readonly LockScreen ReusableScreen = new LockScreen();
 
         public static bool Run(Canvas canvas)
         {
@@ -27,8 +28,9 @@ namespace ZonderqOS.GUI
             try
             {
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
-                LockScreen screen = new LockScreen((int)canvas.Width, (int)canvas.Height,
+                ReusableScreen.Reset((int)canvas.Width, (int)canvas.Height,
                     SecurityContext.CurrentUser);
+                LockScreen screen = ReusableScreen;
 
                 if (cursorDamageRenderer == null || !ReferenceEquals(cursorDamageCanvas, canvas))
                 {
@@ -134,9 +136,9 @@ namespace ZonderqOS.GUI
             private static readonly Color Warning = Color.FromArgb(224, 174, 76);
             private static readonly Color Danger = Color.FromArgb(215, 86, 91);
 
-            private readonly int screenWidth;
-            private readonly int screenHeight;
-            private readonly string username;
+            private int screenWidth;
+            private int screenHeight;
+            private string username = string.Empty;
             private readonly char[] password = new char[MaxPasswordLength];
 
             private int passwordLength;
@@ -145,11 +147,19 @@ namespace ZonderqOS.GUI
 
             public bool Unlocked { get; private set; }
 
-            public LockScreen(int width, int height, string currentUser)
+            public LockScreen()
+            {
+            }
+
+            public void Reset(int width, int height, string currentUser)
             {
                 screenWidth = width;
                 screenHeight = height;
                 username = currentUser ?? string.Empty;
+                ClearPassword();
+                Unlocked = false;
+                status = "SESJA ZABLOKOWANA";
+                statusColor = Muted;
             }
 
             public void ClearSensitiveData()
@@ -317,19 +327,19 @@ namespace ZonderqOS.GUI
                     return;
                 }
 
-                string enteredPassword = new string(password, 0, passwordLength);
-                ClearPassword();
-
                 bool ok;
                 try
                 {
-                    ok = UserManager.ValidateCredentials(username, enteredPassword);
+                    ok = UserManager.ValidateCredentialsChars(username, password, passwordLength);
                 }
                 catch
                 {
                     ok = false;
                 }
-                enteredPassword = null;
+                finally
+                {
+                    ClearPassword();
+                }
 
                 if (ok)
                 {

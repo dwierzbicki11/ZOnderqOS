@@ -103,6 +103,11 @@ namespace ZonderqOS.GUI.Apps
 
             try
             {
+                if (sourceMode == 0)
+                    global::ZonderqOS.SecurityLogger.Flush();
+                else if (sourceMode == 1)
+                    global::ZonderqOS.SystemLogger.Flush();
+
                 string path = CurrentPath;
                 if (!File.Exists(path))
                     return;

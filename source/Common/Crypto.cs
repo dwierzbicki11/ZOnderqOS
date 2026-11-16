@@ -32,6 +32,20 @@ namespace ZonderqOS
         };
 
         private static ulong saltCounter;
+        private static readonly object PbkdfSync = new object();
+        private static readonly byte[] PbkdfTempKey = new byte[256];
+        private static readonly byte[] PbkdfKeyBlock = new byte[64];
+        private static readonly byte[] PbkdfKeyHash = new byte[32];
+        private static readonly byte[] PbkdfIpad = new byte[64];
+        private static readonly byte[] PbkdfOpad = new byte[64];
+        private static readonly byte[] PbkdfData = new byte[128];
+        private static readonly byte[] PbkdfU = new byte[32];
+        private static readonly byte[] PbkdfNextU = new byte[32];
+        private static readonly byte[] PbkdfResult = new byte[32];
+        private static readonly byte[] PbkdfInnerHash = new byte[32];
+        private static readonly byte[] PbkdfInnerBuffer = new byte[192];
+        private static readonly byte[] PbkdfOuterBuffer = new byte[96];
+        private static readonly uint[] PbkdfSchedule = new uint[64];
 
         public static string GenerateSalt()
         {
@@ -168,6 +182,123 @@ namespace ZonderqOS
             for (int i = 0; i < schedule.Length; i++)
                 schedule[i] = 0;
             return hex;
+        }
+
+        /// <summary>
+        /// Zero-allocation PBKDF2-HMAC-SHA256 verification directly from a char[]
+        /// password buffer against an expected uppercase/lowercase 64-char hex digest.
+        /// Keeps plaintext passwords off the managed heap across lock/unlock cycles.
+        /// </summary>
+        public static bool VerifyPasswordV2(char[] passwordChars, int passwordLength,
+            string salt, int iterations, string expectedHex)
+        {
+            if (passwordChars == null || passwordLength < 0 || passwordLength > passwordChars.Length ||
+                salt == null || expectedHex == null || expectedHex.Length != 64 ||
+                iterations < 1 || iterations > 1000000)
+            {
+                return false;
+            }
+
+            if (passwordLength > PbkdfTempKey.Length || salt.Length + 4 > PbkdfData.Length)
+            {
+                string computed = HashPasswordV2(new string(passwordChars, 0, passwordLength), salt, iterations);
+                bool fallbackMatch = FixedTimeEquals(expectedHex, computed);
+                computed = null;
+                return fallbackMatch;
+            }
+
+            lock (PbkdfSync)
+            {
+                try
+                {
+                    Zero(PbkdfKeyBlock);
+                    Zero(PbkdfKeyHash);
+                    Zero(PbkdfData);
+
+                    for (int i = 0; i < passwordLength; i++)
+                        PbkdfTempKey[i] = (byte)passwordChars[i];
+
+                    if (passwordLength > 64)
+                    {
+                        Sha256Into(PbkdfTempKey, passwordLength, PbkdfKeyHash, PbkdfSchedule);
+                        CopyBytes(PbkdfKeyHash, 0, PbkdfKeyBlock, 0, 32);
+                    }
+                    else
+                    {
+                        CopyBytes(PbkdfTempKey, 0, PbkdfKeyBlock, 0, passwordLength);
+                    }
+
+                    for (int i = 0; i < 64; i++)
+                    {
+                        PbkdfIpad[i] = (byte)(PbkdfKeyBlock[i] ^ 0x36);
+                        PbkdfOpad[i] = (byte)(PbkdfKeyBlock[i] ^ 0x5C);
+                        PbkdfInnerBuffer[i] = PbkdfIpad[i];
+                        PbkdfOuterBuffer[i] = PbkdfOpad[i];
+                    }
+
+                    for (int i = 0; i < salt.Length; i++)
+                        PbkdfData[i] = (byte)salt[i];
+                    int firstLength = salt.Length + 4;
+                    PbkdfData[salt.Length] = 0;
+                    PbkdfData[salt.Length + 1] = 0;
+                    PbkdfData[salt.Length + 2] = 0;
+                    PbkdfData[salt.Length + 3] = 1;
+
+                    HmacSha256Into(PbkdfData, firstLength, PbkdfU, PbkdfInnerHash, PbkdfInnerBuffer, PbkdfOuterBuffer, PbkdfSchedule);
+                    CopyBytes(PbkdfU, 0, PbkdfResult, 0, 32);
+
+                    for (int round = 1; round < iterations; round++)
+                    {
+                        HmacSha256Into(PbkdfU, 32, PbkdfNextU, PbkdfInnerHash, PbkdfInnerBuffer, PbkdfOuterBuffer, PbkdfSchedule);
+                        for (int i = 0; i < 32; i++)
+                        {
+                            PbkdfU[i] = PbkdfNextU[i];
+                            PbkdfResult[i] ^= PbkdfU[i];
+                        }
+                    }
+
+                    int difference = 0;
+                    for (int i = 0; i < 32; i++)
+                    {
+                        int hi = ParseHexNibble(expectedHex[i * 2]);
+                        int lo = ParseHexNibble(expectedHex[i * 2 + 1]);
+                        if (hi < 0 || lo < 0)
+                            difference |= 0x100;
+                        else
+                            difference |= PbkdfResult[i] ^ ((hi << 4) | lo);
+                    }
+
+                    return difference == 0;
+                }
+                finally
+                {
+                    Zero(PbkdfTempKey);
+                    Zero(PbkdfKeyBlock);
+                    Zero(PbkdfKeyHash);
+                    Zero(PbkdfIpad);
+                    Zero(PbkdfOpad);
+                    Zero(PbkdfData);
+                    Zero(PbkdfU);
+                    Zero(PbkdfNextU);
+                    Zero(PbkdfResult);
+                    Zero(PbkdfInnerHash);
+                    Zero(PbkdfInnerBuffer);
+                    Zero(PbkdfOuterBuffer);
+                    for (int i = 0; i < PbkdfSchedule.Length; i++)
+                        PbkdfSchedule[i] = 0;
+                }
+            }
+        }
+
+        private static int ParseHexNibble(char c)
+        {
+            if (c >= '0' && c <= '9')
+                return c - '0';
+            if (c >= 'A' && c <= 'F')
+                return c - 'A' + 10;
+            if (c >= 'a' && c <= 'f')
+                return c - 'a' + 10;
+            return -1;
         }
 
         public static bool FixedTimeEquals(string left, string right)

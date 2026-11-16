@@ -104,6 +104,46 @@ class IntegratedRamOptimizationContracts(unittest.TestCase):
         self.assertIn('parser.add_argument("--ram"', bench)
         self.assertIn('"-m", ram', bench)
 
+    def test_lock_unlock_avoids_fat32_and_pbkdf2_heap_churn(self):
+        lock = read("source/GUI/LockScreenManager.cs")
+        self.assertIn("ReusableScreen.Reset(", lock)
+        self.assertIn("UserManager.ValidateCredentialsChars(", lock)
+        self.assertNotIn("new LockScreen(", lock.split("public static bool Run(", 1)[1].split("private sealed class LockScreen", 1)[0])
+        self.assertNotIn("new string(password, 0, passwordLength)", lock)
+
+        user_mgr = read("source/Security/UserManager.cs")
+        self.assertIn("private struct CachedShadowEntry", user_mgr)
+        self.assertIn("Crypto.VerifyPasswordV2(", user_mgr)
+        self.assertIn("InvalidateCredentialCache();", user_mgr)
+
+        crypto = read("source/Common/Crypto.cs")
+        self.assertIn("public static bool VerifyPasswordV2(", crypto)
+        self.assertIn("PbkdfSchedule", crypto)
+
+        sec_log = read("source/Security/SecurityLogger.cs")
+        self.assertIn("internal static void LogSessionLockEvent(", sec_log)
+        self.assertIn("SystemLogger.LogBuffered(", sec_log)
+        self.assertIn("SystemLogger.GetTimestampCached()", sec_log)
+        self.assertNotIn('ToString("D4")', sec_log)
+
+        sys_log = read("source/Core/SystemLogger.cs")
+        self.assertIn("public static void LogBuffered(", sys_log)
+        self.assertIn("PendingDiskEntries", sys_log)
+        self.assertIn("public static void Flush()", sys_log)
+
+        gui = read("source/GUI/GuiManager.cs")
+        run_lock = gui.split("private bool RunLockScreen()", 1)[1].split("private void ResetActivityTimer()", 1)[0]
+        self.assertIn("SecurityLogger.LogSessionLockEvent(cachedLockLogMessage)", run_lock)
+        self.assertIn("SecurityLogger.LogSessionLockEvent(cachedUnlockLogMessage)", run_lock)
+
+        notif = read("source/Core/NotificationService.cs")
+        self.assertIn("FormatMinuteCached(", notif)
+        self.assertNotIn('ToString("HH:mm")', notif)
+
+        power = read("source/Core/BootSessionHealth.cs")
+        self.assertIn("SecurityLogger.Flush();", power)
+        self.assertIn("SystemLogger.Flush();", power)
+
 
 if __name__ == "__main__":
     unittest.main()

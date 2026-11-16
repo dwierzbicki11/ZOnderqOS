@@ -50,6 +50,9 @@ namespace ZonderqOS.GUI
         private int frameCounter;
         private static string cachedWatermarkBuild;
         private static string cachedWatermarkVersion;
+        private string cachedLockLogUser;
+        private string cachedLockLogMessage;
+        private string cachedUnlockLogMessage;
 
         private const int TaskbarHeight = 44;
         // Bound input dispatch per GUI iteration. An autorepeating key or a
@@ -1176,14 +1179,20 @@ namespace ZonderqOS.GUI
             if (!SecurityContext.IsAuthenticated || canvas == null)
                 return false;
 
-            SecurityLogger.LogEvent("INFO", "Graphical session locked for user " +
-                SecurityContext.CurrentUser + ".");
+            string user = SecurityContext.CurrentUser ?? string.Empty;
+            if (!string.Equals(cachedLockLogUser, user, StringComparison.Ordinal))
+            {
+                cachedLockLogUser = user;
+                cachedLockLogMessage = "Graphical session locked for user " + user + ".";
+                cachedUnlockLogMessage = "Graphical session unlocked for user " + user + ".";
+            }
+
+            SecurityLogger.LogSessionLockEvent(cachedLockLogMessage);
             bool unlocked = LockScreenManager.Run(canvas);
             if (unlocked)
             {
                 SessionManager.MarkUnlock();
-                SecurityLogger.LogEvent("INFO", "Graphical session unlocked for user " +
-                    SecurityContext.CurrentUser + ".");
+                SecurityLogger.LogSessionLockEvent(cachedUnlockLogMessage);
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Security,
                     "BEZPIECZENSTWO",

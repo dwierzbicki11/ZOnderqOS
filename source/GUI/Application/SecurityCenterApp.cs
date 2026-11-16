@@ -89,6 +89,7 @@ namespace ZonderqOS.GUI.Apps
         private void RefreshLogs()
         {
             cachedLogLines.Clear();
+            SecurityLogger.Flush();
             const string logPath = "/var/log/auth.log";
             if (!File.Exists(logPath))
                 return;

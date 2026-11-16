@@ -31,6 +31,9 @@ namespace ZonderqOS
 
         private static readonly object Sync = new object();
         private static readonly SystemLogEntry[] Entries = new SystemLogEntry[Capacity];
+        private static readonly SystemLogEntry[] PendingDiskEntries = new SystemLogEntry[32];
+        private static int pendingDiskHead;
+        private static int pendingDiskCount;
         private static int writeIndex;
         private static int count;
         private static long nextSequence = 1;
@@ -110,6 +113,33 @@ namespace ZonderqOS
 
         public static void Log(SystemLogLevel level, string source, string message)
         {
+            LogCore(level, source, message, flushToDisk: true);
+        }
+
+        /// <summary>
+        /// Records a routine diagnostic/session entry in the RAM ring buffer and queues
+        /// persistence until Flush() or the next persistent log event, avoiding 32 KiB
+        /// FAT32 cluster buffer allocations during repetitive Lock/Unlock cycles.
+        /// </summary>
+        public static void LogBuffered(SystemLogLevel level, string source, string message)
+        {
+            LogCore(level, source, message, flushToDisk: level >= SystemLogLevel.Warning);
+        }
+
+        public static void Flush()
+        {
+            lock (Sync)
+            {
+                if (!initialized || pendingDiskCount == 0)
+                    return;
+                FlushPendingLocked();
+            }
+        }
+
+        internal static string GetTimestampCached() => GetTimestamp();
+
+        private static void LogCore(SystemLogLevel level, string source, string message, bool flushToDisk)
+        {
             try
             {
                 string normalizedSource = NormalizeSource(source);
@@ -134,9 +164,17 @@ namespace ZonderqOS
 
                     if (initialized)
                     {
-                        string formatted = Format(entry);
-                        RotateIfNeededLocked(formatted.Length + 1);
-                        AppendPersistentLocked(formatted);
+                        if (flushToDisk)
+                        {
+                            FlushPendingLocked();
+                            string formatted = Format(entry);
+                            RotateIfNeededLocked(formatted.Length + 1);
+                            AppendPersistentLocked(formatted);
+                        }
+                        else
+                        {
+                            EnqueuePendingLocked(entry);
+                        }
                     }
                 }
             }
@@ -144,6 +182,37 @@ namespace ZonderqOS
             {
                 // Logging is diagnostic infrastructure; failures must stay contained.
             }
+        }
+
+        private static void EnqueuePendingLocked(SystemLogEntry entry)
+        {
+            int cap = PendingDiskEntries.Length;
+            if (pendingDiskCount == cap)
+            {
+                PendingDiskEntries[pendingDiskHead] = entry;
+                pendingDiskHead = (pendingDiskHead + 1) % cap;
+            }
+            else
+            {
+                int tail = (pendingDiskHead + pendingDiskCount) % cap;
+                PendingDiskEntries[tail] = entry;
+                pendingDiskCount++;
+            }
+        }
+
+        private static void FlushPendingLocked()
+        {
+            int cap = PendingDiskEntries.Length;
+            for (int i = 0; i < pendingDiskCount; i++)
+            {
+                int index = (pendingDiskHead + i) % cap;
+                string formatted = Format(PendingDiskEntries[index]);
+                PendingDiskEntries[index] = default(SystemLogEntry);
+                RotateIfNeededLocked(formatted.Length + 1);
+                AppendPersistentLocked(formatted);
+            }
+            pendingDiskHead = 0;
+            pendingDiskCount = 0;
         }
 
         public static bool TryGetRecent(int newestOffset, out SystemLogEntry entry)
@@ -180,6 +249,10 @@ namespace ZonderqOS
 
                 writeIndex = 0;
                 count = 0;
+                pendingDiskHead = 0;
+                pendingDiskCount = 0;
+                for (int i = 0; i < PendingDiskEntries.Length; i++)
+                    PendingDiskEntries[i] = default(SystemLogEntry);
 
                 if (initialized)
                 {
