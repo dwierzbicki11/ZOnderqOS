@@ -174,6 +174,7 @@ namespace ZonderqOS.GUI
                 int previousMouseY = -1;
 
                 Instance = this;
+                global::ZonderqOS.SystemCore.MemoryOptimizer.SetGuiReady(true);
                 int firstMouseX = (int)MouseManager.X;
                 int firstMouseY = (int)MouseManager.Y;
                 ResetActivityTimer();
@@ -572,6 +573,27 @@ namespace ZonderqOS.GUI
                     previousMouseY = mouseY;
 
                     applicationManager.Update();
+
+                    // Cache arrays are shared by the GUI blitter. Apply a bounded
+                    // optimizer request ONLY on this GUI thread, between frames.
+                    // Do not run GC here: OrionGC collection is unsafe in this
+                    // Cosmos 3.0.95 GUI/SMP workload.
+                    if (global::ZonderqOS.SystemCore.MemoryOptimizer.TryTakeGuiTrimRequest())
+                    {
+                        try
+                        {
+                            ulong candidateBytes;
+                            int detached = IconManager.TrimColdScaledCache(
+                                global::ZonderqOS.SystemCore.MemoryOptimizer.SweepBufferLimit,
+                                out candidateBytes);
+                            global::ZonderqOS.SystemCore.MemoryOptimizer.RecordGuiSweep(
+                                detached, candidateBytes);
+                        }
+                        catch
+                        {
+                            global::ZonderqOS.SystemCore.MemoryOptimizer.RecordGuiSweep(0, 0);
+                        }
+                    }
 #if !ZONDERQ_ARCH_ARM64
                     global::ZonderqOS.Platform.X64.SerialMemoryTelemetry.SampleIfDue(
                         System.Diagnostics.Stopwatch.GetTimestamp(), System.Diagnostics.Stopwatch.Frequency);
@@ -644,7 +666,10 @@ namespace ZonderqOS.GUI
                 }
 
                 if (object.ReferenceEquals(Instance, this))
+                {
+                    global::ZonderqOS.SystemCore.MemoryOptimizer.SetGuiReady(false);
                     Instance = null;
+                }
 
                 isRunning = false;
                 cursorDamageRenderer = null;
