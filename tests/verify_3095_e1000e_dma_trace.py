@@ -37,7 +37,10 @@ def count_dma(stderr: str) -> tuple[int, int, int, int]:
     """Return TX descriptor reads, RX buffer writes, RX bytes, RX commits."""
     tx = writes = rx_bytes = commits = 0
     pending_rx_writes = 0
-    for line in stderr.replace("\r", "").splitlines():
+    # Bare CR can overwrite a visible trace line; do not erase it before parsing.
+    if "\r" in stderr.replace("\r\n", ""):
+        raise ValueError("bare carriage return in QEMU DMA trace")
+    for line in stderr.replace("\r\n", "\n").split("\n"):
         line = line.strip()
         if TERMINATED.match(line):
             break
@@ -202,6 +205,16 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("accepted missing/spoofed QEMU DMA evidence")
+    # UART-like carriage-return injection must not manufacture a trace event.
+    # CRLF from a legitimate host log remains accepted.
+    assert count_dma(trace.replace("\n", "\r\n")) == (128, 1, 64, 1)
+    for forged in (trace + "\r" + trace, tx * 128 + "\r" + write + commit):
+        try:
+            report(forged)
+        except ValueError as exc:
+            assert "bare carriage return" in str(exc)
+        else:
+            raise AssertionError("accepted carriage-return trace injection")
     # Do not count events after the emulator has terminated.
     assert count_dma(trace + "qemu-system-x86_64: terminating on signal 15\n" + trace) == (128, 1, 64, 1)
     # QEMU -trace may timestamp the termination record; subsequent lines
