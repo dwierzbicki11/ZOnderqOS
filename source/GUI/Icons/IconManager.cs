@@ -26,6 +26,9 @@ namespace ZonderqOS.GUI.Icons
         // same persistent int[]; Canvas.DrawImage(image, x, y, w, h) is never used.
         private static readonly int[][] scaledPixels = new int[MaxScaledCacheEntries][];
         private static readonly bool[] scaledUseRuns = new bool[MaxScaledCacheEntries];
+        // Set on actual use; a GUI-thread sweep only drops entries untouched
+        // since the previous sweep. Source PNG pixels remain permanently cached.
+        private static readonly bool[] scaledTouchedSinceSweep = new bool[MaxScaledCacheEntries];
         private static readonly IconType[] scaledTypes = new IconType[MaxScaledCacheEntries];
         private static readonly int[] scaledWidths = new int[MaxScaledCacheEntries];
         private static readonly int[] scaledHeights = new int[MaxScaledCacheEntries];
@@ -171,7 +174,10 @@ namespace ZonderqOS.GUI.Icons
                     scaledTypes[recent] == type &&
                     scaledWidths[recent] == width &&
                     scaledHeights[recent] == height)
-                    return scaledPixels[recent];
+                    {
+                        scaledTouchedSinceSweep[recent] = true;
+                        return scaledPixels[recent];
+                    }
 
                 int previous = scaledPreviousSlots[typeIndex];
                 if (previous != recent && previous < scaledCacheCount &&
@@ -181,6 +187,7 @@ namespace ZonderqOS.GUI.Icons
                 {
                     scaledPreviousSlots[typeIndex] = recent;
                     scaledRecentSlots[typeIndex] = previous;
+                    scaledTouchedSinceSweep[previous] = true;
                     return scaledPixels[previous];
                 }
             }
@@ -194,6 +201,7 @@ namespace ZonderqOS.GUI.Icons
                         scaledPreviousSlots[typeIndex] = scaledRecentSlots[typeIndex];
                         scaledRecentSlots[typeIndex] = i;
                     }
+                    scaledTouchedSinceSweep[i] = true;
                     return scaledPixels[i];
                 }
             }
@@ -258,6 +266,7 @@ namespace ZonderqOS.GUI.Icons
             scaledWidths[slot] = width;
             scaledHeights[slot] = height;
             scaledPixels[slot] = destination;
+            scaledTouchedSinceSweep[slot] = true;
             scaledUseRuns[slot] = ShouldCoalesce(destination, width, height);
             if (validType)
             {
@@ -270,6 +279,67 @@ namespace ZonderqOS.GUI.Icons
         // Classification happens only when PNGs are decoded or a new size is
         // cached, NEVER in the per-frame blitter. A gradient keeps the original
         // point-only path with no repeated per-pixel color probing.
+        /// <summary>
+        /// GUI-THREAD ONLY. Evict a bounded number of cold scaled-image buffers.
+        /// Touch markers are reset on each sweep, so only entries unused across
+        /// two consecutive sweep windows are eligible for removal.
+        /// Never remove source pixels or buffers while the renderer is running.
+        /// Dropped arrays become GC candidates; this does not reclaim pages yet.
+        /// </summary>
+        internal static int TrimColdScaledCache(int maxBuffers, out ulong candidateBytes)
+        {
+            candidateBytes = 0;
+            if (maxBuffers <= 0 || scaledCacheCount == 0)
+                return 0;
+
+            int oldCount = scaledCacheCount;
+            int write = 0;
+            int removed = 0;
+
+            for (int read = 0; read < oldCount; read++)
+            {
+                int[] pixels = scaledPixels[read];
+                bool cold = !scaledTouchedSinceSweep[read];
+                if (pixels != null && cold && removed < maxBuffers)
+                {
+                    candidateBytes += (ulong)pixels.Length * sizeof(int);
+                    removed++;
+                    continue;
+                }
+
+                if (write != read)
+                {
+                    scaledPixels[write] = pixels;
+                    scaledTypes[write] = scaledTypes[read];
+                    scaledWidths[write] = scaledWidths[read];
+                    scaledHeights[write] = scaledHeights[read];
+                    scaledUseRuns[write] = scaledUseRuns[read];
+                }
+
+                scaledTouchedSinceSweep[write] = false;
+                write++;
+            }
+
+            for (int i = write; i < oldCount; i++)
+            {
+                scaledPixels[i] = null;
+                scaledTypes[i] = default;
+                scaledWidths[i] = 0;
+                scaledHeights[i] = 0;
+                scaledUseRuns[i] = false;
+                scaledTouchedSinceSweep[i] = false;
+            }
+
+            scaledCacheCount = write;
+            if (write < MaxScaledCacheEntries)
+                nextScaledEvictionSlot = 0;
+
+            // Compaction changes slot indices; discard hints, never image data.
+            System.Array.Clear(scaledRecentSlots, 0, scaledRecentSlots.Length);
+            System.Array.Clear(scaledPreviousSlots, 0, scaledPreviousSlots.Length);
+            return removed;
+        }
+
         private static bool ShouldCoalesce(int[] pixels, int width, int height)
         {
             int opaque = 0;
