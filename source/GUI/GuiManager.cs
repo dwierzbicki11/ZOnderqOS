@@ -590,7 +590,7 @@ namespace ZonderqOS.GUI
                             global::ZonderqOS.SystemCore.MemoryOptimizer.RecordGuiSweep(0, 0);
                         }
                     }
-#if !ARM64
+#if !ZONDERQ_ARCH_ARM64
                     global::ZonderqOS.Platform.X64.SerialMemoryTelemetry.SampleIfDue(
                         System.Diagnostics.Stopwatch.GetTimestamp(), System.Diagnostics.Stopwatch.Frequency);
 #endif
