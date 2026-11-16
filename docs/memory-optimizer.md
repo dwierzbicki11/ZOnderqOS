@@ -73,3 +73,31 @@ ownership* and diagnostic visibility, not forceful garbage collection.
   buffer is recreated. Bounded sweeps and touch markers limit churn.
 - Additional caches require explicit single-thread ownership rules and
   independent regression/QEMU validation.
+
+## Lock-screen RAM growth diagnosis (experimental)
+
+A reported ~1 MiB change when entering the locked session might be a
+one-time FAT32/security logging cost or a sustained idle growth. The
+lock screen avoids full-frame redraws without mouse/keyboard activity;
+on entry it calls `SecurityLogger.LogEvent`, which in turn appends to both
+`/var/log/system.log` and `/var/log/auth.log`.
+
+To distinguish these costs, this branch emits additional **COM1-only**
+`[LOCK_MEM]` snapshots on x64 with the fields `phase`, `used_p`,
+`free_p`, `gc_heap_kb`, and `gc_comm_kb`.
+
+- `before_lock_log` -> `after_lock_log`: security event / filesystem logging
+- `after_lock_init` -> `after_first_lock_paint`: initial lock screen draw
+- `after_first_lock_paint` -> periodic `[MEM_SAMPLE]` lines:
+  long-running idle growth while the screen stays locked
+- `before_lock_exit` -> `after_lock_screen` -> `after_unlock_log`:
+  teardown and unlock event logging
+
+Collect the entire serial output from QEMU or a USB-to-serial setup. Compare
+`used_p` (multiply page deltas by allocator page size), `gc_comm_kb`,
+`p_gc`, `p_rat`, and `p_sys`. A few transient pages do **not** prove a
+memory leak; a repeatable sustained positive slope needs investigation.
+No persistent audit logs or authentication checks are removed by tracing.
+
+This instrumentation is not yet an identified root-cause fix. Test it on
+QEMU before using the updated branch on bare metal.
