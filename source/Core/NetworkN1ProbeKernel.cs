@@ -425,7 +425,20 @@ namespace ZonderqOS
                             int read = stream.Read(response, received, response.Length - received);
                             if (read <= 0)
                                 break;
+                            int chunkStart = received;
                             received += read;
+                            // Fail at the first corrupted TCP RX fragment rather
+                            // than reading more data from a potentially unstable
+                            // E1000E receive path. The independent QEMU PCAP
+                            // remains necessary to establish wire-level RX.
+                            for (int offset = chunkStart; offset < received; offset++)
+                            {
+                                if (response[offset] != expected[offset])
+                                {
+                                    Log("[NET3095-N4][FAIL] TCP reply mismatch");
+                                    return;
+                                }
+                            }
                             // Each successful Read may follow another RX DMA
                             // completion. Detect resource/IRQ rebinding before
                             // accepting the next fragment.
