@@ -62,6 +62,7 @@ internal static class Program
             Check(!Read(root + "/source", out _) && Read(root + "/target", out value) && value == "original", "ordinary rename failed");
             Reset();
         }
+        passed += NullPathChecks.Run();
         Console.WriteLine(passed + " RAM command behavior checks passed");
     }
 }

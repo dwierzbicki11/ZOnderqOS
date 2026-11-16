@@ -423,6 +423,11 @@ namespace ZonderqOS.SystemCore
                 error = "not a runtime filesystem path";
                 return false;
             }
+            if (path.IndexOf('\0') >= 0)
+            {
+                error = "path contains a null character";
+                return false;
+            }
             if (path.Length > MaxPathLength)
             {
                 error = "path too long";
