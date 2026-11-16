@@ -29,6 +29,9 @@ namespace ZonderqOS.GUI
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
                 LockScreen screen = new LockScreen((int)canvas.Width, (int)canvas.Height,
                     SecurityContext.CurrentUser);
+#if !ZONDERQ_ARCH_ARM64
+                global::ZonderqOS.Platform.X64.SerialMemoryTelemetry.TraceLockPhase("after_lock_init");
+#endif
 
                 if (cursorDamageRenderer == null || !ReferenceEquals(cursorDamageCanvas, canvas))
                 {
@@ -47,6 +50,9 @@ namespace ZonderqOS.GUI
                 screen.Render(canvas);
                 cursorDamageRenderer.DrawAfterScene(previousMouseX, previousMouseY);
                 canvas.Display();
+#if !ZONDERQ_ARCH_ARM64
+                global::ZonderqOS.Platform.X64.SerialMemoryTelemetry.TraceLockPhase("after_first_lock_paint");
+#endif
 
                 while (!screen.Unlocked && SecurityContext.IsAuthenticated)
                 {
@@ -108,6 +114,9 @@ namespace ZonderqOS.GUI
                 }
 
                 screen.ClearSensitiveData();
+#if !ZONDERQ_ARCH_ARM64
+                global::ZonderqOS.Platform.X64.SerialMemoryTelemetry.TraceLockPhase("before_lock_exit");
+#endif
                 return screen.Unlocked && SecurityContext.IsAuthenticated;
             }
             catch (Exception ex)

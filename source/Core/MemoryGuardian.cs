@@ -67,8 +67,12 @@ namespace ZonderqOS.SystemCore
 
                 SystemLogger.Log(SystemLogLevel.Info, "GUARDIAN", "System guardian started.");
 
+                int guardianTick = 0;
                 while (!token.IsCancellationRequested)
                 {
+                    // Existing memory alarms keep their 4-second cadence.
+                    if ((guardianTick++ & 1) == 0)
+                    {
                     try
                     {
                         ulong totalPages = PageAllocator.TotalPageCount;
@@ -123,8 +127,15 @@ namespace ZonderqOS.SystemCore
                     {
                         RecordFault(ex.Message);
                     }
+                    }
 
-                    if (token.WaitHandle.WaitOne(4000))
+                    // Same sys_guardian thread: policy evaluates every 10s,
+                    // without spawning an additional managed worker.
+                    MemoryOptimizer.SampleIfDue(
+                        System.Diagnostics.Stopwatch.GetTimestamp(),
+                        System.Diagnostics.Stopwatch.Frequency);
+
+                    if (token.WaitHandle.WaitOne(2000))
                         break;
                 }
             });
