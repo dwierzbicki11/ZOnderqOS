@@ -97,6 +97,11 @@ def tcp_frame(frame: bytes):
     pseudo = frame[26:34] + b"\x00\x06" + len(segment).to_bytes(2, "big")
     if internet_checksum(pseudo + segment) != 0:
         raise ValueError("invalid TCP segment checksum")
+    # URG is forbidden for this non-urgent echo probe. A nonzero urgent
+    # pointer with URG clear is also anomalous wire evidence; never let
+    # a later clean echo conceal it.
+    if frame[offset + 18:offset + 20] != b"\x00\x00":
+        raise ValueError("unexpected N4 TCP urgent pointer")
     sport, dport, seq, ack = struct.unpack_from(">HHII", frame, offset)
     return {
         "src": frame[26:30], "dst": frame[30:34],
@@ -368,6 +373,21 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("accepted malformed empty N4 TCP ACK")
+    # The urgent pointer must be zero even when URG is clear and the
+    # checksum has been recomputed to isolate this semantic guard.
+    for index in (7, 9, 11):
+        urgent = bytearray(frames[index])
+        urgent[52:54] = b"\x00\x01"
+        urgent[50:52] = b"\x00\x00"
+        segment = urgent[34:]
+        pseudo = urgent[26:34] + b"\x00\x06" + len(segment).to_bytes(2, "big")
+        urgent[50:52] = internet_checksum(pseudo + segment).to_bytes(2, "big")
+        try:
+            validate(serial, synthetic_capture(frames + [bytes(urgent)]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted checksum-correct nonzero TCP urgent pointer")
     # A checksum-correct TCP segment with reserved header bits is still
     # invalid wire evidence, even when a valid response preceded it.
     reserved_tcp = bytearray(frames[-1])
