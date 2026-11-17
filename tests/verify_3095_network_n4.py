@@ -147,10 +147,13 @@ def validate(serial: str, pcap: bytes) -> str:
         # while a later valid handshake satisfies the correlation gate.
         if flags not in (0x02, 0x12, 0x10, 0x18):
             raise ValueError("unexpected N4 TCP control flags")
-        if packet["payload"] in (REQUEST, RESPONSE):
+        if packet["payload"]:
+            # Do not let a later valid echo conceal an unexpected segment
+            # on the N4 port pair. This gate expects exactly one request
+            # payload shape and one response payload shape.
             expected_payload = REQUEST if outbound else RESPONSE
             if packet["payload"] != expected_payload or flags not in (0x10, 0x18):
-                raise ValueError("invalid N4 TCP echo control flags or direction")
+                raise ValueError("invalid N4 TCP echo payload, flags or direction")
     # N4 is a non-ECN, non-urgent isolated TCP echo probe. Require exact
     # control flags; masked comparisons could falsely accept ECE/CWR.
     for i, syn in enumerate(packets):
@@ -476,6 +479,12 @@ def self_test() -> None:
         (serial, frames[:8] + [fake_tcp(True, 0x12, 5000, 9999)] + frames[9:]),
         (serial, frames[:11] + [fake_tcp(True, 0x18, 5001, 1001 + len(REQUEST), RESPONSE, dport=18096)]),
         (serial, frames[:10] + [fake_tcp(False, 0x18, 1001, 5001, b"BAD"), frames[-1]]),
+        # An extra checksum-valid payload after the successful echo is not
+        # evidence of a clean isolated N4 flow, even when PASS was reached.
+        (serial, frames + [fake_tcp(False, 0x18, 1001 + len(REQUEST),
+                                   5001 + len(RESPONSE), b"BAD")]),
+        (serial, frames + [fake_tcp(True, 0x18, 5001 + len(RESPONSE),
+                                   1001 + len(REQUEST), b"BAD")]),
         # TCP payloads must belong to the exact established sequence space.
         (serial, frames[:10] + [fake_tcp(False, 0x18, 1002, 5001, REQUEST), frames[-1]]),
         (serial, frames[:10] + [fake_tcp(False, 0x18, 1001, 5002, REQUEST), frames[-1]]),
