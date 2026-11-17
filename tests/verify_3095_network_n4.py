@@ -74,7 +74,10 @@ def tcp_frame(frame: bytes):
     offset = 14 + ihl
     thl = (frame[offset + 12] >> 4) * 4
     if thl < 20 or length < ihl + thl:
-        return None
+        # A malformed TCP data offset is invalid wire evidence, not a
+        # non-TCP frame to silently ignore. A later valid response must
+        # never rescue a damaged segment in the same capture.
+        raise ValueError("invalid TCP data offset")
     # RFC 9293 reserves TCP header byte 12 bits 1..3; NS (bit 0)
     # is separate. Reject impossible reserved-bit wire evidence.
     if frame[offset + 12] & 0x0E:
@@ -259,6 +262,21 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("accepted checksum-correct short TCP header")
+    # A malformed TCP data offset must fail closed even when a valid
+    # response is already present earlier in the same capture.
+    for bad_offset in (0x40, 0xF0):
+        malformed = bytearray(frames[-1])
+        malformed[46] = bad_offset
+        malformed[50:52] = b"\\x00\\x00"
+        segment = malformed[34:]
+        pseudo = malformed[26:34] + b"\\x00\\x06" + len(segment).to_bytes(2, "big")
+        malformed[50:52] = internet_checksum(pseudo + segment).to_bytes(2, "big")
+        try:
+            validate(serial, synthetic_capture(frames + [bytes(malformed)]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted malformed TCP data offset after valid response")
     # A checksum-correct TCP segment with reserved header bits is still
     # invalid wire evidence, even when a valid response preceded it.
     reserved_tcp = bytearray(frames[-1])
