@@ -132,6 +132,11 @@ def validate(serial: str, pcap: bytes) -> str:
         if not (outbound or inbound):
             continue
         flags = packet["flags"]
+        # This isolated echo probe never closes or resets the socket before
+        # the successful reply. A later valid exchange must not conceal a
+        # FIN/RST on the same guest/server port pair.
+        if flags & (0x01 | 0x04):
+            raise ValueError("unexpected N4 TCP FIN/RST control packet")
         if flags & 0x02:  # SYN, including SYN-ACK
             expected = 0x02 if outbound else 0x12
             if flags != expected or packet["payload"] or (outbound and packet["ack"] != 0):
@@ -422,6 +427,8 @@ def self_test() -> None:
     negatives = [
         (serial, frames[:7] + [corrupt_mac(frames[7], 0)] + frames[8:]),
         (serial, frames[:7] + [fake_tcp(False, 0x06, 1000, 0)] + frames[8:]),  # SYN|RST
+        (serial, frames + [fake_tcp(False, 0x14, 1001 + len(REQUEST), 5001 + len(RESPONSE))]),  # ACK|RST after valid exchange
+        (serial, frames + [fake_tcp(True, 0x11, 5001 + len(RESPONSE), 1001 + len(REQUEST))]),  # FIN|ACK after valid exchange
         (serial, frames[:7] + [fake_tcp(False, 0x0A, 1000, 0)] + frames[8:]),  # SYN|PSH
         (serial, frames[:7] + [fake_tcp(False, 0x22, 1000, 0)] + frames[8:]),  # SYN|URG
         (serial, frames[:7] + [fake_tcp(False, 0x42, 1000, 0)] + frames[8:]),  # SYN|ECE
