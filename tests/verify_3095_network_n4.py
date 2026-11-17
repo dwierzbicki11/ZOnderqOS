@@ -75,6 +75,10 @@ def tcp_frame(frame: bytes):
     thl = (frame[offset + 12] >> 4) * 4
     if thl < 20 or length < ihl + thl:
         return None
+    # RFC 9293 reserves TCP header byte 12 bits 1..3; NS (bit 0)
+    # is separate. Reject impossible reserved-bit wire evidence.
+    if frame[offset + 12] & 0x0E:
+        raise ValueError("TCP reserved header bits set")
     # Fail closed on damaged wire data even if another matching TCP
     # exchange appears later in the capture. The QEMU 3.0.95 N6 PCAP
     # baseline has valid IPv4 and TCP checksums in both directions.
@@ -229,6 +233,20 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("accepted TCP IPv4 reserved fragmentation flag")
+    # A checksum-correct TCP segment with reserved header bits is still
+    # invalid wire evidence, even when a valid response preceded it.
+    reserved_tcp = bytearray(frames[-1])
+    reserved_tcp[46] |= 0x02  # TCP byte 12, reserved bit 1
+    reserved_tcp[50:52] = b"\x00\x00"
+    tcp_segment = reserved_tcp[34:]
+    pseudo = reserved_tcp[26:34] + b"\x00\x06" + len(tcp_segment).to_bytes(2, "big")
+    reserved_tcp[50:52] = internet_checksum(pseudo + tcp_segment).to_bytes(2, "big")
+    try:
+        validate(serial, synthetic_capture(frames + [bytes(reserved_tcp)]))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted checksum-correct TCP reserved header bits")
     # Synthetic packet bit flips must not be ignored or rescued by later
     # valid frames with the same sequence/port tuple.
     for offset in (22, 24, 50, len(frames[-1]) - 1):
