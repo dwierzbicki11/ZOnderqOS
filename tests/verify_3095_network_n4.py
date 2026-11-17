@@ -141,6 +141,12 @@ def validate(serial: str, pcap: bytes) -> str:
             expected = 0x02 if outbound else 0x12
             if flags != expected or packet["payload"] or (outbound and packet["ack"] != 0):
                 raise ValueError("invalid N4 TCP SYN control packet")
+        # The N4 probe does not negotiate ECN, send urgent data or use
+        # experimental TCP controls. Check *every* packet of this flow,
+        # including empty ACKs; otherwise an invalid ACK could be ignored
+        # while a later valid handshake satisfies the correlation gate.
+        if flags not in (0x02, 0x12, 0x10, 0x18):
+            raise ValueError("unexpected N4 TCP control flags")
         if packet["payload"] in (REQUEST, RESPONSE):
             expected_payload = REQUEST if outbound else RESPONSE
             if packet["payload"] != expected_payload or flags not in (0x10, 0x18):
@@ -344,6 +350,21 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("accepted malformed N4 control flags after valid exchange")
+    # A malformed *empty* ACK must also fail: it cannot be rescued by
+    # the otherwise valid handshake and echo that precede it.
+    for bad_flags in (0x30, 0x50, 0x90, 0x11):
+        malformed_ack = bytearray(frames[9])
+        malformed_ack[47] = bad_flags
+        malformed_ack[50:52] = b"\\x00\\x00"
+        segment = malformed_ack[34:]
+        pseudo = malformed_ack[26:34] + b"\\x00\\x06" + len(segment).to_bytes(2, "big")
+        malformed_ack[50:52] = internet_checksum(pseudo + segment).to_bytes(2, "big")
+        try:
+            validate(serial, synthetic_capture(frames + [bytes(malformed_ack)]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted malformed empty N4 TCP ACK")
     # A checksum-correct TCP segment with reserved header bits is still
     # invalid wire evidence, even when a valid response preceded it.
     reserved_tcp = bytearray(frames[-1])
