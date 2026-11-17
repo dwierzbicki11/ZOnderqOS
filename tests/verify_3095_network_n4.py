@@ -254,7 +254,7 @@ def self_test() -> None:
     pseudo = short_tcp_header[26:34] + b"\x00\x06" + len(tcp_segment).to_bytes(2, "big")
     short_tcp_header[50:52] = internet_checksum(pseudo + tcp_segment).to_bytes(2, "big")
     try:
-        validate(serial, synthetic_capture(frames + [bytes(short_tcp_header)]))
+        validate(serial, synthetic_capture(frames[:-1] + [bytes(short_tcp_header)]))
     except ValueError:
         pass
     else:
