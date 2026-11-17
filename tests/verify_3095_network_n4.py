@@ -267,9 +267,9 @@ def self_test() -> None:
     for bad_offset in (0x40, 0xF0):
         malformed = bytearray(frames[-1])
         malformed[46] = bad_offset
-        malformed[50:52] = b"\\x00\\x00"
+        malformed[50:52] = b"\x00\x00"
         segment = malformed[34:]
-        pseudo = malformed[26:34] + b"\\x00\\x06" + len(segment).to_bytes(2, "big")
+        pseudo = malformed[26:34] + b"\x00\x06" + len(segment).to_bytes(2, "big")
         malformed[50:52] = internet_checksum(pseudo + segment).to_bytes(2, "big")
         try:
             validate(serial, synthetic_capture(frames + [bytes(malformed)]))
