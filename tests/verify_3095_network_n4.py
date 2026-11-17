@@ -233,6 +233,32 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("accepted TCP IPv4 reserved fragmentation flag")
+    # A zero-TTL IPv4 packet must fail even when its IP checksum is valid.
+    # This isolates the semantic TTL guard from checksum corruption.
+    zero_ttl = bytearray(frames[-1])
+    zero_ttl[22] = 0
+    zero_ttl[24:26] = b"\\x00\\x00"
+    zero_ttl[24:26] = internet_checksum(zero_ttl[14:34]).to_bytes(2, "big")
+    try:
+        validate(serial, synthetic_capture(frames + [bytes(zero_ttl)]))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted checksum-correct zero-TTL TCP packet")
+    # TCP data offset 4 (16 bytes) is impossible even if the segment
+    # checksum is recomputed correctly; reject it as wire evidence.
+    short_tcp_header = bytearray(frames[-1])
+    short_tcp_header[46] = 0x40
+    short_tcp_header[50:52] = b"\\x00\\x00"
+    tcp_segment = short_tcp_header[34:]
+    pseudo = short_tcp_header[26:34] + b"\\x00\\x06" + len(tcp_segment).to_bytes(2, "big")
+    short_tcp_header[50:52] = internet_checksum(pseudo + tcp_segment).to_bytes(2, "big")
+    try:
+        validate(serial, synthetic_capture(frames + [bytes(short_tcp_header)]))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted checksum-correct short TCP header")
     # A checksum-correct TCP segment with reserved header bits is still
     # invalid wire evidence, even when a valid response preceded it.
     reserved_tcp = bytearray(frames[-1])
