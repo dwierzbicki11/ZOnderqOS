@@ -122,7 +122,9 @@ def validate(serial: str, pcap: bytes) -> str:
         raise ValueError("missing unique guest lease")
     guest = bytes(int(part) for part in leases[0].group(1).split("."))
     packets = [p for frame in pcap_frames(pcap) if (p := tcp_frame(frame))]
-    # N4 is a non-ECN, non-urgent isolated TCP echo probe. Require exact\n    # control flags; masked comparisons could falsely accept ECE/CWR.\n    for i, syn in enumerate(packets):
+    # N4 is a non-ECN, non-urgent isolated TCP echo probe. Require exact
+    # control flags; masked comparisons could falsely accept ECE/CWR.
+    for i, syn in enumerate(packets):
         if not (
             syn["src"] == guest and syn["dst"] == SERVER and
             syn["src_mac"] == MAC and syn["dport"] == PORT and syn["sport"] != 0 and
