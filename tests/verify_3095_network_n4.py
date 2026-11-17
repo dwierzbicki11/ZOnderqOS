@@ -355,9 +355,9 @@ def self_test() -> None:
     for bad_flags in (0x30, 0x50, 0x90, 0x11):
         malformed_ack = bytearray(frames[9])
         malformed_ack[47] = bad_flags
-        malformed_ack[50:52] = b"\\x00\\x00"
+        malformed_ack[50:52] = b"\x00\x00"
         segment = malformed_ack[34:]
-        pseudo = malformed_ack[26:34] + b"\\x00\\x06" + len(segment).to_bytes(2, "big")
+        pseudo = malformed_ack[26:34] + b"\x00\x06" + len(segment).to_bytes(2, "big")
         malformed_ack[50:52] = internet_checksum(pseudo + segment).to_bytes(2, "big")
         try:
             validate(serial, synthetic_capture(frames + [bytes(malformed_ack)]))
