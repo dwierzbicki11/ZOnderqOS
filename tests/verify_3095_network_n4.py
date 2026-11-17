@@ -59,18 +59,24 @@ def normalize_tcp_serial(serial: str) -> str:
 
 def tcp_frame(frame: bytes):
     """Extract bounded, unfragmented IPv4 TCP segments from Ethernet frames."""
-    if len(frame) < 14 + 20 + 20 or frame[12:14] != b"\x08\x00":
+    if len(frame) < 14 or frame[12:14] != b"\x08\x00":
         return None
-    if frame[14] >> 4 != 4 or frame[23] != 6:
+    # A captured IPv4/TCP packet with a truncated fixed header is corrupt
+    # evidence, not an unrelated frame that can be silently skipped.
+    if len(frame) < 14 + 20:
+        raise ValueError("truncated IPv4 header")
+    if frame[14] >> 4 != 4:
+        raise ValueError("invalid IPv4 version")
+    if frame[23] != 6:
         return None
     ihl = (frame[14] & 15) * 4
     if ihl < 20 or len(frame) < 14 + ihl + 20:
-        return None
+        raise ValueError("truncated IPv4/TCP header")
     length = int.from_bytes(frame[16:18], "big")
     if (int.from_bytes(frame[20:22], "big") & 0xBFFF) or length < ihl + 20:
-        return None
+        raise ValueError("invalid IPv4/TCP length or fragmentation")
     if len(frame) < 14 + length:
-        return None
+        raise ValueError("truncated IPv4/TCP payload")
     offset = 14 + ihl
     thl = (frame[offset + 12] >> 4) * 4
     if thl < 20 or length < ihl + thl:
@@ -236,6 +242,26 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("accepted TCP IPv4 reserved fragmentation flag")
+    # A truncated TCP reply must not be ignored after an earlier valid
+    # exchange. The declared IPv4 length is unchanged in both cases.
+    for truncated in (frames[-1][:30], frames[-1][:45], frames[-1][:-1]):
+        try:
+            validate(serial, synthetic_capture(frames + [truncated]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted truncated IPv4/TCP wire evidence")
+    # A checksum-correct but impossible total length must fail closed.
+    invalid_length = bytearray(frames[-1])
+    invalid_length[16:18] = (39).to_bytes(2, "big")
+    invalid_length[24:26] = b"\x00\x00"
+    invalid_length[24:26] = internet_checksum(invalid_length[14:34]).to_bytes(2, "big")
+    try:
+        validate(serial, synthetic_capture(frames + [bytes(invalid_length)]))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted impossible IPv4/TCP total length")
     # A zero-TTL IPv4 packet must fail even when its IP checksum is valid.
     # This isolates the semantic TTL guard from checksum corruption.
     zero_ttl = bytearray(frames[-1])
