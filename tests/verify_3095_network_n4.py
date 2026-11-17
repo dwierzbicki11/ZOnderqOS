@@ -122,6 +122,24 @@ def validate(serial: str, pcap: bytes) -> str:
         raise ValueError("missing unique guest lease")
     guest = bytes(int(part) for part in leases[0].group(1).split("."))
     packets = [p for frame in pcap_frames(pcap) if (p := tcp_frame(frame))]
+    # A malformed control packet for the N4 socket must not be skipped in
+    # favour of a later valid handshake. Other TCP flows remain irrelevant.
+    for packet in packets:
+        outbound = (packet["src"] == guest and packet["dst"] == SERVER and
+                    packet["src_mac"] == MAC and packet["dport"] == PORT)
+        inbound = (packet["src"] == SERVER and packet["dst"] == guest and
+                   packet["dst_mac"] == MAC and packet["sport"] == PORT)
+        if not (outbound or inbound):
+            continue
+        flags = packet["flags"]
+        if flags & 0x02:  # SYN, including SYN-ACK
+            expected = 0x02 if outbound else 0x12
+            if flags != expected or packet["payload"] or (outbound and packet["ack"] != 0):
+                raise ValueError("invalid N4 TCP SYN control packet")
+        if packet["payload"] in (REQUEST, RESPONSE):
+            expected_payload = REQUEST if outbound else RESPONSE
+            if packet["payload"] != expected_payload or flags not in (0x10, 0x18):
+                raise ValueError("invalid N4 TCP echo control flags or direction")
     # N4 is a non-ECN, non-urgent isolated TCP echo probe. Require exact
     # control flags; masked comparisons could falsely accept ECE/CWR.
     for i, syn in enumerate(packets):
@@ -306,6 +324,21 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("accepted malformed TCP data offset after valid response")
+    # A later valid handshake/echo cannot rescue an earlier malformed
+    # SYN or SYN-ACK with ECN/URG flags and otherwise valid checksums.
+    for index, bad_flags in ((7, 0x42), (8, 0x52), (10, 0x38), (11, 0x58)):
+        malformed = bytearray(frames[index])
+        malformed[47] = bad_flags
+        malformed[50:52] = b"\x00\x00"
+        segment = malformed[34:]
+        pseudo = malformed[26:34] + b"\x00\x06" + len(segment).to_bytes(2, "big")
+        malformed[50:52] = internet_checksum(pseudo + segment).to_bytes(2, "big")
+        try:
+            validate(serial, synthetic_capture(frames + [bytes(malformed)]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted malformed N4 control flags after valid exchange")
     # A checksum-correct TCP segment with reserved header bits is still
     # invalid wire evidence, even when a valid response preceded it.
     reserved_tcp = bytearray(frames[-1])
