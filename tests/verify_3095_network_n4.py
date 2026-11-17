@@ -237,7 +237,7 @@ def self_test() -> None:
     # This isolates the semantic TTL guard from checksum corruption.
     zero_ttl = bytearray(frames[-1])
     zero_ttl[22] = 0
-    zero_ttl[24:26] = b"\\x00\\x00"
+    zero_ttl[24:26] = b"\x00\x00"
     zero_ttl[24:26] = internet_checksum(zero_ttl[14:34]).to_bytes(2, "big")
     try:
         validate(serial, synthetic_capture(frames + [bytes(zero_ttl)]))
@@ -249,9 +249,9 @@ def self_test() -> None:
     # checksum is recomputed correctly; reject it as wire evidence.
     short_tcp_header = bytearray(frames[-1])
     short_tcp_header[46] = 0x40
-    short_tcp_header[50:52] = b"\\x00\\x00"
+    short_tcp_header[50:52] = b"\x00\x00"
     tcp_segment = short_tcp_header[34:]
-    pseudo = short_tcp_header[26:34] + b"\\x00\\x06" + len(tcp_segment).to_bytes(2, "big")
+    pseudo = short_tcp_header[26:34] + b"\x00\x06" + len(tcp_segment).to_bytes(2, "big")
     short_tcp_header[50:52] = internet_checksum(pseudo + tcp_segment).to_bytes(2, "big")
     try:
         validate(serial, synthetic_capture(frames + [bytes(short_tcp_header)]))
