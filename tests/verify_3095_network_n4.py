@@ -122,11 +122,11 @@ def validate(serial: str, pcap: bytes) -> str:
         raise ValueError("missing unique guest lease")
     guest = bytes(int(part) for part in leases[0].group(1).split("."))
     packets = [p for frame in pcap_frames(pcap) if (p := tcp_frame(frame))]
-    for i, syn in enumerate(packets):
+    # N4 is a non-ECN, non-urgent isolated TCP echo probe. Require exact\n    # control flags; masked comparisons could falsely accept ECE/CWR.\n    for i, syn in enumerate(packets):
         if not (
             syn["src"] == guest and syn["dst"] == SERVER and
             syn["src_mac"] == MAC and syn["dport"] == PORT and syn["sport"] != 0 and
-            (syn["flags"] & 0x3F) == 0x02 and syn["ack"] == 0 and
+            syn["flags"] == 0x02 and syn["ack"] == 0 and
             not syn["payload"]
         ):
             continue
@@ -138,7 +138,7 @@ def validate(serial: str, pcap: bytes) -> str:
                 synack["dst_mac"] == MAC and synack["src_mac"] != MAC and
                 syn["dst_mac"] == synack["src_mac"] and
                 synack["sport"] == PORT and synack["dport"] == sport and
-                (synack["flags"] & 0x3F) == 0x12 and
+                synack["flags"] == 0x12 and
                 not synack["payload"] and synack["ack"] == (syn["seq"] + 1) & 0xFFFFFFFF
             ):
                 continue
@@ -149,7 +149,7 @@ def validate(serial: str, pcap: bytes) -> str:
                     ack["src"] == guest and ack["dst"] == SERVER and
                     ack["src_mac"] == MAC and ack["dst_mac"] == peer_mac and
                     ack["sport"] == sport and
-                    ack["dport"] == PORT and (ack["flags"] & 0x3F) == 0x10 and
+                    ack["dport"] == PORT and ack["flags"] == 0x10 and
                     ack["seq"] == (syn["seq"] + 1) & 0xFFFFFFFF and
                     ack["ack"] == (synack["seq"] + 1) & 0xFFFFFFFF and
                     not ack["payload"]
@@ -162,7 +162,7 @@ def validate(serial: str, pcap: bytes) -> str:
                         request["src_mac"] == MAC and request["dst_mac"] == peer_mac and
                         request["sport"] == sport and
                         request["dport"] == PORT and request["payload"] == REQUEST and
-                        (request["flags"] & 0x37) == 0x10 and
+                        request["flags"] in (0x10, 0x18) and
                         request["seq"] == (syn["seq"] + 1) & 0xFFFFFFFF and
                         request["ack"] == (synack["seq"] + 1) & 0xFFFFFFFF
                     ):
@@ -173,7 +173,7 @@ def validate(serial: str, pcap: bytes) -> str:
                             response["dst_mac"] == MAC and response["src_mac"] == peer_mac and
                             response["sport"] == PORT and response["dport"] == sport and
                             response["payload"] == RESPONSE and
-                            (response["flags"] & 0x37) == 0x10 and
+                            response["flags"] in (0x10, 0x18) and
                             response["seq"] == (synack["seq"] + 1) & 0xFFFFFFFF and
                             response["ack"] == (request["seq"] + len(REQUEST)) & 0xFFFFFFFF
                         ):
@@ -374,11 +374,14 @@ def self_test() -> None:
         (serial, frames[:7] + [fake_tcp(False, 0x06, 1000, 0)] + frames[8:]),  # SYN|RST
         (serial, frames[:7] + [fake_tcp(False, 0x0A, 1000, 0)] + frames[8:]),  # SYN|PSH
         (serial, frames[:7] + [fake_tcp(False, 0x22, 1000, 0)] + frames[8:]),  # SYN|URG
+        (serial, frames[:7] + [fake_tcp(False, 0x42, 1000, 0)] + frames[8:]),  # SYN|ECE
+        (serial, frames[:7] + [fake_tcp(False, 0x82, 1000, 0)] + frames[8:]),  # SYN|CWR
         # A bare SYN has no valid ACK field; reject a nonzero acknowledgement.
         (serial, frames[:7] + [fake_tcp(False, 0x02, 1000, 999)] + frames[8:]),
         (serial, frames[:8] + [fake_tcp(True, 0x16, 5000, 1001)] + frames[9:]),  # SYN|ACK|RST
         (serial, frames[:8] + [fake_tcp(True, 0x1A, 5000, 1001)] + frames[9:]),  # SYN|ACK|PSH
         (serial, frames[:8] + [fake_tcp(True, 0x32, 5000, 1001)] + frames[9:]),  # SYN|ACK|URG
+        (serial, frames[:8] + [fake_tcp(True, 0x52, 5000, 1001)] + frames[9:]),  # SYN|ACK|ECE
         (serial, frames[:8] + [fake_tcp(True, 0x12, 5000, 1001, b"BAD")] + frames[9:]),
         (serial, frames[:8] + [corrupt_mac(frames[8], 6)] + frames[9:]),
         (serial, frames[:9] + [corrupt_mac(frames[9], 0)] + frames[10:]),
@@ -401,8 +404,11 @@ def self_test() -> None:
         (serial, frames[:11] + [fake_tcp(True, 0x18, 5002, 1001 + len(REQUEST), RESPONSE)]),
         (serial, frames[:9] + [fake_tcp(False, 0x10, 1002, 5001)] + frames[10:]),
         (serial, frames[:9] + [fake_tcp(False, 0x18, 1001, 5001)] + frames[10:]),  # handshake ACK|PSH
+        (serial, frames[:9] + [fake_tcp(False, 0x50, 1001, 5001)] + frames[10:]),  # handshake ACK|ECE
         (serial, frames[:10] + [fake_tcp(False, 0x38, 1001, 5001, REQUEST)] + frames[11:]),  # data ACK|PSH|URG
+        (serial, frames[:10] + [fake_tcp(False, 0x58, 1001, 5001, REQUEST)] + frames[11:]),  # data ACK|PSH|ECE
         (serial, frames[:11] + [fake_tcp(True, 0x38, 5001, 1001 + len(REQUEST), RESPONSE)]),  # response ACK|PSH|URG
+        (serial, frames[:11] + [fake_tcp(True, 0x98, 5001, 1001 + len(REQUEST), RESPONSE)]),  # response ACK|PSH|CWR
     ]
     for bad_serial, bad_frames in negatives:
         try:
