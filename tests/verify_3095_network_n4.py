@@ -126,7 +126,8 @@ def validate(serial: str, pcap: bytes) -> str:
         if not (
             syn["src"] == guest and syn["dst"] == SERVER and
             syn["src_mac"] == MAC and syn["dport"] == PORT and syn["sport"] != 0 and
-            (syn["flags"] & 0x17) == 0x02 and not syn["payload"]
+            (syn["flags"] & 0x17) == 0x02 and syn["ack"] == 0 and
+            not syn["payload"]
         ):
             continue
         sport = syn["sport"]
@@ -371,6 +372,8 @@ def self_test() -> None:
     negatives = [
         (serial, frames[:7] + [corrupt_mac(frames[7], 0)] + frames[8:]),
         (serial, frames[:7] + [fake_tcp(False, 0x06, 1000, 0)] + frames[8:]),  # SYN|RST
+        # A bare SYN has no valid ACK field; reject a nonzero acknowledgement.
+        (serial, frames[:7] + [fake_tcp(False, 0x02, 1000, 999)] + frames[8:]),
         (serial, frames[:8] + [fake_tcp(True, 0x16, 5000, 1001)] + frames[9:]),  # SYN|ACK|RST
         (serial, frames[:8] + [fake_tcp(True, 0x12, 5000, 1001, b"BAD")] + frames[9:]),
         (serial, frames[:8] + [corrupt_mac(frames[8], 6)] + frames[9:]),
