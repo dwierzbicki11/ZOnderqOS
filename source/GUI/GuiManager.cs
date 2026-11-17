@@ -675,6 +675,8 @@ namespace ZonderqOS.GUI
                 }
 
                 isRunning = false;
+                LockScreenManager.ClearSessionResources();
+                IconManager.ClearSessionCache();
                 cursorDamageRenderer = null;
                 wallpaperCanvas = null;
                 canvas = null;
@@ -1844,6 +1846,11 @@ namespace ZonderqOS.GUI
             int deskH = (int)canvas.Height - TaskbarHeight;
 
             int mode = global::ZonderqOS.SystemSettings.DesktopBackgroundMode;
+            if (mode != 0 && wallpaperCanvas != null)
+            {
+                wallpaperCanvas = null;
+                wallpaperLoadAttempted = false;
+            }
             if (mode == 0 && wallpaperCanvas == null && !wallpaperLoadAttempted)
                 LoadWallpaper(deskW, deskH);
 

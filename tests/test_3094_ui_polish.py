@@ -62,7 +62,7 @@ class OverlayAndSecureSession3094(unittest.TestCase):
         for marker in (
             "SecurityContext.IsAuthenticated", "AuthenticationGuard",
             "screen.ClearSensitiveData()", "MouseManager.SetScreenSize(",
-            "PasswordMask", "TryStartSession("
+            "PasswordMask", "ValidateCredentialsChars(", "ActivateSession("
         ):
             self.assertIn(marker, LOGIN)
         for marker in (

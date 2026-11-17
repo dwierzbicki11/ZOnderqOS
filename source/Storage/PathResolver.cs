@@ -7,12 +7,19 @@ namespace ZonderqOS
     {
         public static string GetAbsolutePath(string currentPath, string targetPath)
         {
-            if (string.IsNullOrEmpty(targetPath) || targetPath == ".")
-                return string.IsNullOrEmpty(currentPath) ? "/" : currentPath;
-            if (targetPath == "/")
+            string normalizedCurrent = string.IsNullOrEmpty(currentPath) ? "/" : currentPath.Replace('\\', '/');
+            if (string.IsNullOrEmpty(targetPath))
+                return normalizedCurrent;
+
+            string normalizedTarget = targetPath.Replace('\\', '/');
+            if (normalizedTarget == ".")
+                return normalizedCurrent;
+            if (normalizedTarget == "/")
                 return "/";
 
-            string rawPath = targetPath.StartsWith("/") ? targetPath : currentPath + "/" + targetPath;
+            string rawPath = normalizedTarget.StartsWith("/", StringComparison.Ordinal)
+                ? normalizedTarget
+                : normalizedCurrent + "/" + normalizedTarget;
             string[] parts = rawPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
             var resolvedParts = new List<string>();
 

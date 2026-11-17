@@ -11,6 +11,7 @@ namespace ZonderqOS.Platform.X64
     {
         private const ushort ConfigAddressPort = 0xCF8;
         private const ushort ConfigDataPort = 0xCFC;
+        private static readonly object ConfigIoSync = new object();
 
         public byte Read8(byte bus, byte device, byte function, byte offset)
         {
@@ -31,8 +32,11 @@ namespace ZonderqOS.Platform.X64
         private static uint ReadAlignedDword(byte bus, byte device, byte function, byte offset)
         {
             uint address = PciConfigMechanism1.EncodeAddress(bus, device, function, offset);
-            NativePortIo.WriteDWord(ConfigAddressPort, address);
-            return NativePortIo.ReadDWord(ConfigDataPort);
+            lock (ConfigIoSync)
+            {
+                NativePortIo.WriteDWord(ConfigAddressPort, address);
+                return NativePortIo.ReadDWord(ConfigDataPort);
+            }
         }
 
         // Cosmos Gen3 keeps PlatformHAL/IPortIO internal. Bind only to the same x64

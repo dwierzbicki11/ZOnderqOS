@@ -48,7 +48,11 @@ class UpdateTrustGateTests(unittest.TestCase):
         activation = boot.split("public static bool ActivateSlot(", 1)[1].split(
             "public static bool ManualRollback(", 1)[0]
         self.assertIn("targetSlot == ActiveSlot || !string.IsNullOrEmpty(PendingSlot)", activation)
-        self.assertIn("HasValidX64ElfHeader(candidate)", activation)
+        self.assertIn("HasValidElfHeaderFile(kernelPath)", activation)
+        self.assertIn("HasValidX64ElfHeader(byte[] image)", boot)
+        self.assertIn("expectedMachine = 183", boot)
+        self.assertIn("expectedMachine = 62", boot)
+        self.assertIn("machine != expectedMachine", boot)
         self.assertIn('Path.Combine(Path.GetDirectoryName(kernelPath), "kernel.sha256")', activation)
 
     def test_slot_activation_restores_state_on_write_failure(self):

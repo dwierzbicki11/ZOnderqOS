@@ -14,7 +14,8 @@ namespace ZonderqOS
         private const int MaxPathLength = 512;
         private const int MaxOwnerLength = 64;
 
-        private static readonly Dictionary<string, (string Owner, int Perms)> _aclCache = new Dictionary<string, (string, int)>();
+        private static readonly Dictionary<string, (string Owner, int Perms)> _aclCache =
+            new Dictionary<string, (string, int)>(StringComparer.OrdinalIgnoreCase);
         private static readonly object _aclLock = new object();
 
         public static void Initialize()
@@ -36,6 +37,10 @@ namespace ZonderqOS
                 if (!File.Exists(AclPath))
                 {
                     string defaultAcl =
+                        "/|root|755\n" +
+                        "/home|root|755\n" +
+                        "/root|root|700\n" +
+                        "/tmp|root|777\n" +
                         "/etc/shadow|root|600\n" +
                         "/etc/passwd|root|644\n" +
                         "/etc/acl.map|root|600\n" +
@@ -200,8 +205,21 @@ namespace ZonderqOS
                 if (entries.Count == 0)
                     return;
 
+                int added = 0;
                 for (int i = 0; i < entries.Count; i++)
-                    _aclCache[entries[i].Path] = (newOwner, entries[i].Perms);
+                {
+                    string destKey = entries[i].Path;
+                    if (!_aclCache.ContainsKey(destKey))
+                    {
+                        if (_aclCache.Count >= MaxAclEntries)
+                        {
+                            WriteMessage.WriteError("ACL entry limit reached during copy.", "SEC");
+                            break;
+                        }
+                        added++;
+                    }
+                    _aclCache[destKey] = (newOwner, entries[i].Perms);
+                }
 
                 SaveAclLocked();
             }
@@ -253,6 +271,14 @@ namespace ZonderqOS
             return ("root", 600);
         }
 
+        public static bool HasExplicitPermission(string path)
+        {
+            lock (_aclLock)
+            {
+                return !string.IsNullOrEmpty(path) && _aclCache.ContainsKey(NormalizePath(path));
+            }
+        }
+
         public static bool CanRead(string path, string user)
         {
             if (user == "root") return true;
@@ -279,6 +305,61 @@ namespace ZonderqOS
                 return (ownerPerms & 2) == 2;
 
             return (othersPerms & 2) == 2;
+        }
+
+        public static bool CanCreate(string path, string user)
+        {
+            string normalized = NormalizePath(path);
+            if (string.IsNullOrEmpty(normalized) || normalized == "/" || normalized[0] != '/')
+                return false;
+
+            if (user == "root")
+                return true;
+
+            if (File.Exists(normalized) || Directory.Exists(normalized))
+                return CanWrite(normalized, user);
+
+            string probe = normalized;
+            while (true)
+            {
+                int lastSlash = probe.LastIndexOf('/');
+                string parent = lastSlash <= 0 ? "/" : probe.Substring(0, lastSlash);
+                if (Directory.Exists(parent) || parent == "/")
+                    return CanWrite(parent, user);
+                probe = parent;
+            }
+        }
+
+        public static bool CanDeleteRecursive(string dirPath, string user)
+        {
+            string normalized = NormalizePath(dirPath);
+            if (string.IsNullOrEmpty(normalized) || normalized == "/")
+                return false;
+
+            if (user == "root")
+                return true;
+
+            if (!CanWrite(normalized, user))
+                return false;
+
+            lock (_aclLock)
+            {
+                foreach (var kvp in _aclCache)
+                {
+                    if (!IsSameOrChildPath(kvp.Key, normalized))
+                        continue;
+
+                    int ownerPerms = (kvp.Value.Perms / 100) % 10;
+                    int othersPerms = kvp.Value.Perms % 10;
+                    bool allowed = kvp.Value.Owner == user
+                        ? (ownerPerms & 2) == 2
+                        : (othersPerms & 2) == 2;
+                    if (!allowed)
+                        return false;
+                }
+            }
+
+            return true;
         }
 
         private static bool IsValidAclIdentity(string path, string owner)
@@ -314,26 +395,46 @@ namespace ZonderqOS
 
         private static string NormalizePath(string path)
         {
-            string value = (path ?? string.Empty).Replace('\\', '/');
-            while (value.Length > 1 && value.EndsWith("/", StringComparison.Ordinal))
-                value = value.Substring(0, value.Length - 1);
-            return value;
+            string raw = (path ?? string.Empty).Replace('\\', '/').Trim();
+            if (string.IsNullOrEmpty(raw))
+                return string.Empty;
+
+            bool isAbsolute = raw[0] == '/';
+            string[] rawParts = raw.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var resolved = new List<string>(rawParts.Length);
+            for (int i = 0; i < rawParts.Length; i++)
+            {
+                string part = rawParts[i];
+                if (part == ".")
+                    continue;
+                if (part == "..")
+                {
+                    if (resolved.Count > 0)
+                        resolved.RemoveAt(resolved.Count - 1);
+                    continue;
+                }
+                resolved.Add(part);
+            }
+
+            if (isAbsolute)
+                return resolved.Count == 0 ? "/" : "/" + string.Join("/", resolved);
+            return resolved.Count == 0 ? string.Empty : string.Join("/", resolved);
         }
 
         private static bool IsSameOrChildPath(string path, string root)
         {
-            if (string.Equals(path, root, StringComparison.Ordinal))
+            if (string.Equals(path, root, StringComparison.OrdinalIgnoreCase))
                 return true;
 
             if (root == "/")
-                return path.StartsWith("/", StringComparison.Ordinal);
+                return path.StartsWith("/", StringComparison.OrdinalIgnoreCase);
 
-            return path.StartsWith(root + "/", StringComparison.Ordinal);
+            return path.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string MapPath(string path, string sourceRoot, string destinationRoot)
         {
-            if (string.Equals(path, sourceRoot, StringComparison.Ordinal))
+            if (string.Equals(path, sourceRoot, StringComparison.OrdinalIgnoreCase))
                 return destinationRoot;
 
             string relative = path.Substring(sourceRoot.Length).TrimStart('/');
@@ -362,7 +463,7 @@ namespace ZonderqOS
                     lines.Add(kvp.Key + "|" + kvp.Value.Owner + "|" + kvp.Value.Perms);
                 }
 
-                lines.Sort(StringComparer.Ordinal);
+                lines.Sort(StringComparer.OrdinalIgnoreCase);
                 string payload = lines.Count == 0
                     ? string.Empty
                     : string.Join("\n", lines) + "\n";

@@ -30,6 +30,10 @@ namespace ZonderqOS.SystemCore
             if (totalBytes >= MinUnmanagedBytes && totalBytes <= int.MaxValue - 64)
             {
                 ptr = (T*)NativeMemory.AllocZeroed((nuint)elementCount, (nuint)sizeof(T));
+                if (ptr == null)
+                {
+                    fallbackManaged = new T[elementCount];
+                }
                 length = elementCount;
             }
             else

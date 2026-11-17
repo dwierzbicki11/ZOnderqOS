@@ -1,3 +1,5 @@
+using System.Threading;
+
 namespace ZonderqOS.Hardware
 {
     public interface ISpeakerDriver
@@ -8,17 +10,35 @@ namespace ZonderqOS.Hardware
 
     public static class Speaker
     {
+        private const int MinFrequencyHz = 20;
+        private const int MaxFrequencyHz = 20000;
+        private const int FrameDurationMs = 16;
+        private const int MaxDurationFrames = 300;
+        private const int MaxDurationMs = 5000;
+        private static readonly object Sync = new object();
+
         public static bool Enabled { get; set; } = true;
         public static ISpeakerDriver Driver { get; set; }
 
         public static void Tone(int frequencyHz)
         {
-            if (!Enabled || Driver == null)
+            if (!Enabled)
                 return;
+
+            if (frequencyHz < MinFrequencyHz || frequencyHz > MaxFrequencyHz)
+            {
+                Stop();
+                return;
+            }
 
             try
             {
-                Driver.Tone(frequencyHz);
+                lock (Sync)
+                {
+                    if (!Enabled || Driver == null)
+                        return;
+                    Driver.Tone(frequencyHz);
+                }
             }
             catch
             {
@@ -30,7 +50,10 @@ namespace ZonderqOS.Hardware
         {
             try
             {
-                Driver?.Stop();
+                lock (Sync)
+                {
+                    Driver?.Stop();
+                }
             }
             catch
             {
@@ -43,8 +66,27 @@ namespace ZonderqOS.Hardware
             if (!Enabled || Driver == null)
                 return;
 
-            Tone(frequencyHz);
-            // Brief tone will be stopped by next tick or Stop()
+            if (durationFrames <= 0 || frequencyHz < MinFrequencyHz || frequencyHz > MaxFrequencyHz)
+            {
+                Stop();
+                return;
+            }
+
+            int clampedFrames = durationFrames > MaxDurationFrames ? MaxDurationFrames : durationFrames;
+            long durationMsLong = (long)clampedFrames * FrameDurationMs;
+            if (durationMsLong > MaxDurationMs)
+                durationMsLong = MaxDurationMs;
+            int durationMs = (int)durationMsLong;
+
+            try
+            {
+                Tone(frequencyHz);
+                Thread.Sleep(durationMs);
+            }
+            finally
+            {
+                Stop();
+            }
         }
     }
 }

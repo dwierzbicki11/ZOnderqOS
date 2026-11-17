@@ -15,15 +15,16 @@ namespace ZonderqOS.Commands
 
         public void Execute(string[] args, ref string currentPath)
         {
-            if (SecurityContext.CurrentUser != "root")
+            const string logPath = "/var/log/auth.log";
+            if (!SecurityContext.IsAuthenticated || SecurityContext.CurrentUid != 0 ||
+                !PermissionManager.CanRead(logPath, SecurityContext.CurrentUser))
             {
                 WriteMessage.WriteError("Access denied. Root privileges required to read audit logs.", "SEC");
-                SecurityLogger.LogEvent("WARN", "Unauthorized access attempt to audit logs.");
+                SecurityLogger.LogEvent("WARN", "Unauthorized access attempt to audit logs by " + (SecurityContext.CurrentUser ?? "?"));
                 CommandIO.LastCommandSuccess = false;
                 return;
             }
 
-            const string logPath = "/var/log/auth.log";
             int displayCount = DefaultDisplayCount;
             if (args.Length > 1)
             {

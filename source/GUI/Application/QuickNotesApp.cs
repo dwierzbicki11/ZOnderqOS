@@ -22,8 +22,9 @@ namespace ZonderqOS.GUI.Apps
         private static readonly Color NoteDarkBorder = Color.FromArgb(180, 160, 60);
         private static readonly Color TextColor = Color.FromArgb(30, 30, 30);
         private static readonly Color HeaderBg = Color.FromArgb(245, 225, 110);
-        private const string NotesFilePath = "/root/notes.txt";
 
+        private readonly string notesDirectory;
+        private readonly string notesFilePath;
         private int activeColorIndex = 0;
         private readonly List<string> lines = new List<string>(16);
         private int cursorRow = 0;
@@ -37,16 +38,30 @@ namespace ZonderqOS.GUI.Apps
         public QuickNotesApp(int x, int y, Action onClose) : base("Szybkie Notatki")
         {
             closeCallback = onClose;
+            notesDirectory = ResolveNotesDirectory();
+            notesFilePath = notesDirectory + "/notes.txt";
             Window = new Window(x, y, 340, 280, "📌 Szybkie Notatki");
             Window.CloseAction = Close;
 
             LoadNotes();
         }
 
+        private static string ResolveNotesDirectory()
+        {
+            string user = global::ZonderqOS.SecurityContext.CurrentUser;
+            if (string.IsNullOrEmpty(user) || user == "root" || !global::ZonderqOS.SecurityContext.IsAuthenticated)
+                return "/root";
+            return "/home/" + user;
+        }
+
         public override void Close()
         {
-            if (isDirty)
+            if (isDirty && global::ZonderqOS.SecurityContext.IsAuthenticated)
                 SaveNotes();
+            isDirty = false;
+            lines.Clear();
+            cursorRow = 0;
+            statusMessage = string.Empty;
             base.Close();
             closeCallback?.Invoke();
         }
@@ -76,11 +91,13 @@ namespace ZonderqOS.GUI.Apps
         private void LoadNotes()
         {
             lines.Clear();
-            if (File.Exists(NotesFilePath))
+            if (global::ZonderqOS.SecurityContext.IsAuthenticated &&
+                global::ZonderqOS.PermissionManager.CanRead(notesFilePath, global::ZonderqOS.SecurityContext.CurrentUser) &&
+                File.Exists(notesFilePath))
             {
                 try
                 {
-                    string[] saved = File.ReadAllLines(NotesFilePath);
+                    string[] saved = File.ReadAllLines(notesFilePath);
                     for (int i = 0; i < saved.Length && i < 12; i++)
                     {
                         lines.Add(saved[i]);
@@ -101,9 +118,34 @@ namespace ZonderqOS.GUI.Apps
 
         private void SaveNotes()
         {
+            if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
+            {
+                statusMessage = "Brak autoryzacji";
+                isDirty = false;
+                return;
+            }
+
+            string user = global::ZonderqOS.SecurityContext.CurrentUser;
             try
             {
-                File.WriteAllLines(NotesFilePath, lines.ToArray());
+                if (!Directory.Exists(notesDirectory))
+                {
+                    Directory.CreateDirectory(notesDirectory);
+                    if (!string.IsNullOrEmpty(user) && user != "root")
+                        global::ZonderqOS.PermissionManager.SetPermission(notesDirectory, user, 700);
+                }
+
+                if (!global::ZonderqOS.PermissionManager.CanCreate(notesFilePath, user))
+                {
+                    statusMessage = "Brak uprawnien";
+                    isDirty = false;
+                    return;
+                }
+
+                bool existed = File.Exists(notesFilePath);
+                File.WriteAllLines(notesFilePath, lines.ToArray());
+                if (!existed)
+                    global::ZonderqOS.PermissionManager.SetPermission(notesFilePath, user, 600);
                 isDirty = false;
                 lastSaveTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                 statusMessage = "Zapisano " + DateTime.Now.ToString("HH:mm:ss");
@@ -301,8 +343,8 @@ namespace ZonderqOS.GUI.Apps
             }
 
             // Footer info
-            SmallTextRenderer.Draw(canvas, statusMessage, wx + 12, wy + wh - 18, Color.FromArgb(100, 100, 100));
-            SmallTextRenderer.Draw(canvas, "Plik: /root/notes.txt", wx + ww - 150, wy + wh - 18, Color.FromArgb(100, 100, 100));
+            SmallTextRenderer.DrawClipped(canvas, statusMessage, wx + 12, wy + wh - 18, ww - 170, Color.FromArgb(100, 100, 100));
+            SmallTextRenderer.DrawClipped(canvas, "Plik: " + notesFilePath, wx + ww - 150, wy + wh - 18, 142, Color.FromArgb(100, 100, 100));
         }
     }
 }

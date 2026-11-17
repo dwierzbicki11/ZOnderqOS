@@ -70,11 +70,13 @@ namespace ZonderqOS.GUI.Apps
         private const int RamBufferSize = 262144;
         private NativeScratchBuffer<byte> testRamBuffer;
 
+        private readonly string benchmarkDir;
+        private readonly string benchmarkTestPath;
         private string cachedCpuLine = "• Sito Eratostenesa: oczekuje na uruchomienie testu liczb pierwszych";
         private string cachedMandelLine = "• Zespolony zbiór Mandelbrota i suma CRC32: oczekuje";
         private string cachedRamLine = "• RAM: Pomiar bufora 256 KB w 40 przejsciach - oczekuje";
         private string cachedGpuLine = "• Grafika VESA: Renderowanie 600 prostokatow i linii na żywo na Canvas - oczekuje";
-        private string cachedVfsLine = "• Dysk VFS: Tworzenie pliku testowego /root/benchmark_io.tmp i weryfikacja danych - oczekuje";
+        private string cachedVfsLine;
         private string cachedScoreLine = "Z-SCORE: URUCHOM TEST";
         private int cachedCpuMipsLine = -1;
         private int cachedMandelTimeLine = -1;
@@ -94,16 +96,30 @@ namespace ZonderqOS.GUI.Apps
         public SysBenchmarkApp(int x, int y, Action onClose) : base("System Benchmark")
         {
             closeCallback = onClose;
+            benchmarkDir = ResolveBenchmarkDirectory();
+            benchmarkTestPath = benchmarkDir + "/benchmark_io.tmp";
+            cachedVfsLine = "• Dysk VFS: Tworzenie pliku testowego " + benchmarkTestPath + " i weryfikacja danych - oczekuje";
             Window = new Window(x, y, 600, 440, "Benchmark & Diagnostyka Wydajności Sprzętowej");
             Window.CloseAction = Close;
 
             RefreshHardware();
         }
 
+        private static string ResolveBenchmarkDirectory()
+        {
+            string user = global::ZonderqOS.SecurityContext.CurrentUser;
+            if (string.IsNullOrEmpty(user) || user == "root" || !global::ZonderqOS.SecurityContext.IsAuthenticated)
+                return "/root";
+            return "/home/" + user;
+        }
+
         public override bool NeedsContinuousRedraw => isRunningAll || testStep >= 0 || isGpuBenchmarking;
 
         public override void Close()
         {
+            isRunningAll = false;
+            testStep = -1;
+            isGpuBenchmarking = false;
             primeSieve.Dispose();
             testRamBuffer.Dispose();
             base.Close();
@@ -191,7 +207,7 @@ namespace ZonderqOS.GUI.Apps
                     break;
 
                 case 3:
-                    testStatus = "Trwa realny test zapisu/odczytu i weryfikacji plikow VFS (/root)...";
+                    testStatus = "Trwa realny test zapisu/odczytu i weryfikacji plikow VFS (" + benchmarkDir + ")...";
                     RunRealVfsBenchmark();
                     progressPercent = 100;
                     testStep = -1;
@@ -454,8 +470,43 @@ namespace ZonderqOS.GUI.Apps
         {
             EnsureBuffersAllocated();
             long freq = Stopwatch.Frequency > 0 ? Stopwatch.Frequency : 1000000;
-            string testPath = "/root/benchmark_io.tmp";
+            string testPath = benchmarkTestPath;
             vfsTestPerformed = true;
+
+            if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
+            {
+                vfsWriteSpeedKb = 0;
+                vfsReadSpeedKb = 0;
+                vfsIntegrity = "Brak autoryzacji VFS";
+                return;
+            }
+
+            string user = global::ZonderqOS.SecurityContext.CurrentUser;
+            bool createdByTest = false;
+            try
+            {
+                if (!Directory.Exists(benchmarkDir))
+                {
+                    Directory.CreateDirectory(benchmarkDir);
+                    if (!string.IsNullOrEmpty(user) && user != "root")
+                        global::ZonderqOS.PermissionManager.SetPermission(benchmarkDir, user, 700);
+                }
+
+                if (!global::ZonderqOS.PermissionManager.CanCreate(testPath, user))
+                {
+                    vfsWriteSpeedKb = 0;
+                    vfsReadSpeedKb = 0;
+                    vfsIntegrity = "Brak uprawnien zapisu VFS";
+                    return;
+                }
+            }
+            catch
+            {
+                vfsWriteSpeedKb = 0;
+                vfsReadSpeedKb = 0;
+                vfsIntegrity = "Blad katalogu VFS";
+                return;
+            }
 
             // Reuse first 64 KB of testRamBuffer instead of allocating a new 64 KB array
             const int blockLength = 65536;
@@ -465,6 +516,7 @@ namespace ZonderqOS.GUI.Apps
                 testBlock[i] = (byte)((i * 31 + 17) & 0xFF);
             }
 
+            bool existedBefore = File.Exists(testPath);
             long writeStart = Stopwatch.GetTimestamp();
             bool writeOk = false;
             int totalWritten = 0;
@@ -482,6 +534,9 @@ namespace ZonderqOS.GUI.Apps
                     }
                     fs.Flush();
                 }
+                createdByTest = !existedBefore;
+                if (createdByTest)
+                    global::ZonderqOS.PermissionManager.SetPermission(testPath, user, 600);
                 writeOk = true;
             }
             catch
@@ -494,6 +549,9 @@ namespace ZonderqOS.GUI.Apps
                         fs.Flush();
                     }
                     totalWritten = blockLength;
+                    createdByTest = !existedBefore;
+                    if (createdByTest)
+                        global::ZonderqOS.PermissionManager.SetPermission(testPath, user, 600);
                     writeOk = true;
                 }
                 catch
@@ -510,9 +568,10 @@ namespace ZonderqOS.GUI.Apps
             int totalRead = 0;
             bool integrityOk = false;
 
-            if (writeOk && File.Exists(testPath))
+            try
             {
-                try
+                if (writeOk && File.Exists(testPath) &&
+                    global::ZonderqOS.PermissionManager.CanRead(testPath, user))
                 {
                     using (var fs = new FileStream(testPath, FileMode.Open, FileAccess.Read))
                     {
@@ -534,13 +593,23 @@ namespace ZonderqOS.GUI.Apps
                             break;
                         }
                     }
-
-                    // Clean up test file immediately
-                    File.Delete(testPath);
                 }
-                catch
+            }
+            catch
+            {
+                integrityOk = false;
+            }
+            finally
+            {
+                if (createdByTest)
                 {
-                    integrityOk = false;
+                    try
+                    {
+                        if (File.Exists(testPath))
+                            File.Delete(testPath);
+                        global::ZonderqOS.PermissionManager.RemovePermission(testPath);
+                    }
+                    catch { }
                 }
             }
 
@@ -741,7 +810,7 @@ namespace ZonderqOS.GUI.Apps
             // Card 4: VFS Cache
             DrawMetricCard(canvas, wx + 14 + (cardW + gap) * 3, cardY, cardW, cardH, "SYSTEM VFS",
                 vfsWriteSpeedKb > 0 ? (vfsWriteSpeedKb / 1024) + " MB/s" : (vfsTestPerformed ? "VFS OK" : "---"),
-                vfsTestPerformed ? "Zapis/Odczyt i SHA" : "I/O plikow /root",
+                vfsTestPerformed ? "Zapis/Odczyt i SHA" : "I/O plikow " + benchmarkDir,
                 vfsWriteSpeedKb > 0 ? OrangeColor : (vfsTestPerformed ? GreenColor : MutedColor));
 
             // GPU Live Testing Area / Benchmark Details Viewport
@@ -815,7 +884,7 @@ namespace ZonderqOS.GUI.Apps
                     cachedVfsReadLine = vfsReadSpeedKb;
                     cachedVfsLine = vfsTestPerformed
                         ? "✓ Dysk VFS: Zapis: " + (vfsWriteSpeedKb / 1024) + " MB/s | Odczyt: " + (vfsReadSpeedKb / 1024) + " MB/s | " + vfsIntegrity
-                        : "• Dysk VFS: Tworzenie pliku testowego /root/benchmark_io.tmp i weryfikacja danych - oczekuje";
+                        : "• Dysk VFS: Tworzenie pliku testowego " + benchmarkTestPath + " i weryfikacja danych - oczekuje";
                 }
                 SmallTextRenderer.Draw(canvas, cachedVfsLine, wx + 26, dy, vfsTestPerformed ? OrangeColor : TextColor);
                 dy += lineH;

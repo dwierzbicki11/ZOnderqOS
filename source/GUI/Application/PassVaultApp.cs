@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Text;
 using Cosmos.Kernel.System.Graphics;
 using ZonderqOS.GUI;
 using ZonderqOS.GUI.Icons;
@@ -24,10 +25,11 @@ namespace ZonderqOS.GUI.Apps
         private static readonly Color YellowColor = Color.FromArgb(240, 195, 45);
         private static readonly Color GoldColor = Color.FromArgb(245, 190, 35);
 
-        private const string VaultPath = "/root/.zonderq-vault.enc";
-        private const string DefaultSalt = "ZONDERQ_VAULT_SECURE_SALT_2026";
+        private const string FallbackSalt = "ZONDERQ_VAULT_SECURE_SALT_2026";
         private const int InactivityTimeoutSeconds = 90;
         private const int ClipboardTimeoutSeconds = 20;
+
+        private string vaultSalt = "";
 
         private struct VaultEntry
         {
@@ -74,11 +76,10 @@ namespace ZonderqOS.GUI.Apps
             Window = new Window(x, y, 580, 420, "Sejf Haseł & Zaszyfrowany Skarbiec");
             Window.CloseAction = Close;
 
-            // Default PIN hash for '1234'
-            masterPinHash = HashPin("1234", DefaultSalt);
+            // Deferred vault metadata load (salt/hash initialized without exposing secrets)
             lastActivityTicks = Stopwatch.GetTimestamp();
 
-            // Load or initialize encrypted vault
+            // Load vault metadata or defer default creation until valid unlock
             LoadVault();
         }
 
@@ -124,9 +125,24 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
+        private static string GetVaultOwner()
+        {
+            string user = SecurityContext.CurrentUser;
+            return string.IsNullOrWhiteSpace(user) ? "root" : user.Trim();
+        }
+
+        private static string GetVaultPath(out string owner)
+        {
+            owner = GetVaultOwner();
+            return string.Equals(owner, "root", StringComparison.Ordinal)
+                ? "/root/.zonderq-vault.enc"
+                : "/home/" + owner + "/.zonderq-vault.enc";
+        }
+
         private static string HashPin(string pin, string salt)
         {
-            return Crypto.ComputeSha256("VAULT_HASH:" + (salt ?? DefaultSalt) + ":" + (pin ?? ""));
+            string effectiveSalt = string.IsNullOrEmpty(salt) ? FallbackSalt : salt;
+            return Crypto.ComputeSha256("VAULT_HASH:" + effectiveSalt + ":" + (pin ?? ""));
         }
 
         private void RegisterActivity()
@@ -143,6 +159,7 @@ namespace ZonderqOS.GUI.Apps
             lastCopiedPassword = "";
             clipboardClearTicks = 0;
             isChangingPin = false;
+            entries.Clear();
             statusMessage = "Sejf zablokowany. Wpisz PIN glowny.";
             statusColor = MutedColor;
         }
@@ -162,18 +179,25 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            string enteredHash = HashPin(pinInput, DefaultSalt);
+            string candidatePin = pinInput;
+            string effectiveSalt = string.IsNullOrEmpty(vaultSalt) ? FallbackSalt : vaultSalt;
+            string enteredHash = HashPin(candidatePin, effectiveSalt);
             if (Crypto.FixedTimeEquals(enteredHash, masterPinHash))
             {
-                // Successful unlock
+                if (!DecryptVaultData(candidatePin))
+                {
+                    pinInput = "";
+                    return;
+                }
+
+                // Unlock only after PIN verification AND integrity verification succeed
                 isUnlocked = true;
                 failedAttempts = 0;
                 lockoutUntilTicks = 0;
-                unlockedPin = pinInput;
+                unlockedPin = candidatePin;
                 statusMessage = "Sejf odblokowany pomyslnie.";
                 statusColor = GreenColor;
                 RegisterActivity();
-                DecryptVaultData(unlockedPin);
                 pinInput = "";
             }
             else
@@ -214,72 +238,177 @@ namespace ZonderqOS.GUI.Apps
         // =========================================================================
         private void LoadVault()
         {
-            if (!File.Exists(VaultPath))
+            entries.Clear();
+            string vaultPath = GetVaultPath(out _);
+            if (!File.Exists(vaultPath))
             {
-                LoadDefaultEntries();
+                vaultSalt = Crypto.GenerateSalt();
+                masterPinHash = HashPin("1234", vaultSalt);
                 return;
             }
 
             try
             {
-                string[] lines = File.ReadAllLines(VaultPath);
-                if (lines.Length >= 3 && lines[0] == "ZONDERQ_VAULT_v2")
+                string[] lines = File.ReadAllLines(vaultPath);
+                if (lines.Length >= 3 && (lines[0] == "ZONDERQ_VAULT_v3" || lines[0] == "ZONDERQ_VAULT_v2"))
                 {
+                    vaultSalt = lines[1].Trim();
                     masterPinHash = lines[2].Trim();
                 }
-            }
-            catch { }
-        }
-
-        private void DecryptVaultData(string pin)
-        {
-            if (!File.Exists(VaultPath))
-            {
-                LoadDefaultEntries();
-                SaveEncryptedVault(pin);
-                return;
-            }
-
-            try
-            {
-                string[] lines = File.ReadAllLines(VaultPath);
-                if (lines.Length < 5 || lines[0] != "ZONDERQ_VAULT_v2")
+                else
                 {
-                    LoadDefaultEntries();
-                    return;
-                }
-
-                string salt = lines[1].Trim();
-                string expectedPinHash = lines[2].Trim();
-                string storedHmac = lines[3].Trim();
-                string cipherHex = lines[4].Trim();
-
-                // Derive decryption key
-                string key = Crypto.ComputeSha256("KEY:" + pin + ":" + salt);
-                string macKey = Crypto.ComputeSha256("MAC:" + pin + ":" + salt);
-
-                // Verify HMAC integrity tag
-                string actualHmac = Crypto.ComputeSha256(cipherHex + macKey);
-                if (!Crypto.FixedTimeEquals(storedHmac, actualHmac))
-                {
-                    statusMessage = "Blad integralnosci bazy: Dane zostaly zmodyfikowane!";
+                    vaultSalt = Crypto.GenerateSalt();
+                    masterPinHash = "";
+                    statusMessage = "Uszkodzony naglowek pliku sejfu.";
                     statusColor = RedColor;
-                    SecurityLogger.LogEvent("CRITICAL", "PassVault integrity verification failed! Database tampering detected.");
-                    return;
                 }
-
-                // Decrypt ciphertext
-                byte[] cipherBytes = HexToBytes(cipherHex);
-                byte[] plainBytes = CipherTransform(cipherBytes, key);
-                string plainText = BytesToAscii(plainBytes);
-
-                // Deserialize entries
-                DeserializeEntries(plainText);
             }
             catch (Exception ex)
             {
+                vaultSalt = Crypto.GenerateSalt();
+                masterPinHash = "";
+                SecurityLogger.LogEvent("WARN", "PassVault header load failed: " + ex.Message);
+            }
+        }
+
+        private bool DecryptVaultData(string pin)
+        {
+            string vaultPath = GetVaultPath(out _);
+            if (!File.Exists(vaultPath))
+            {
+                if (string.IsNullOrEmpty(vaultSalt))
+                    vaultSalt = Crypto.GenerateSalt();
+                masterPinHash = HashPin(pin, vaultSalt);
+                LoadDefaultEntries();
+                SaveEncryptedVault(pin);
+                return true;
+            }
+
+            try
+            {
+                string[] lines = File.ReadAllLines(vaultPath);
+                if (lines.Length == 0)
+                {
+                    statusMessage = "Niepoprawny format pliku sejfu!";
+                    statusColor = RedColor;
+                    return false;
+                }
+
+                string version = lines[0].Trim();
+                if (version == "ZONDERQ_VAULT_v3")
+                {
+                    if (lines.Length < 6)
+                    {
+                        statusMessage = "Niepoprawny format pliku sejfu v3!";
+                        statusColor = RedColor;
+                        return false;
+                    }
+
+                    string salt = lines[1].Trim();
+                    string storedPinHash = lines[2].Trim();
+                    string storedHmac = lines[3].Trim();
+                    string nonce = lines[4].Trim();
+                    string cipherHex = lines[5].Trim();
+
+                    string expectedPinHash = HashPin(pin, salt);
+                    if (!Crypto.FixedTimeEquals(expectedPinHash, storedPinHash))
+                    {
+                        statusMessage = "Bledny PIN!";
+                        statusColor = RedColor;
+                        return false;
+                    }
+
+                    string key = Crypto.ComputeSha256("KEY:" + pin + ":" + salt);
+                    string macKey = Crypto.ComputeSha256("MAC:" + pin + ":" + salt);
+                    string actualHmac = Crypto.ComputeHmacSha256(macKey, "v3:" + salt + ":" + storedPinHash + ":" + nonce + ":" + cipherHex);
+                    if (!Crypto.FixedTimeEquals(storedHmac, actualHmac))
+                    {
+                        entries.Clear();
+                        statusMessage = "Blad integralnosci bazy: Dane zostaly zmodyfikowane!";
+                        statusColor = RedColor;
+                        SecurityLogger.LogEvent("CRITICAL", "PassVault HMAC-SHA256 verification failed! Database tampering detected.");
+                        return false;
+                    }
+
+                    if (!TryHexToBytes(cipherHex, out byte[] cipherBytes))
+                    {
+                        entries.Clear();
+                        statusMessage = "Uszkodzony szyfrogram bazy!";
+                        statusColor = RedColor;
+                        return false;
+                    }
+
+                    byte[] plainBytes = CipherTransformCtr(cipherBytes, key, nonce);
+                    string plainText = Encoding.UTF8.GetString(plainBytes);
+                    vaultSalt = salt;
+                    masterPinHash = storedPinHash;
+                    DeserializeEntries(plainText);
+                    return true;
+                }
+
+                if (version == "ZONDERQ_VAULT_v2")
+                {
+                    if (lines.Length < 5)
+                    {
+                        statusMessage = "Niepoprawny format pliku sejfu v2!";
+                        statusColor = RedColor;
+                        return false;
+                    }
+
+                    string salt = lines[1].Trim();
+                    string storedPinHash = lines[2].Trim();
+                    string storedHmac = lines[3].Trim();
+                    string cipherHex = lines[4].Trim();
+
+                    string expectedPinHash = HashPin(pin, salt);
+                    if (!Crypto.FixedTimeEquals(expectedPinHash, storedPinHash))
+                    {
+                        statusMessage = "Bledny PIN!";
+                        statusColor = RedColor;
+                        return false;
+                    }
+
+                    string key = Crypto.ComputeSha256("KEY:" + pin + ":" + salt);
+                    string macKey = Crypto.ComputeSha256("MAC:" + pin + ":" + salt);
+                    string actualHmac = Crypto.ComputeSha256(cipherHex + macKey);
+                    if (!Crypto.FixedTimeEquals(storedHmac, actualHmac))
+                    {
+                        entries.Clear();
+                        statusMessage = "Blad integralnosci bazy: Dane zostaly zmodyfikowane!";
+                        statusColor = RedColor;
+                        SecurityLogger.LogEvent("CRITICAL", "PassVault legacy v2 integrity verification failed!");
+                        return false;
+                    }
+
+                    if (!TryHexToBytes(cipherHex, out byte[] cipherBytes))
+                    {
+                        entries.Clear();
+                        statusMessage = "Uszkodzony szyfrogram bazy!";
+                        statusColor = RedColor;
+                        return false;
+                    }
+
+                    byte[] plainBytes = LegacyCipherTransform(cipherBytes, key);
+                    string plainText = BytesToAscii(plainBytes);
+                    DeserializeEntries(plainText);
+
+                    // Upgrade legacy v2 database in-place to v3 (HMAC-SHA256 + SHA-256 CTR)
+                    vaultSalt = salt;
+                    masterPinHash = storedPinHash;
+                    SaveEncryptedVault(pin);
+                    return true;
+                }
+
+                statusMessage = "Nieobslugiwana wersja pliku sejfu!";
+                statusColor = RedColor;
+                return false;
+            }
+            catch (Exception ex)
+            {
+                entries.Clear();
                 statusMessage = "Blad deszyfrowania: " + ex.Message;
                 statusColor = RedColor;
+                return false;
             }
         }
 
@@ -287,27 +416,39 @@ namespace ZonderqOS.GUI.Apps
         {
             try
             {
+                string vaultPath = GetVaultPath(out string owner);
+                string dir = Path.GetDirectoryName(vaultPath);
+                if (!string.IsNullOrEmpty(dir))
+                    Directory.CreateDirectory(dir);
+
+                if (string.IsNullOrEmpty(vaultSalt))
+                    vaultSalt = Crypto.GenerateSalt();
+
+                string nonce = Crypto.GenerateSalt();
+                masterPinHash = HashPin(pin, vaultSalt);
+
                 string serialized = SerializeEntries();
-                byte[] plainBytes = AsciiToBytes(serialized);
+                byte[] plainBytes = Encoding.UTF8.GetBytes(serialized);
 
-                string key = Crypto.ComputeSha256("KEY:" + pin + ":" + DefaultSalt);
-                string macKey = Crypto.ComputeSha256("MAC:" + pin + ":" + DefaultSalt);
+                string key = Crypto.ComputeSha256("KEY:" + pin + ":" + vaultSalt);
+                string macKey = Crypto.ComputeSha256("MAC:" + pin + ":" + vaultSalt);
 
-                byte[] cipherBytes = CipherTransform(plainBytes, key);
+                byte[] cipherBytes = CipherTransformCtr(plainBytes, key, nonce);
                 string cipherHex = BytesToHex(cipherBytes);
-                string hmacTag = Crypto.ComputeSha256(cipherHex + macKey);
+                string hmacTag = Crypto.ComputeHmacSha256(macKey, "v3:" + vaultSalt + ":" + masterPinHash + ":" + nonce + ":" + cipherHex);
 
-                using (var sw = new StreamWriter(VaultPath, false))
+                using (var sw = new StreamWriter(vaultPath, false))
                 {
-                    sw.WriteLine("ZONDERQ_VAULT_v2");
-                    sw.WriteLine(DefaultSalt);
+                    sw.WriteLine("ZONDERQ_VAULT_v3");
+                    sw.WriteLine(vaultSalt);
                     sw.WriteLine(masterPinHash);
                     sw.WriteLine(hmacTag);
+                    sw.WriteLine(nonce);
                     sw.WriteLine(cipherHex);
                 }
 
-                // Protect permissions: 600
-                PermissionManager.SetPermission(VaultPath, "root", 600);
+                // Protect permissions: 600 for active owner
+                PermissionManager.SetPermission(vaultPath, owner, 600);
             }
             catch (Exception ex)
             {
@@ -316,10 +457,32 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
-        private static byte[] CipherTransform(byte[] input, string keyHex)
+        private static byte[] CipherTransformCtr(byte[] input, string keyHex, string nonce)
         {
             byte[] output = new byte[input.Length];
-            byte[] keyBytes = HexToBytes(keyHex);
+            int blockIdx = 0;
+            int offset = 0;
+            while (offset < input.Length)
+            {
+                string blockHex = Crypto.ComputeSha256("CTR:" + keyHex + ":" + nonce + ":" + blockIdx);
+                if (!TryHexToBytes(blockHex, out byte[] blockKey) || blockKey.Length == 0)
+                    throw new InvalidOperationException("Failed to derive cipher block.");
+
+                int take = Math.Min(blockKey.Length, input.Length - offset);
+                for (int i = 0; i < take; i++)
+                    output[offset + i] = (byte)(input[offset + i] ^ blockKey[i]);
+
+                offset += take;
+                blockIdx++;
+            }
+            return output;
+        }
+
+        private static byte[] LegacyCipherTransform(byte[] input, string keyHex)
+        {
+            byte[] output = new byte[input.Length];
+            if (!TryHexToBytes(keyHex, out byte[] keyBytes) || keyBytes.Length == 0)
+                return output;
             int keyLen = keyBytes.Length;
 
             for (int i = 0; i < input.Length; i++)
@@ -401,15 +564,32 @@ namespace ZonderqOS.GUI.Apps
             return new string(c);
         }
 
-        private static byte[] HexToBytes(string hex)
+        private static bool TryHexToBytes(string hex, out byte[] bytes)
         {
+            bytes = Array.Empty<byte>();
+            if (string.IsNullOrEmpty(hex) || (hex.Length & 1) != 0)
+                return false;
+
             int len = hex.Length / 2;
-            byte[] bytes = new byte[len];
+            byte[] result = new byte[len];
             for (int i = 0; i < len; i++)
             {
-                bytes[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
+                int hi = ParseHexNibble(hex[i * 2]);
+                int lo = ParseHexNibble(hex[i * 2 + 1]);
+                if (hi < 0 || lo < 0)
+                    return false;
+                result[i] = (byte)((hi << 4) | lo);
             }
-            return bytes;
+            bytes = result;
+            return true;
+        }
+
+        private static int ParseHexNibble(char c)
+        {
+            if (c >= '0' && c <= '9') return c - '0';
+            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+            return -1;
         }
 
         private void LoadDefaultEntries()
@@ -469,6 +649,45 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            if (isChangingPin)
+            {
+                if (key.Key == ConsoleKeyEx.Backspace && pinInput.Length > 0)
+                {
+                    pinInput = pinInput.Substring(0, pinInput.Length - 1);
+                    statusMessage = "Nowy PIN (" + pinInput.Length + " cyfr) [Enter=zapisz, Esc=anuluj]";
+                    return;
+                }
+
+                if (key.Key == ConsoleKeyEx.Enter)
+                {
+                    if (pinInput.Length < 4)
+                    {
+                        statusMessage = "Nowy PIN musi miec co najmniej 4 cyfry.";
+                        statusColor = RedColor;
+                        return;
+                    }
+
+                    unlockedPin = pinInput;
+                    vaultSalt = Crypto.GenerateSalt();
+                    masterPinHash = HashPin(unlockedPin, vaultSalt);
+                    SaveEncryptedVault(unlockedPin);
+                    isChangingPin = false;
+                    pinInput = "";
+                    statusMessage = "Zmieniono PIN glowny i ponownie zaszyfrowano baze.";
+                    statusColor = GreenColor;
+                    SecurityLogger.LogEvent("INFO", "PassVault master PIN updated successfully.");
+                    return;
+                }
+
+                if (key.KeyChar >= '0' && key.KeyChar <= '9' && pinInput.Length < 8)
+                {
+                    pinInput += key.KeyChar;
+                    statusMessage = "Nowy PIN (" + pinInput.Length + " cyfr) [Enter=zapisz, Esc=anuluj]";
+                    statusColor = YellowColor;
+                }
+                return;
+            }
+
             // Keyboard navigation when unlocked
             if (key.Key == ConsoleKeyEx.UpArrow)
             {
@@ -490,27 +709,33 @@ namespace ZonderqOS.GUI.Apps
             if (!Window.Visible || Window.IsMinimized)
                 return;
 
-            RegisterActivity();
-
             int contentX = Window.X + 8;
             int contentY = Window.Y + 38;
+            int contentWidth = Math.Max(1, Window.Width - 16);
+            int contentHeight = Math.Max(1, Window.Height - 46);
+
+            if (rightClicked && !rightWasClicked)
+                RegisterActivity();
 
             if (leftClicked && !leftWasClicked)
             {
-                // Lock screen keypad
+                RegisterActivity();
+
+                // Lock screen keypad (aligned with RenderLockScreen coordinates)
                 if (!isUnlocked)
                 {
-                    int padX = contentX + 220;
-                    int padY = contentY + 125;
+                    int centerX = contentX + contentWidth / 2;
+                    int padX = centerX - 70;
+                    int padY = contentY + 140;
                     int bW = 42;
-                    int bH = 34;
+                    int bH = 32;
 
                     for (int n = 1; n <= 9; n++)
                     {
                         int r = (n - 1) / 3;
                         int c = (n - 1) % 3;
                         int bx = padX + c * (bW + 8);
-                        int by = padY + r * (bH + 8);
+                        int by = padY + r * (bH + 6);
 
                         if (Hit(mouseX, mouseY, bx, by, bW, bH))
                         {
@@ -520,8 +745,9 @@ namespace ZonderqOS.GUI.Apps
                         }
                     }
 
+                    int lastY = padY + 3 * (bH + 6);
                     // Button '0'
-                    if (Hit(mouseX, mouseY, padX + bW + 8, padY + 3 * (bH + 8), bW, bH))
+                    if (Hit(mouseX, mouseY, padX + bW + 8, lastY, bW, bH))
                     {
                         if (pinInput.Length < 8) pinInput += "0";
                         if (pinInput.Length == 4) UnlockVault();
@@ -529,14 +755,14 @@ namespace ZonderqOS.GUI.Apps
                     }
 
                     // Button 'C' (Clear)
-                    if (Hit(mouseX, mouseY, padX, padY + 3 * (bH + 8), bW, bH))
+                    if (Hit(mouseX, mouseY, padX, lastY, bW, bH))
                     {
                         pinInput = "";
                         return;
                     }
 
                     // Button 'OK'
-                    if (Hit(mouseX, mouseY, padX + 2 * (bW + 8), padY + 3 * (bH + 8), bW, bH))
+                    if (Hit(mouseX, mouseY, padX + 2 * (bW + 8), lastY, bW, bH))
                     {
                         UnlockVault();
                         return;
@@ -547,39 +773,42 @@ namespace ZonderqOS.GUI.Apps
                 // Top Toolbar Buttons
                 int tbY = contentY + 6;
                 // [+ NOWY WPIS]
-                if (Hit(mouseX, mouseY, contentX + 6, tbY, 95, 26))
+                if (Hit(mouseX, mouseY, contentX + 6, tbY + 2, 95, 24))
                 {
                     AddNewEntry();
                     return;
                 }
                 // [GENERUJ HASŁO]
-                if (Hit(mouseX, mouseY, contentX + 107, tbY, 120, 26))
+                if (Hit(mouseX, mouseY, contentX + 107, tbY + 2, 120, 24))
                 {
                     GenerateNewPassword();
                     return;
                 }
                 // [ZMIEŃ PIN]
-                if (Hit(mouseX, mouseY, contentX + 233, tbY, 90, 26))
+                if (Hit(mouseX, mouseY, contentX + 233, tbY + 2, 90, 24))
                 {
                     PromptChangePin();
                     return;
                 }
                 // [BLOKUJ SEJF]
-                if (Hit(mouseX, mouseY, contentX + 329, tbY, 90, 26))
+                if (Hit(mouseX, mouseY, contentX + 329, tbY + 2, 90, 24))
                 {
                     LockVault();
                     return;
                 }
 
-                // Left list selection
-                int listX = contentX + 6;
-                int listY = contentY + 38;
+                // Split layout coordinates matching Render() & RenderEntriesList()/RenderEntryDetails()
+                int bodyY = contentY + 42;
+                int bodyH = contentHeight - 48;
+                const int listW = 205;
+                int listX = contentX + 4;
                 int itemH = 34;
 
                 for (int i = 0; i < entries.Count; i++)
                 {
-                    int iy = listY + i * (itemH + 4);
-                    if (Hit(mouseX, mouseY, listX, iy, 195, itemH))
+                    int iy = bodyY + 4 + i * (itemH + 4);
+                    if (iy + itemH > bodyY + bodyH) break;
+                    if (Hit(mouseX, mouseY, listX + 3, iy, listW - 6, itemH))
                     {
                         selectedIndex = i;
                         showPassword = false;
@@ -588,18 +817,18 @@ namespace ZonderqOS.GUI.Apps
                 }
 
                 // Right panel interactions
-                int rightX = contentX + 215;
-                int detailsY = contentY + 38;
+                int detailsX = contentX + listW + 8;
+                int detailsW = contentWidth - listW - 14;
 
                 // [POKAŻ / UKRYJ] hasło
-                if (Hit(mouseX, mouseY, rightX + 235, detailsY + 76, 80, 24))
+                if (Hit(mouseX, mouseY, detailsX + 235, bodyY + 86, 80, 24))
                 {
                     showPassword = !showPassword;
                     return;
                 }
 
                 // [KOPIUJ] do schowka z autoczyszczeniem
-                if (Hit(mouseX, mouseY, rightX + 150, detailsY + 76, 75, 24))
+                if (Hit(mouseX, mouseY, detailsX + 150, bodyY + 86, 75, 24))
                 {
                     if (selectedIndex >= 0 && selectedIndex < entries.Count)
                     {
@@ -613,7 +842,7 @@ namespace ZonderqOS.GUI.Apps
                 }
 
                 // [USUŃ] wpis
-                if (Hit(mouseX, mouseY, rightX + 235, detailsY + 285, 80, 26))
+                if (Hit(mouseX, mouseY, detailsX + detailsW - 95, bodyY + bodyH - 34, 85, 24))
                 {
                     if (entries.Count > 1 && selectedIndex >= 0 && selectedIndex < entries.Count)
                     {
@@ -668,13 +897,10 @@ namespace ZonderqOS.GUI.Apps
 
         private void PromptChangePin()
         {
-            // Simple robust PIN rotation
-            unlockedPin = "9999";
-            masterPinHash = HashPin(unlockedPin, DefaultSalt);
-            SaveEncryptedVault(unlockedPin);
-            statusMessage = "Zmieniono PIN glowny na: 9999 (Zaszyfrowano baze)";
-            statusColor = GreenColor;
-            SecurityLogger.LogEvent("INFO", "PassVault master PIN updated successfully.");
+            isChangingPin = true;
+            pinInput = "";
+            statusMessage = "Wpisz nowy PIN (4-8 cyfr) i nacisnij Enter [Esc=anuluj]";
+            statusColor = YellowColor;
         }
 
         private static string GenerateRandomPassword(int length)

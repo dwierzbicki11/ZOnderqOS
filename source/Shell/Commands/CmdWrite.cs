@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.Commands
 {
@@ -12,6 +13,14 @@ namespace ZonderqOS.Commands
 
         public void Execute(string[] args, ref string currentPath)
         {
+            if (!SecurityContext.IsAuthenticated)
+            {
+                WriteMessage.WriteError("Permission denied. Authentication required.", "SEC");
+                SecurityLogger.LogEvent("WARN", "Unauthenticated write attempt.");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             if (args.Length < 2)
             {
                 WriteMessage.WriteError("Usage: write <file> [content]", "CMD");
@@ -20,11 +29,42 @@ namespace ZonderqOS.Commands
             }
 
             string path = PathResolver.GetAbsolutePath(currentPath, args[1]);
+            if (VirtualFs.IsReadOnlyPath(path))
+            {
+                WriteMessage.WriteError($"Read-only virtual filesystem: cannot write {path}", "FS");
+                SecurityLogger.LogEvent("WARN", $"Rejected write on read-only virtual path {path} by {SecurityContext.CurrentUser ?? "?"}");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
+            if (VirtualFs.IsVirtualPath(path))
+            {
+                if (!TryBuildContent(args, out string virtualContent))
+                {
+                    WriteMessage.WriteError($"Content exceeds {MaxContentCharacters} characters.", "CMD");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                Disk.CreateFile(path, virtualContent);
+                return;
+            }
+
+            if (Directory.Exists(path))
+            {
+                WriteMessage.WriteError($"Target is a directory: {path}", "FS");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             bool existed = File.Exists(path);
-            if (existed && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
+            bool permitted = existed
+                ? PermissionManager.CanWrite(path, SecurityContext.CurrentUser)
+                : PermissionManager.CanCreate(path, SecurityContext.CurrentUser);
+            if (!permitted)
             {
                 WriteMessage.WriteError($"Permission denied: Cannot write {path}", "SEC");
-                SecurityLogger.LogEvent("WARN", $"Unauthorized write attempt on {path} by {SecurityContext.CurrentUser}");
+                SecurityLogger.LogEvent("WARN", $"Unauthorized write attempt on {path} by {SecurityContext.CurrentUser ?? "?"}");
                 CommandIO.LastCommandSuccess = false;
                 return;
             }
@@ -37,8 +77,7 @@ namespace ZonderqOS.Commands
             }
 
             Disk.CreateFile(path, content);
-
-            if (!File.Exists(path))
+            if (!CommandIO.LastCommandSuccess || !File.Exists(path))
             {
                 CommandIO.LastCommandSuccess = false;
                 return;
@@ -46,8 +85,6 @@ namespace ZonderqOS.Commands
 
             if (!existed)
                 PermissionManager.SetPermission(path, SecurityContext.CurrentUser, 644);
-
-            CommandIO.LastCommandSuccess = true;
         }
 
         private static bool TryBuildContent(string[] args, out string content)

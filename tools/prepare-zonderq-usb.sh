@@ -16,7 +16,7 @@ fail() { printf '\n[STOP] %s\n' "$*" >&2; exit 1; }
 [[ -n "$DEVICE" ]] || fail "Podaj sciezke do urzadzenia USB, np.: sudo ./tools/prepare-zonderq-usb.sh /dev/sdb"
 [[ -b "$DEVICE" ]] || fail "Urzadzenie $DEVICE nie istnieje lub nie jest urzadzeniem blokowym."
 
-for cmd in lsblk blockdev sfdisk mkfs.vfat blkid sync udevadm partprobe dd stat; do
+for cmd in lsblk blockdev sfdisk mkfs.vfat blkid sync udevadm partprobe dd stat sha256sum findmnt umount date awk; do
     command -v "$cmd" >/dev/null 2>&1 || fail "Brakuje wymaganego narzedzia: $cmd"
 done
 
@@ -27,8 +27,23 @@ TRAN="$(lsblk -dn -o TRAN "$DEVICE" | xargs || true)"
 DEV_TYPE="$(lsblk -dn -o TYPE "$DEVICE" | xargs || true)"
 [[ "$DEV_TYPE" == "disk" ]] || fail "$DEVICE nie jest calym dyskiem (jest: $DEV_TYPE)."
 
-# Verify ISO file exists
-[[ -s "$ISO" ]] || fail "Brak skompilowanego ISO: $ISO. Wykonaj najpierw: ./run.sh --build"
+DATA_START=65536 # LBA 65536 = 32 MiB
+MAX_32MIB=$((DATA_START * 512))
+
+# Verify ISO file exists and fits strictly before ZONDERQDATA (<= 32 MiB)
+[[ -f "$ISO" && -s "$ISO" ]] || fail "Brak skompilowanego ISO: $ISO. Wykonaj najpierw: ./run.sh --build"
+ISO_BYTES="$(stat -c%s "$ISO")"
+(( ISO_BYTES > 512 && ISO_BYTES <= MAX_32MIB )) || fail "Obraz ISO ma rozmiar $ISO_BYTES bajtow (limit <= $MAX_32MIB B / 32 MiB). Przerwano, aby nie uszkodzic partycji ZONDERQDATA."
+
+KERNEL_SRC="$ROOT/obj/Debug/net10.0/linux-x64/cosmos/iso_root/boot/ZonderqOS.elf"
+if [[ ! -f "$KERNEL_SRC" && -f "$ROOT/output-x64/ZonderqOS.elf" ]]; then
+    KERNEL_SRC="$ROOT/output-x64/ZonderqOS.elf"
+elif [[ ! -f "$KERNEL_SRC" && -f "$ROOT/output-3095/updates-package/ZonderqOS.elf" ]]; then
+    KERNEL_SRC="$ROOT/output-3095/updates-package/ZonderqOS.elf"
+fi
+[[ -f "$KERNEL_SRC" ]] || fail "Brak pliku kernela do zainicjalizowania Slotu A ($KERNEL_SRC)."
+KERNEL_BYTES="$(stat -c%s "$KERNEL_SRC")"
+(( KERNEL_BYTES > 0 && KERNEL_BYTES <= MAX_32MIB )) || fail "Obraz kernela $KERNEL_SRC ma niedozwolony rozmiar ($KERNEL_BYTES B; limit <= $MAX_32MIB B / 32 MiB)."
 
 # Verify no foreign OS partitions exist on target device (Kali, Windows, Linux, BitLocker, ESP)
 while IFS= read -r part; do
@@ -58,10 +73,9 @@ printf '\nUWAGA: Wszystkie dane rozruchowe na poczatku %s zostana przygotowane.\
 read -r -p "Wpisz PRZYGOTUJ aby potwierdzic i kontynuowac: " CONFIRM
 [[ "$CONFIRM" == "PRZYGOTUJ" ]] || fail "Anulowano przez uzytkownika."
 
-DATA_START=65536 # LBA 65536 = 32 MiB
-
 # Unmount existing mounted partitions
 while IFS= read -r PART; do
+    [[ -n "$PART" ]] || continue
     if findmnt -rn --source "$PART" >/dev/null 2>&1; then
         printf 'Odmontowywanie %s...\n' "$PART"
         umount "$PART" || fail "Nie mozna odmontowac $PART"
@@ -73,12 +87,13 @@ printf '\nWgrywanie hybrydowego obrazu rozruchowego Limine na %s...\n' "$DEVICE"
 dd if="$ISO" of="$DEVICE" bs=4M status=progress conv=fsync
 sync
 
-# Append partition 4 ZONDERQDATA if not present
-TOTAL_SECTORS=$(blockdev --getsz "$DEVICE")
+# Append partition 4 ZONDERQDATA
+TOTAL_SECTORS="$(blockdev --getsz "$DEVICE")"
 (( TOTAL_SECTORS > DATA_START )) || fail "Zbyt maly rozmiar nosnika USB"
 
-printf 'start=%s, size=%s, type=c\n' "$DATA_START" "$((TOTAL_SECTORS-DATA_START))" \
-   | sfdisk --append --wipe=never --wipe-partitions=never "$DEVICE" || true
+printf 'start=%s, size=%s, type=c\n' "$DATA_START" "$((TOTAL_SECTORS - DATA_START))" \
+   | sfdisk --append --wipe=never --wipe-partitions=never "$DEVICE" \
+   || fail "Nie udalo sie dopisac partycji ZONDERQDATA (start=$DATA_START) do $DEVICE"
 
 partprobe "$DEVICE" || true
 udevadm settle
@@ -87,6 +102,8 @@ sync
 PART4="${DEVICE}4"
 [[ -b "$PART4" ]] || PART4="${DEVICE}p4"
 [[ -b "$PART4" ]] || fail "Nie udalo sie zidentyfikowac partycji danych: $PART4"
+PART4_START="$(lsblk -dn -o START "$PART4" | xargs || true)"
+[[ "$PART4_START" == "$DATA_START" ]] || fail "Nieoczekiwany sektor startowy $PART4 (otrzymano: '$PART4_START', oczekiwano: $DATA_START)"
 
 # Format ZONDERQDATA as FAT32 if not already formatted with that label
 CURRENT_LABEL="$(blkid -p -s LABEL -o value "$PART4" || true)"
@@ -143,47 +160,61 @@ UPDATE_DATE="$(date +'%Y-%m-%d %H:%M:%S')"
 EOF
 
 # Copy running kernel into slot A
-KERNEL_SRC="$ROOT/obj/Debug/net10.0/linux-x64/cosmos/iso_root/boot/ZonderqOS.elf"
 if [[ -f "$KERNEL_SRC" ]]; then
     cp -f "$KERNEL_SRC" "$MOUNT_DIR/boot/slot_a/ZonderqOS.elf"
     cp -f "$KERNEL_SRC" "$MOUNT_DIR/boot/ZonderqOS.elf"
     sha256sum "$MOUNT_DIR/boot/slot_a/ZonderqOS.elf" | awk '{print $1}' > "$MOUNT_DIR/boot/slot_a/kernel.sha256"
+else
+    fail "Brak pliku kernela do zainicjalizowania Slotu A ($KERNEL_SRC)."
 fi
 
-# Write boot_state.cfg
+if [[ -s "$MOUNT_DIR/boot/slot_b/ZonderqOS.elf" ]]; then
+    SLOT_B_STATUS="Healthy"
+    SLOT_B_VERSION="1.0.2"
+    SLOT_B_BUILD="3120"
+else
+    SLOT_B_STATUS="Empty"
+    SLOT_B_VERSION=""
+    SLOT_B_BUILD="0"
+fi
+
+# Write boot_state.cfg (aligned with BootSlotManager.cs and bootguard_efi.c)
 cat > "$MOUNT_DIR/boot/boot_state.cfg" <<EOF
 # ZonderqOS A/B Bootloader State Configuration
 ACTIVE_SLOT=A
 FALLBACK_SLOT=B
 PENDING_SLOT=
 BOOT_ATTEMPTS=0
+BOOTGUARD_PREBOOT=0
+BOOTGUARD_FALLBACK=0
 MAX_BOOT_ATTEMPTS=3
-SLOT_A_STATUS=HEALTHY
+SLOT_A_STATUS=Healthy
 SLOT_A_VERSION=1.0.2
 SLOT_A_BUILD=3120
-SLOT_B_STATUS=HEALTHY
-SLOT_B_VERSION=1.0.2
-SLOT_B_BUILD=3120
+SLOT_B_STATUS=$SLOT_B_STATUS
+SLOT_B_VERSION=$SLOT_B_VERSION
+SLOT_B_BUILD=$SLOT_B_BUILD
 LAST_MODIFIED=$(date +'%Y-%m-%d %H:%M:%S')
 EOF
 
-# Write limine.conf on ZONDERQDATA
+# Write limine.conf on ZONDERQDATA (Slot A = entry 1, Slot B = entry 2, Recovery = entry 3)
 cat > "$MOUNT_DIR/boot/limine.conf" <<EOF
 # Cosmos Gen3 / Limine v10 A/B dual-slot boot configuration.
-timeout: 2
+timeout: 5
 default_entry: 1
+remember_last_entry: no
 
-/ZOnderqOS
+/ZonderqOS Slot A
     protocol: limine
     resolution: 1366x768x32
     path: fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf
 
-/ZOnderqOS (Poprzednia wersja / Slot B)
+/ZonderqOS Slot B
     protocol: limine
     resolution: 1366x768x32
     path: fslabel(ZONDERQDATA):/boot/slot_b/ZonderqOS.elf
 
-/ZOnderqOS (Kopia zapasowa ISO / Ratunkowa)
+/ZonderqOS Recovery ISO
     protocol: limine
     resolution: 1366x768x32
     path: boot():/boot/ZonderqOS.elf

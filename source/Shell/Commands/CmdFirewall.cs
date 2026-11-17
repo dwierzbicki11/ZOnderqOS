@@ -23,6 +23,12 @@ namespace ZonderqOS.Commands
             string sub = args[1].ToLowerInvariant();
             if (sub == "on" || sub == "enable")
             {
+                if (!HasRootPrivilege())
+                {
+                    DenyAccess("Unauthorized attempt to enable firewall.");
+                    return;
+                }
+
                 FirewallManager.SetMode(FirewallMode.Enabled);
                 CommandIO.WriteLine("Firewall is now ENABLED (Standard protection).");
                 CommandIO.LastCommandSuccess = true;
@@ -31,6 +37,12 @@ namespace ZonderqOS.Commands
 
             if (sub == "strict" || sub == "stealth")
             {
+                if (!HasRootPrivilege())
+                {
+                    DenyAccess("Unauthorized attempt to switch firewall to strict mode.");
+                    return;
+                }
+
                 FirewallManager.SetMode(FirewallMode.Strict);
                 CommandIO.WriteLine("Firewall is now in STRICT mode (Stealth: ICMP/Ping dropped, unsolicited inbound blocked).");
                 CommandIO.LastCommandSuccess = true;
@@ -39,11 +51,9 @@ namespace ZonderqOS.Commands
 
             if (sub == "off" || sub == "disable")
             {
-                if (SecurityContext.CurrentUser != "root")
+                if (!HasRootPrivilege())
                 {
-                    WriteMessage.WriteError("Access denied. Root privileges required to disable firewall.", "SEC");
-                    SecurityLogger.LogEvent("WARN", "Unauthorized attempt to disable firewall.");
-                    CommandIO.LastCommandSuccess = false;
+                    DenyAccess("Unauthorized attempt to disable firewall.");
                     return;
                 }
 
@@ -55,10 +65,9 @@ namespace ZonderqOS.Commands
 
             if (sub == "reset")
             {
-                if (SecurityContext.CurrentUser != "root")
+                if (!HasRootPrivilege())
                 {
-                    WriteMessage.WriteError("Access denied. Root privileges required to reset firewall rules.", "SEC");
-                    CommandIO.LastCommandSuccess = false;
+                    DenyAccess("Unauthorized attempt to reset firewall rules.");
                     return;
                 }
 
@@ -70,10 +79,9 @@ namespace ZonderqOS.Commands
 
             if (sub == "add" && args.Length >= 5)
             {
-                if (SecurityContext.CurrentUser != "root")
+                if (!HasRootPrivilege())
                 {
-                    WriteMessage.WriteError("Access denied. Root privileges required to add firewall rules.", "SEC");
-                    CommandIO.LastCommandSuccess = false;
+                    DenyAccess("Unauthorized attempt to add firewall rules.");
                     return;
                 }
 
@@ -86,13 +94,28 @@ namespace ZonderqOS.Commands
                 }
 
                 string protoStr = args[3].ToUpperInvariant();
-                RuleProtocol proto = RuleProtocol.ANY;
+                RuleProtocol proto;
                 if (protoStr == "TCP") proto = RuleProtocol.TCP;
                 else if (protoStr == "UDP") proto = RuleProtocol.UDP;
                 else if (protoStr == "ICMP") proto = RuleProtocol.ICMP;
+                else if (protoStr == "ANY") proto = RuleProtocol.ANY;
+                else
+                {
+                    WriteMessage.WriteError("Invalid protocol (expected TCP/UDP/ICMP/ANY): " + args[3], "SEC");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
 
                 string actionStr = args[4].ToLowerInvariant();
-                RuleAction action = (actionStr == "allow") ? RuleAction.Allow : RuleAction.Drop;
+                RuleAction action;
+                if (actionStr == "allow") action = RuleAction.Allow;
+                else if (actionStr == "drop") action = RuleAction.Drop;
+                else
+                {
+                    WriteMessage.WriteError("Invalid firewall action (expected allow/drop): " + args[4], "SEC");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
 
                 string desc = args.Length > 5 ? args[5] : "Custom rule";
                 FirewallManager.AddRule(port, proto, RuleDirection.Inbound, action, desc);
@@ -102,6 +125,15 @@ namespace ZonderqOS.Commands
             }
 
             CommandIO.WriteLine("Usage: firewall [status | on | strict | off | reset | add <port> <tcp|udp> <allow|drop> [desc]]");
+            CommandIO.LastCommandSuccess = false;
+        }
+
+        private static bool HasRootPrivilege() => SecurityContext.IsAuthenticated && SecurityContext.CurrentUid == 0;
+
+        private static void DenyAccess(string auditMessage)
+        {
+            WriteMessage.WriteError("Access denied. Root privileges required.", "SEC");
+            SecurityLogger.LogEvent("WARN", auditMessage + " User=" + SecurityContext.CurrentUser);
             CommandIO.LastCommandSuccess = false;
         }
 

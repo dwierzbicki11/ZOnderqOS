@@ -76,10 +76,11 @@ static int read_state(const CHAR8 *data, UINTN length,
     s->pending = n ? (char)data[pos] : 0;
     char digit;
     if (!read_char_field(data,length,"BOOT_ATTEMPTS",&digit) ||
-        digit < '0' || digit > '3')
+        digit < '0' || (unsigned)(digit - '0') > ZQ_MAX_PENDING_ATTEMPTS)
         return 0;
     s->attempts = (unsigned)(digit - '0');
-    if (!read_char_field(data,length,"BOOTGUARD_PREBOOT",&digit))
+    if (!read_char_field(data,length,"BOOTGUARD_PREBOOT",&digit) ||
+        (digit != '0' && digit != '1'))
         return 0;
     s->enabled = digit == '1';
     if (!read_char_field(data,length,"BOOTGUARD_FALLBACK",&digit) ||
@@ -103,8 +104,11 @@ static int is_labelled_volume(EFI_FILE_HANDLE root) {
 
 /* Keep the selected volume root open for on-disk ELF verification.
  * Refuse ambiguous ZONDERQDATA state volumes (never pick a random disk).
+ * Falls back to read-only file open when the boot medium is write-protected.
  */
-static EFI_STATUS open_state(EFI_FILE_HANDLE *result, EFI_FILE_HANDLE *selected_root) {
+static EFI_STATUS open_state(EFI_FILE_HANDLE *result,
+                             EFI_FILE_HANDLE *selected_root,
+                             int *is_read_only) {
     EFI_HANDLE *volumes = NULL;
     UINTN count = 0;
     EFI_STATUS status = uefi_call_wrapper(
@@ -114,11 +118,13 @@ static EFI_STATUS open_state(EFI_FILE_HANDLE *result, EFI_FILE_HANDLE *selected_
 
     *result = NULL;
     *selected_root = NULL;
+    *is_read_only = 0;
     UINTN found = 0;
     UINTN labelled = 0;
     for (UINTN i = 0; i < count; i++) {
         EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *fs = NULL;
         EFI_FILE_HANDLE root = NULL, file = NULL;
+        int vol_ro = 0;
         status = uefi_call_wrapper(BS->HandleProtocol, 3, volumes[i],
                                    &gEfiSimpleFileSystemProtocolGuid, (VOID**)&fs);
         if (EFI_ERROR(status) || fs == NULL) continue;
@@ -128,11 +134,19 @@ static EFI_STATUS open_state(EFI_FILE_HANDLE *result, EFI_FILE_HANDLE *selected_
             labelled++;
             status = uefi_call_wrapper(root->Open, 5, root, &file,
                     BOOT_STATE_PATH, EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE, 0);
+            if (EFI_ERROR(status) || file == NULL) {
+                file = NULL;
+                status = uefi_call_wrapper(root->Open, 5, root, &file,
+                        BOOT_STATE_PATH, EFI_FILE_MODE_READ, 0);
+                if (!EFI_ERROR(status) && file != NULL)
+                    vol_ro = 1;
+            }
             if (!EFI_ERROR(status) && file != NULL) {
                 found++;
                 if (found == 1) {
                     *result = file;
                     *selected_root = root;
+                    *is_read_only = vol_ro;
                     root = NULL; /* retained by caller */
                 } else {
                     uefi_call_wrapper(file->Close, 1, file);
@@ -154,6 +168,7 @@ static EFI_STATUS open_state(EFI_FILE_HANDLE *result, EFI_FILE_HANDLE *selected_
             uefi_call_wrapper((*selected_root)->Close, 1, *selected_root);
             *selected_root = NULL;
         }
+        *is_read_only = 0;
         return labelled > 1 ? EFI_SECURITY_VIOLATION : EFI_NOT_FOUND;
     }
     return EFI_SUCCESS;
@@ -183,8 +198,34 @@ static int slot_has_valid_elf(EFI_FILE_HANDLE root, char slot) {
             UINT8 header[64];
             UINTN length = sizeof(header);
             status = uefi_call_wrapper(file->Read, 3, file, &length, header);
-            if (!EFI_ERROR(status) && length == sizeof(header))
-                valid = zq_elf64_x64_header_valid(header, info->FileSize);
+            if (!EFI_ERROR(status) && length == sizeof(header) &&
+                zq_elf64_x64_header_valid(header, info->FileSize)) {
+                unsigned long long phoff = zq_elf64_read_u64(header + 32);
+                unsigned int phentsize = zq_elf64_read_u16(header + 54);
+                unsigned int phnum = zq_elf64_read_u16(header + 56);
+                if (phnum <= 256u && phentsize <= 4096u) {
+                    valid = 1;
+                    for (unsigned int i = 0; i < phnum; i++) {
+                        UINT64 ph_pos = (UINT64)phoff +
+                            (UINT64)i * (UINT64)phentsize;
+                        UINT8 phdr[56];
+                        UINTN ph_len = sizeof(phdr);
+                        status = uefi_call_wrapper(file->SetPosition, 2, file,
+                                                   ph_pos);
+                        if (EFI_ERROR(status)) {
+                            valid = 0;
+                            break;
+                        }
+                        status = uefi_call_wrapper(file->Read, 3, file,
+                                                   &ph_len, phdr);
+                        if (EFI_ERROR(status) || ph_len != sizeof(phdr) ||
+                            !zq_elf64_x64_phdr_valid(phdr, info->FileSize)) {
+                            valid = 0;
+                            break;
+                        }
+                    }
+                }
+            }
         }
     }
     uefi_call_wrapper(file->Close, 1, file);
@@ -202,6 +243,12 @@ static int write_digit(EFI_FILE_HANDLE file, const CHAR8 *data, UINTN length,
     if (EFI_ERROR(status) || size != 1) return 0;
     status = uefi_call_wrapper(file->Flush, 1, file);
     return !EFI_ERROR(status);
+}
+
+static void clear_one_shot(void) {
+    uefi_call_wrapper(RT->SetVariable, 5,
+        L"LoaderEntryOneShot", &bli_guid,
+        0, 0, NULL);
 }
 
 static EFI_STATUS configure_one_shot(char slot) {
@@ -237,7 +284,8 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *system_table) {
     Print(L"ZonderqOS EFI BootGuard: pre-kernel A/B selector\r\n");
 
     EFI_FILE_HANDLE file = NULL, volume_root = NULL;
-    EFI_STATUS status = open_state(&file, &volume_root);
+    int read_only = 0;
+    EFI_STATUS status = open_state(&file, &volume_root, &read_only);
     if (!EFI_ERROR(status) && file != NULL && volume_root != NULL) {
         CHAR8 data[STATE_LIMIT];
         UINTN length = sizeof(data);
@@ -245,9 +293,11 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *system_table) {
         zq_boot_state state = {0,0,0,0,0,0};
         char chosen = 0;
         int dirty = 0;
+        int pending_valid = 1;
+        int fallback_valid = 1;
         int valid = !EFI_ERROR(status) && length < STATE_LIMIT &&
             read_state(data,length,&state);
-        if (valid) {
+        if (valid && state.enabled) {
             /*
              * Candidate may be corrupt before any C# code starts. Only select
              * a slot after inspecting its real on-disk ELF structure.
@@ -258,48 +308,64 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *system_table) {
              * matching shared /system and /usr payload at early boot.
              */
             if (state.pending) {
-                if (!slot_has_valid_elf(volume_root, state.fallback)) {
+                fallback_valid = slot_has_valid_elf(volume_root, state.fallback);
+                if (!fallback_valid) {
                     Print(L"BootGuard: fallback image invalid or missing; refusing chainload\r\n");
+                    clear_one_shot();
                     uefi_call_wrapper(file->Close, 1, file);
                     uefi_call_wrapper(volume_root->Close, 1, volume_root);
                     return EFI_LOAD_ERROR;
                 }
-                if (!slot_has_valid_elf(volume_root, state.pending)) {
+                pending_valid = slot_has_valid_elf(volume_root, state.pending);
+                if (!pending_valid)
                     Print(L"BootGuard: corrupt pending ELF; switching directly to fallback\r\n");
-                    state.attempts = 3;
-                }
             } else if (!slot_has_valid_elf(volume_root, state.active)) {
                 Print(L"BootGuard: active image invalid; refusing chainload\r\n");
+                clear_one_shot();
                 uefi_call_wrapper(file->Close, 1, file);
                 uefi_call_wrapper(volume_root->Close, 1, volume_root);
                 return EFI_LOAD_ERROR;
             }
         }
 
-        if (valid && zq_boot_decide(&state,&chosen,&dirty)) {
+        if (valid && zq_boot_decide_with_images(&state, pending_valid,
+                                                fallback_valid, &chosen, &dirty)) {
             int durable = 1;
             if (dirty) {
-                if (state.recovery_requested)
+                if (read_only) {
+                    durable = 0;
+                } else if (state.recovery_requested) {
                     durable = write_digit(file,data,length,
                                           "BOOTGUARD_FALLBACK",'1');
-                else
+                } else {
                     durable = write_digit(file,data,length,
                                           "BOOT_ATTEMPTS", (char)('0'+state.attempts));
+                }
             }
             if (durable) {
                 status = configure_one_shot(chosen);
-                if (EFI_ERROR(status))
+                if (EFI_ERROR(status)) {
+                    clear_one_shot();
                     Print(L"BootGuard: one-shot selection not supported; Limine safe default\r\n");
-                else
+                } else {
                     Print(L"BootGuard: choosing slot %c (attempts=%d)\r\n",
                           chosen, state.attempts);
-            } else
-                Print(L"BootGuard: state write failed; Limine safe default\r\n");
-        } else
-            Print(L"BootGuard: invalid state; Limine safe default\r\n");
+                }
+            } else {
+                clear_one_shot();
+                if (read_only)
+                    Print(L"BootGuard: boot state read-only; Limine safe default\r\n");
+                else
+                    Print(L"BootGuard: state write failed; Limine safe default\r\n");
+            }
+        } else {
+            clear_one_shot();
+            Print(L"BootGuard: invalid or disabled state; Limine safe default\r\n");
+        }
         uefi_call_wrapper(file->Close, 1, file);
         uefi_call_wrapper(volume_root->Close, 1, volume_root);
     } else {
+        clear_one_shot();
         if (status == EFI_SECURITY_VIOLATION) {
             // Never launch a bootloader that resolves fslabel(ZONDERQDATA)
             // ambiguously. Return to the firmware's own recovery choices.
@@ -310,6 +376,8 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *system_table) {
     }
 
     status = chainload_limine(image);
+    if (EFI_ERROR(status))
+        clear_one_shot();
     Print(L"BootGuard: LIMINE.EFI exited, status=%r\r\n", status);
     return status;
 }

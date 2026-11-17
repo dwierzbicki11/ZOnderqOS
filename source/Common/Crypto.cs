@@ -1,5 +1,7 @@
 using System;
 using System.Diagnostics;
+using System.Text;
+using System.Threading;
 
 namespace ZonderqOS
 {
@@ -31,7 +33,7 @@ namespace ZonderqOS
             0x90BEFFFAU, 0xA4506CEBU, 0xBEF9A3F7U, 0xC67178F2U
         };
 
-        private static ulong saltCounter;
+        private static long saltCounter;
         private static readonly object PbkdfSync = new object();
         private static readonly byte[] PbkdfTempKey = new byte[256];
         private static readonly byte[] PbkdfKeyBlock = new byte[64];
@@ -76,9 +78,9 @@ namespace ZonderqOS
                 monotonic = 0UL;
             }
 
-            saltCounter++;
+            long counter = Interlocked.Increment(ref saltCounter);
             ulong mixed = rtcValue ^ RotateLeft64(monotonic, 17) ^
-                          (saltCounter * 0x9E3779B97F4A7C15UL);
+                          ((ulong)counter * 0x9E3779B97F4A7C15UL);
             mixed = Mix64(mixed);
             ulong second = Mix64(mixed ^ monotonic ^ 0xD6E8FEB86659FD93UL);
             return mixed.ToString("X16") + second.ToString("X16");
@@ -112,8 +114,8 @@ namespace ZonderqOS
             if (password == null || salt == null || iterations < 1 || iterations > 1000000)
                 return null;
 
-            byte[] key = ToAscii(password);
-            byte[] saltBytes = ToAscii(salt);
+            byte[] key = ToUtf8Bytes(password);
+            byte[] saltBytes = ToUtf8Bytes(salt);
             byte[] keyBlock = new byte[64];
             byte[] keyHash = new byte[32];
             byte[] ipad = new byte[64];
@@ -199,10 +201,11 @@ namespace ZonderqOS
                 return false;
             }
 
-            if (passwordLength > PbkdfTempKey.Length || salt.Length + 4 > PbkdfData.Length)
+            if (!IsAscii(passwordChars, passwordLength) || !IsAscii(salt) ||
+                passwordLength > PbkdfTempKey.Length || salt.Length + 4 > PbkdfData.Length)
             {
                 string computed = HashPasswordV2(new string(passwordChars, 0, passwordLength), salt, iterations);
-                bool fallbackMatch = FixedTimeEquals(expectedHex, computed);
+                bool fallbackMatch = FixedTimeHexEquals(expectedHex, computed);
                 computed = null;
                 return fallbackMatch;
             }
@@ -319,6 +322,29 @@ namespace ZonderqOS
             return difference == 0;
         }
 
+        public static bool FixedTimeHexEquals(string left, string right)
+        {
+            if (left == null || right == null)
+                return false;
+
+            int max = System.Math.Max(left.Length, right.Length);
+            int difference = left.Length ^ right.Length;
+
+            for (int i = 0; i < max; i++)
+            {
+                char a = i < left.Length ? NormalizeHexUpper(left[i]) : '\0';
+                char b = i < right.Length ? NormalizeHexUpper(right[i]) : '\0';
+                difference |= a ^ b;
+            }
+
+            return difference == 0;
+        }
+
+        private static char NormalizeHexUpper(char c)
+        {
+            return (c >= 'a' && c <= 'f') ? (char)(c - ('a' - 'A')) : c;
+        }
+
         public static string ComputeSha256(byte[] data)
         {
             if (data == null)
@@ -335,7 +361,7 @@ namespace ZonderqOS
             if (text == null)
                 return string.Empty;
 
-            return ComputeSha256(ToAscii(text));
+            return ComputeSha256(ToUtf8Bytes(text));
         }
 
         public static string ComputeHmacSha256(byte[] key, byte[] data)
@@ -376,7 +402,7 @@ namespace ZonderqOS
             if (keyAscii == null || textAscii == null)
                 return string.Empty;
 
-            return ComputeHmacSha256(ToAscii(keyAscii), ToAscii(textAscii));
+            return ComputeHmacSha256(ToUtf8Bytes(keyAscii), ToUtf8Bytes(textAscii));
         }
 
         private static void HmacSha256Into(byte[] data, int dataLength, byte[] output,
@@ -519,12 +545,29 @@ namespace ZonderqOS
             return (value >> shift) | (value << (32 - shift));
         }
 
-        private static byte[] ToAscii(string value)
+        private static byte[] ToUtf8Bytes(string value)
         {
-            byte[] data = new byte[value.Length];
+            return Encoding.UTF8.GetBytes(value);
+        }
+
+        private static bool IsAscii(string value)
+        {
             for (int i = 0; i < value.Length; i++)
-                data[i] = (byte)value[i];
-            return data;
+            {
+                if (value[i] > 0x7F)
+                    return false;
+            }
+            return true;
+        }
+
+        private static bool IsAscii(char[] value, int length)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                if (value[i] > 0x7F)
+                    return false;
+            }
+            return true;
         }
 
         private static string ToHex(byte[] data)

@@ -56,7 +56,7 @@ namespace ZonderqOS.GUI.Apps
         public HexViewerApp(int x, int y, string filePath, Action onClose) : base("Hex Viewer")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 540, 400, "Hex Viewer - " + Path.GetFileName(filePath));
+            Window = new Window(x, y, 540, 400, "Hex Viewer");
             Window.CloseAction = Close;
             OpenFile(filePath);
         }
@@ -64,19 +64,60 @@ namespace ZonderqOS.GUI.Apps
         public override void Close()
         {
             fileBuffer.Dispose();
+            currentPath = string.Empty;
+            cachedTitleText = string.Empty;
+            cachedPosText = string.Empty;
             base.Close();
             closeCallback?.Invoke();
+        }
+
+        private static string NormalizeSafePath(string path)
+        {
+            string normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
+            while (normalized.Length > 1 && normalized.EndsWith("/", StringComparison.Ordinal))
+                normalized = normalized.Substring(0, normalized.Length - 1);
+            return FileClipboard.IsSafeAbsolutePath(normalized) ? normalized : string.Empty;
+        }
+
+        private void SetStatusBuffer(string titleSuffix, string headerText, string message)
+        {
+            fileBuffer.Allocate(message.Length);
+            for (int i = 0; i < message.Length; i++)
+                fileBuffer[i] = (byte)message[i];
+            Window.Title = "Hex Viewer - " + titleSuffix;
+            cachedTitleText = headerText + " (" + fileBuffer.Length + " B)";
+            cachedPosOffset = -1;
         }
 
         public void OpenFile(string path)
         {
             try
             {
-                currentPath = path;
                 currentOffset = 0;
-                if (File.Exists(path))
+                string normalized = NormalizeSafePath(path);
+                if (string.IsNullOrEmpty(normalized))
                 {
-                    using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    currentPath = string.Empty;
+                    SetStatusBuffer("Nieprawidlowa sciezka", "Nieprawidlowa sciezka", "Nieprawidlowa sciezka pliku.");
+                    return;
+                }
+
+                if (!global::ZonderqOS.SecurityContext.IsAuthenticated ||
+                    !global::ZonderqOS.PermissionManager.CanRead(normalized, global::ZonderqOS.SecurityContext.CurrentUser))
+                {
+                    currentPath = string.Empty;
+                    global::ZonderqOS.SecurityLogger.LogEvent(
+                        "WARN",
+                        "Unauthorized HexViewer read attempt on " + normalized + " by " +
+                        (global::ZonderqOS.SecurityContext.CurrentUser ?? "?"));
+                    SetStatusBuffer("Brak uprawnien", "Brak uprawnien do odczytu", "Brak uprawnien do odczytu pliku.");
+                    return;
+                }
+
+                currentPath = normalized;
+                if (File.Exists(normalized))
+                {
+                    using (FileStream fs = new FileStream(normalized, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                     {
                         long rawLen = fs.Length;
                         int length = rawLen <= 0 ? 0 : (int)Math.Min(rawLen, 16L * 1024L * 1024L);
@@ -95,12 +136,13 @@ namespace ZonderqOS.GUI.Apps
                 else
                 {
                     // Fallback to placeholder info bytes
-                    string fallback = "ZOnderqOS Hex Viewer\nPlik: " + path + "\nNie odnaleziono pliku lub sciezka jest wirtualna.";
+                    string fallback = "ZOnderqOS Hex Viewer\nPlik: " + normalized + "\nNie odnaleziono pliku lub sciezka jest wirtualna.";
                     fileBuffer.Allocate(fallback.Length);
                     for (int i = 0; i < fallback.Length; i++)
                         fileBuffer[i] = (byte)fallback[i];
                 }
-                Window.Title = "Hex Viewer - " + Path.GetFileName(path);
+                string fileName = Path.GetFileName(normalized);
+                Window.Title = "Hex Viewer - " + (string.IsNullOrEmpty(fileName) ? normalized : fileName);
                 int len = fileBuffer.Length;
                 cachedTitleText = (currentPath ?? "Brak pliku") + " (" + len + " B)";
                 cachedPosOffset = -1;

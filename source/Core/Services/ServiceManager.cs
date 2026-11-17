@@ -35,6 +35,7 @@ namespace ZonderqOS.SystemCore.Services
 #endif
         private const int MaxServices = 64;
         private static readonly object Sync = new object();
+        private static readonly object ConfigWriteSync = new object();
         private static readonly Dictionary<string, ServiceDefinition> Definitions =
             new Dictionary<string, ServiceDefinition>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, int> Pids =
@@ -44,14 +45,17 @@ namespace ZonderqOS.SystemCore.Services
         {
             try
             {
-                Directory.CreateDirectory(ConfigRoot);
-                RecoverInterruptedConfigWrites();
-                if (!File.Exists(ConfigRoot + "/heartbeat.conf"))
-                    File.WriteAllText(ConfigRoot + "/heartbeat.conf",
-                        "# Edit and run: service reload\n" +
-                        "type=heartbeat\n" +
-                        "enabled=true\n" +
-                        "interval_seconds=60\n");
+                lock (ConfigWriteSync)
+                {
+                    Directory.CreateDirectory(ConfigRoot);
+                    RecoverInterruptedConfigWrites();
+                    if (!File.Exists(ConfigRoot + "/heartbeat.conf"))
+                        File.WriteAllText(ConfigRoot + "/heartbeat.conf",
+                            "# Edit and run: service reload\n" +
+                            "type=heartbeat\n" +
+                            "enabled=true\n" +
+                            "interval_seconds=60\n");
+                }
 
                 string error;
                 if (!Reload(out error))
@@ -69,39 +73,42 @@ namespace ZonderqOS.SystemCore.Services
             var next = new Dictionary<string, ServiceDefinition>(StringComparer.OrdinalIgnoreCase);
             try
             {
-                if (!Directory.Exists(ConfigRoot))
+                lock (ConfigWriteSync)
                 {
-                    error = "Service configuration directory does not exist.";
-                    return false;
-                }
-
-                RecoverInterruptedConfigWrites();
-
-                string[] files = Directory.GetFiles(ConfigRoot);
-                for (int i = 0; i < files.Length; i++)
-                {
-                    if (!files[i].EndsWith(".conf", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    if (next.Count >= MaxServices)
+                    if (!Directory.Exists(ConfigRoot))
                     {
-                        error = "Too many services (max 64).";
+                        error = "Service configuration directory does not exist.";
                         return false;
                     }
 
-                    string name = Path.GetFileNameWithoutExtension(files[i]);
-                    string parseError;
-                    ServiceDefinition definition;
-                    if (!ServiceDefinition.TryParse(name, ReadBounded(files[i]), out definition, out parseError))
+                    RecoverInterruptedConfigWrites();
+
+                    string[] files = Directory.GetFiles(ConfigRoot);
+                    for (int i = 0; i < files.Length; i++)
                     {
-                        error = "Invalid " + name + ".conf: " + parseError;
-                        return false;
+                        if (!files[i].EndsWith(".conf", StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        if (next.Count >= MaxServices)
+                        {
+                            error = "Too many services (max 64).";
+                            return false;
+                        }
+
+                        string name = Path.GetFileNameWithoutExtension(files[i]);
+                        string parseError;
+                        ServiceDefinition definition;
+                        if (!ServiceDefinition.TryParse(name, ReadBounded(files[i]), out definition, out parseError))
+                        {
+                            error = "Invalid " + name + ".conf: " + parseError;
+                            return false;
+                        }
+                        if (next.ContainsKey(name))
+                        {
+                            error = "Duplicate service name: " + name;
+                            return false;
+                        }
+                        next.Add(name, definition);
                     }
-                    if (next.ContainsKey(name))
-                    {
-                        error = "Duplicate service name: " + name;
-                        return false;
-                    }
-                    next.Add(name, definition);
                 }
             }
             catch (Exception ex)
@@ -110,6 +117,7 @@ namespace ZonderqOS.SystemCore.Services
                 return false;
             }
 
+            var pendingStart = new List<ServiceDefinition>();
             lock (Sync)
             {
                 // Preserve the old valid configuration if even one file is bad.
@@ -125,8 +133,12 @@ namespace ZonderqOS.SystemCore.Services
                     {
                         if (keepRunning)
                             keptRunning.Add(existing.Key);
-                        else
-                            ProcessManager.Kill(Pids[existing.Key]);
+                        else if (Pids.TryGetValue(existing.Key, out int existingPid))
+                            ProcessManager.Kill(existingPid);
+                    }
+                    else if (!keepRunning)
+                    {
+                        Pids.Remove(existing.Key);
                     }
                 }
 
@@ -136,25 +148,75 @@ namespace ZonderqOS.SystemCore.Services
 
                 foreach (var item in next)
                 {
-                    if (!item.Value.Enabled)
-                        continue;
-                    if (keptRunning.Contains(item.Key))
+                    if (!item.Value.Enabled || keptRunning.Contains(item.Key))
                         continue;
 
-                    // A cancelled service can still be finishing its current loop.
-                    // Wait for it to exit before starting the replacement.
-                    for (int i = 0; i < 200 && IsRunningLocked(item.Key); i++)
-                        Thread.Sleep(10);
                     if (!IsRunningLocked(item.Key))
                     {
                         string startError;
                         if (!StartLocked(item.Value, out startError) && error.Length == 0)
                             error = startError;
                     }
-                    else if (error.Length == 0)
-                        error = "Service is still stopping: " + item.Key;
+                    else
+                    {
+                        pendingStart.Add(item.Value);
+                    }
                 }
             }
+
+            // A cancelled service can still be finishing its current loop.
+            // Wait outside Sync so status queries and control calls do not block during sleep.
+            for (int p = 0; p < pendingStart.Count; p++)
+            {
+                ServiceDefinition definition = pendingStart[p];
+                bool handled = false;
+                for (int i = 0; i < 200; i++)
+                {
+                    Thread.Sleep(10);
+                    lock (Sync)
+                    {
+                        ServiceDefinition current;
+                        if (!Definitions.TryGetValue(definition.Name, out current) ||
+                            !ReferenceEquals(current, definition) || !current.Enabled)
+                        {
+                            handled = true;
+                            break;
+                        }
+
+                        if (!IsRunningLocked(definition.Name))
+                        {
+                            string startError;
+                            if (!StartLocked(current, out startError) && error.Length == 0)
+                                error = startError;
+                            handled = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!handled)
+                {
+                    lock (Sync)
+                    {
+                        ServiceDefinition current;
+                        if (Definitions.TryGetValue(definition.Name, out current) &&
+                            ReferenceEquals(current, definition) && current.Enabled)
+                        {
+                            if (!IsRunningLocked(definition.Name))
+                            {
+                                string startError;
+                                if (!StartLocked(current, out startError) && error.Length == 0)
+                                    error = startError;
+                            }
+                            else if (error.Length == 0)
+                            {
+                                error = "Service is still stopping: " + definition.Name;
+                            }
+                        }
+                    }
+                }
+            }
+
             return string.IsNullOrEmpty(error);
         }
 
@@ -177,12 +239,14 @@ namespace ZonderqOS.SystemCore.Services
             lock (Sync)
             {
                 error = string.Empty;
-                if (!Definitions.ContainsKey(name ?? string.Empty) || !IsRunningLocked(name))
+                string key = name ?? string.Empty;
+                int pid;
+                if (!Definitions.ContainsKey(key) || !IsRunningLocked(key) || !Pids.TryGetValue(key, out pid))
                 {
                     error = "Service is not running or does not exist.";
                     return false;
                 }
-                if (!ProcessManager.Kill(Pids[name]))
+                if (!ProcessManager.Kill(pid))
                 {
                     error = "Service exited before stop request.";
                     return false;
@@ -224,6 +288,7 @@ namespace ZonderqOS.SystemCore.Services
                 return false;
             }
 
+            string canonicalName;
             lock (Sync)
             {
                 ServiceDefinition definition;
@@ -232,15 +297,18 @@ namespace ZonderqOS.SystemCore.Services
                     error = "Unknown service.";
                     return false;
                 }
+                canonicalName = definition.Name;
+            }
 
-                name = definition.Name;
-                string path = ConfigRoot + "/" + name + ".conf";
-                string temp = path + ".new";
-                string backup = path + ".bak";
+            string path = ConfigRoot + "/" + canonicalName + ".conf";
+            string temp = path + ".new";
+            string backup = path + ".bak";
+            lock (ConfigWriteSync)
+            {
                 try
                 {
                     string updated;
-                    if (!ServiceDefinition.TrySetEnabled(name, ReadBounded(path), enabled,
+                    if (!ServiceDefinition.TrySetEnabled(canonicalName, ReadBounded(path), enabled,
                         out updated, out error))
                         return false;
 
@@ -254,20 +322,41 @@ namespace ZonderqOS.SystemCore.Services
                     }
                     catch
                     {
-                        if (!File.Exists(path))
+                        if (!File.Exists(path) && File.Exists(backup))
                             File.Move(backup, path);
                         throw;
                     }
 
+                    try
+                    {
+                        if (File.Exists(backup))
+                            File.Delete(backup);
+                    }
+                    catch (Exception ex)
+                    {
+                        SystemLogger.Log(SystemLogLevel.Warning, "SERVICE",
+                            "Could not remove backup config '" + backup + "': " + ex.Message);
+                    }
+
                     PermissionManager.SetPermission(path, "root", 644);
-                    return Reload(out error);
                 }
                 catch (Exception ex)
                 {
                     error = "Could not update service: " + ex.Message;
                     return false;
                 }
+                finally
+                {
+                    try
+                    {
+                        if (File.Exists(temp))
+                            File.Delete(temp);
+                    }
+                    catch { }
+                }
             }
+
+            return Reload(out error);
         }
 
         public static void FillStatus(List<ServiceStatus> destination)
@@ -396,6 +485,9 @@ namespace ZonderqOS.SystemCore.Services
 
         private static void RecoverInterruptedConfigWrites()
         {
+            if (!Directory.Exists(ConfigRoot))
+                return;
+
             string[] files = Directory.GetFiles(ConfigRoot);
             for (int i = 0; i < files.Length; i++)
             {
@@ -407,8 +499,39 @@ namespace ZonderqOS.SystemCore.Services
                 if (!ServiceDefinition.IsSafeName(name))
                     continue;
                 string original = ConfigRoot + "/" + name + ".conf";
-                if (!File.Exists(original))
-                    File.Move(backup, original);
+                try
+                {
+                    if (!File.Exists(original))
+                        File.Move(backup, original);
+                    else
+                        File.Delete(backup);
+                }
+                catch (Exception ex)
+                {
+                    SystemLogger.Log(SystemLogLevel.Warning, "SERVICE",
+                        "Failed to recover backup config '" + backup + "': " + ex.Message);
+                }
+            }
+
+            for (int i = 0; i < files.Length; i++)
+            {
+                string temp = files[i];
+                if (!temp.EndsWith(".conf.new", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                string name = Path.GetFileName(temp);
+                name = name.Substring(0, name.Length - ".conf.new".Length);
+                if (!ServiceDefinition.IsSafeName(name))
+                    continue;
+                try
+                {
+                    if (File.Exists(temp))
+                        File.Delete(temp);
+                }
+                catch (Exception ex)
+                {
+                    SystemLogger.Log(SystemLogLevel.Warning, "SERVICE",
+                        "Failed to clean stale temp config '" + temp + "': " + ex.Message);
+                }
             }
         }
     }

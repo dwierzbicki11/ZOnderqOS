@@ -48,6 +48,8 @@ namespace ZonderqOS
             Register(new CmdSmtCheck()); Register(new CmdSysmond()); Register(new CmdKill());
             Register(new CmdEnv()); Register(new CmdExport());
             Register(new CmdLocale());
+            Register(new CmdFind()); Register(new CmdTail());
+            Register(new CmdWc()); Register(new CmdWhich());
             Register(new CmdNeofetch()); Register(new CmdMatrix());
         }
 
@@ -62,9 +64,6 @@ namespace ZonderqOS
         {
             if (string.IsNullOrWhiteSpace(fullInput)) return;
             if (!ValidateCommandLength(fullInput, "Command line")) return;
-
-            fullInput = EnvironmentExpander.Expand(fullInput, currentPath);
-            if (!ValidateCommandLength(fullInput, "Expanded command line")) return;
 
             List<string> semiCommands;
             try { semiCommands = SplitOutsideQuotes(fullInput, ";"); }
@@ -101,6 +100,7 @@ namespace ZonderqOS
             try { pipeParts = SplitOutsideQuotes(pipelineStr, "|"); }
             catch (InvalidOperationException ex) { ReportError(ex.Message); CommandIO.LastCommandSuccess = false; return; }
             string pipedInput = null;
+            CommandIO.SaveInput();
             try
             {
                 for (int i = 0; i < pipeParts.Count; i++)
@@ -120,26 +120,31 @@ namespace ZonderqOS
                     else ExecuteSingleCommandWithRedirection(singleCmdStr, ref currentPath);
                 }
             }
-            finally { CommandIO.SetInput(null); }
+            finally { CommandIO.RestoreInput(); }
         }
 
         private static void ExecuteSingleCommandWithRedirection(string commandLine, ref string currentPath)
         {
             string redirectPath = null;
             bool appendMode;
-            int redirectIndex = FindRedirection(commandLine, out appendMode);
+            int redirectIndex;
+            try { redirectIndex = FindRedirection(commandLine, out appendMode); }
+            catch (InvalidOperationException ex) { ReportError(ex.Message); CommandIO.LastCommandSuccess = false; return; }
             string commandPart = commandLine;
             if (redirectIndex >= 0)
             {
                 commandPart = commandLine.Substring(0, redirectIndex);
-                redirectPath = commandLine.Substring(redirectIndex + (appendMode ? 2 : 1)).Trim();
-                if (string.IsNullOrEmpty(redirectPath)) { ReportError("Missing redirection target path."); CommandIO.LastCommandSuccess = false; return; }
-                redirectPath = UnquotePath(redirectPath);
-                if (string.IsNullOrEmpty(redirectPath)) { ReportError("Invalid redirection target path."); CommandIO.LastCommandSuccess = false; return; }
+                string rawRedirect = commandLine.Substring(redirectIndex + (appendMode ? 2 : 1)).Trim();
+                if (string.IsNullOrEmpty(rawRedirect)) { ReportError("Missing redirection target path."); CommandIO.LastCommandSuccess = false; return; }
+                string[] redirectTokens;
+                try { redirectTokens = Tokenize(rawRedirect, currentPath); }
+                catch (InvalidOperationException ex) { ReportError(ex.Message); CommandIO.LastCommandSuccess = false; return; }
+                if (redirectTokens.Length != 1 || string.IsNullOrEmpty(redirectTokens[0])) { ReportError("Invalid redirection target path."); CommandIO.LastCommandSuccess = false; return; }
+                redirectPath = redirectTokens[0];
             }
 
             string[] words;
-            try { words = Tokenize(commandPart); }
+            try { words = Tokenize(commandPart, currentPath); }
             catch (InvalidOperationException ex) { ReportError(ex.Message); CommandIO.LastCommandSuccess = false; return; }
             if (words.Length == 0) { CommandIO.LastCommandSuccess = false; return; }
 
@@ -172,11 +177,12 @@ namespace ZonderqOS
             {
                 char c = value[i];
                 if (escaped) { escaped = false; continue; }
-                if (c == '\\') { escaped = true; continue; }
+                if (c == '\\' && !inSingleQuotes) { escaped = true; continue; }
                 if (c == '"' && !inSingleQuotes) { inDoubleQuotes = !inDoubleQuotes; continue; }
                 if (c == '\'' && !inDoubleQuotes) { inSingleQuotes = !inSingleQuotes; continue; }
                 if (!inDoubleQuotes && !inSingleQuotes && c == '>') { appendMode = i + 1 < value.Length && value[i + 1] == '>'; return i; }
             }
+            if (inDoubleQuotes || inSingleQuotes) throw new InvalidOperationException("Unclosed quote in command.");
             return -1;
         }
 
@@ -189,7 +195,7 @@ namespace ZonderqOS
             {
                 char c = input[i];
                 if (escaped) { current.Append(c); escaped = false; continue; }
-                if (c == '\\') { current.Append(c); escaped = true; continue; }
+                if (c == '\\' && !inSingleQuotes) { current.Append(c); escaped = true; continue; }
                 if (c == '"' && !inSingleQuotes) { inDoubleQuotes = !inDoubleQuotes; current.Append(c); continue; }
                 if (c == '\'' && !inDoubleQuotes) { inSingleQuotes = !inSingleQuotes; current.Append(c); continue; }
                 if (!inDoubleQuotes && !inSingleQuotes && MatchesAt(input, separator, i))
@@ -199,6 +205,7 @@ namespace ZonderqOS
                 }
                 current.Append(c);
             }
+            if (inDoubleQuotes || inSingleQuotes) throw new InvalidOperationException("Unclosed quote in command.");
             result.Add(current.ToString());
             return result;
         }
@@ -210,27 +217,92 @@ namespace ZonderqOS
             return true;
         }
 
-        private static string[] Tokenize(string commandPart)
+        private static string[] Tokenize(string commandPart, string currentPath)
         {
-            var tokens = new List<string>(); var current = new StringBuilder();
-            bool inDoubleQuotes = false; bool inSingleQuotes = false; bool escaped = false; bool tokenStarted = false;
+            var tokens = new List<string>();
+            var current = new StringBuilder();
+            var expandBuf = new StringBuilder();
+            bool inDoubleQuotes = false;
+            bool inSingleQuotes = false;
+            bool escaped = false;
+            bool tokenStarted = false;
+
             for (int i = 0; i < commandPart.Length; i++)
             {
                 char c = commandPart[i];
-                if (escaped) { AppendTokenChar(current, c); tokenStarted = true; escaped = false; continue; }
-                if (c == '\\') { escaped = true; tokenStarted = true; continue; }
-                if (c == '"' && !inSingleQuotes) { inDoubleQuotes = !inDoubleQuotes; tokenStarted = true; continue; }
-                if (c == '\'' && !inDoubleQuotes) { inSingleQuotes = !inSingleQuotes; tokenStarted = true; continue; }
-                if (!inDoubleQuotes && !inSingleQuotes && char.IsWhiteSpace(c))
+                if (escaped)
                 {
-                    if (tokenStarted) { AddToken(tokens, current); tokenStarted = false; }
+                    FlushExpandBuffer(current, expandBuf, currentPath);
+                    AppendTokenChar(current, c);
+                    tokenStarted = true;
+                    escaped = false;
                     continue;
                 }
-                AppendTokenChar(current, c); tokenStarted = true;
+                if (c == '\\' && !inSingleQuotes)
+                {
+                    escaped = true;
+                    tokenStarted = true;
+                    continue;
+                }
+                if (c == '"' && !inSingleQuotes)
+                {
+                    inDoubleQuotes = !inDoubleQuotes;
+                    tokenStarted = true;
+                    continue;
+                }
+                if (c == '\'' && !inDoubleQuotes)
+                {
+                    if (!inSingleQuotes)
+                        FlushExpandBuffer(current, expandBuf, currentPath);
+                    inSingleQuotes = !inSingleQuotes;
+                    tokenStarted = true;
+                    continue;
+                }
+                if (!inDoubleQuotes && !inSingleQuotes && char.IsWhiteSpace(c))
+                {
+                    if (tokenStarted)
+                    {
+                        FlushExpandBuffer(current, expandBuf, currentPath);
+                        AddToken(tokens, current);
+                        tokenStarted = false;
+                    }
+                    continue;
+                }
+                if (inSingleQuotes)
+                {
+                    AppendTokenChar(current, c);
+                }
+                else
+                {
+                    if (expandBuf.Length + current.Length >= MaxCommandLineLength)
+                        throw new InvalidOperationException("Command token exceeds the " + MaxTokenLength + " character limit.");
+                    expandBuf.Append(c);
+                }
+                tokenStarted = true;
             }
-            if (escaped) AppendTokenChar(current, '\\');
-            if (tokenStarted) AddToken(tokens, current);
+            if (escaped)
+            {
+                FlushExpandBuffer(current, expandBuf, currentPath);
+                AppendTokenChar(current, '\\');
+            }
+            if (inDoubleQuotes || inSingleQuotes)
+                throw new InvalidOperationException("Unclosed quote in command.");
+            if (tokenStarted)
+            {
+                FlushExpandBuffer(current, expandBuf, currentPath);
+                AddToken(tokens, current);
+            }
             return tokens.ToArray();
+        }
+
+        private static void FlushExpandBuffer(StringBuilder current, StringBuilder expandBuf, string currentPath)
+        {
+            if (expandBuf.Length == 0) return;
+            string expanded = EnvironmentExpander.Expand(expandBuf.ToString(), currentPath);
+            expandBuf.Clear();
+            if (current.Length + expanded.Length > MaxTokenLength)
+                throw new InvalidOperationException("Command token exceeds the " + MaxTokenLength + " character limit.");
+            current.Append(expanded);
         }
 
         private static void AppendTokenChar(StringBuilder current, char value)
@@ -243,17 +315,6 @@ namespace ZonderqOS
         {
             if (tokens.Count >= MaxCommandTokens) throw new InvalidOperationException("Too many command tokens; limit is " + MaxCommandTokens + ".");
             tokens.Add(current.ToString()); current.Clear();
-        }
-
-        private static string UnquotePath(string value)
-        {
-            string path = value.Trim();
-            if (path.Length >= 2)
-            {
-                char first = path[0]; char last = path[path.Length - 1];
-                if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) path = path.Substring(1, path.Length - 2);
-            }
-            return path.Replace("\\\"", "\"").Replace("\\'", "'");
         }
     }
 }

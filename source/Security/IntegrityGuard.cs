@@ -99,7 +99,10 @@ namespace ZonderqOS.Security
                         hash = Crypto.ComputeSha256(data);
                         size = data.Length;
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        SecurityLogger.LogEvent("WARN", "IntegrityGuard default baseline skipped unreadable file " + path + ": " + ex.Message);
+                    }
                 }
 
                 records[path] = new FileIntegrityRecord
@@ -274,7 +277,10 @@ namespace ZonderqOS.Security
                             rec.CurrentPerms = rec.ExpectedPerms;
                             rec.Status = IntegrityStatus.Match;
                         }
-                        catch { }
+                        catch (Exception ex)
+                    {
+                        SecurityLogger.LogEvent("WARN", "IntegrityGuard default baseline skipped unreadable file " + path + ": " + ex.Message);
+                    }
                     }
                     else
                     {
@@ -337,14 +343,15 @@ namespace ZonderqOS.Security
         public static bool VerifyPackagePayload(byte[] packageBytes, string expectedSha256, out string actualSha256)
         {
             actualSha256 = string.Empty;
-            if (packageBytes == null || packageBytes.Length == 0)
+            if (packageBytes == null || packageBytes.Length == 0 || string.IsNullOrWhiteSpace(expectedSha256))
+                return false;
+
+            string expectedTrimmed = expectedSha256.Trim();
+            if (expectedTrimmed.Length != 64)
                 return false;
 
             actualSha256 = Crypto.ComputeSha256(packageBytes);
-            if (string.IsNullOrEmpty(expectedSha256))
-                return true; // No hash verification required
-
-            return Crypto.FixedTimeEquals(actualSha256, expectedSha256);
+            return Crypto.FixedTimeEquals(actualSha256, expectedTrimmed.ToUpperInvariant());
         }
     }
 }

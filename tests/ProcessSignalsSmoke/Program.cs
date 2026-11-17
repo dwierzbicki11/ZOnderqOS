@@ -61,6 +61,26 @@ internal static class Program
         Check(!CommandIO.LastCommandSuccess, "malformed kill accepted");
         Check(!ProcessManager.SendSignal(999999, ProcessSignal.Interrupt),
             "missing PID was signaled");
+
+        // Non-root users must be rejected by both kill and killall
+        SecurityContext.CurrentUid = 1000;
+        SecurityContext.CurrentUser = "alice";
+        try
+        {
+            CommandIO.Clear();
+            kill.Execute(new[] { "kill", "-l" }, ref path);
+            Check(!CommandIO.LastCommandSuccess, "non-root kill unexpectedly succeeded");
+
+            var killall = new CmdKillall();
+            CommandIO.Clear();
+            killall.Execute(new[] { "killall", "worker" }, ref path);
+            Check(!CommandIO.LastCommandSuccess, "non-root killall unexpectedly succeeded");
+        }
+        finally
+        {
+            SecurityContext.CurrentUid = 0;
+            SecurityContext.CurrentUser = "root";
+        }
     }
 
     private static void CheckCancelRunsOutsideRegistryLock()
@@ -199,6 +219,18 @@ internal static class Program
 
 namespace ZonderqOS
 {
+    public static class SecurityContext
+    {
+        public static bool IsAuthenticated = true;
+        public static int CurrentUid = 0;
+        public static string CurrentUser = "root";
+    }
+
+    public static class SecurityLogger
+    {
+        public static void LogEvent(string level, string message) { }
+    }
+
     public static class WriteMessage
     {
         public static void WriteError(string message, string category) { }

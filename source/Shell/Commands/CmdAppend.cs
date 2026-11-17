@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.Commands
 {
@@ -13,6 +14,14 @@ namespace ZonderqOS.Commands
 
         public void Execute(string[] args, ref string currentPath)
         {
+            if (!SecurityContext.IsAuthenticated)
+            {
+                WriteMessage.WriteError("Permission denied. Authentication required.", "SEC");
+                SecurityLogger.LogEvent("WARN", "Unauthenticated append attempt.");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             if (args.Length <= 2)
             {
                 WriteMessage.WriteError("Usage: append <file> <content>", "CMD");
@@ -21,12 +30,44 @@ namespace ZonderqOS.Commands
             }
 
             string path = PathResolver.GetAbsolutePath(currentPath, args[1]);
-            bool existed = File.Exists(path);
+            if (VirtualFs.IsReadOnlyPath(path))
+            {
+                WriteMessage.WriteError($"Read-only virtual filesystem: cannot append to {path}", "FS");
+                SecurityLogger.LogEvent("WARN", $"Rejected append on read-only virtual path {path} by {SecurityContext.CurrentUser ?? "?"}");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
 
-            if (existed && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
+            if (VirtualFs.IsVirtualPath(path))
+            {
+                try
+                {
+                    string virtualContent = BuildBoundedContent(args);
+                    Disk.AppendFile(path, virtualContent);
+                }
+                catch (InvalidDataException ex)
+                {
+                    WriteMessage.WriteError($"Append rejected: {ex.Message}", "CMD");
+                    CommandIO.LastCommandSuccess = false;
+                }
+                return;
+            }
+
+            if (Directory.Exists(path))
+            {
+                WriteMessage.WriteError($"Target is a directory: {path}", "FS");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
+            bool existed = File.Exists(path);
+            bool permitted = existed
+                ? PermissionManager.CanWrite(path, SecurityContext.CurrentUser)
+                : PermissionManager.CanCreate(path, SecurityContext.CurrentUser);
+            if (!permitted)
             {
                 WriteMessage.WriteError($"Permission denied: Cannot append to {path}", "SEC");
-                SecurityLogger.LogEvent("WARN", $"Unauthorized append attempt on {path} by {SecurityContext.CurrentUser}");
+                SecurityLogger.LogEvent("WARN", $"Unauthorized append attempt on {path} by {SecurityContext.CurrentUser ?? "?"}");
                 CommandIO.LastCommandSuccess = false;
                 return;
             }
@@ -36,10 +77,14 @@ namespace ZonderqOS.Commands
                 string content = BuildBoundedContent(args);
                 Disk.AppendFile(path, content);
 
-                if (!existed && File.Exists(path))
-                    PermissionManager.SetPermission(path, SecurityContext.CurrentUser, 644);
+                if (!CommandIO.LastCommandSuccess || !File.Exists(path))
+                {
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
 
-                CommandIO.LastCommandSuccess = File.Exists(path);
+                if (!existed)
+                    PermissionManager.SetPermission(path, SecurityContext.CurrentUser, 644);
             }
             catch (InvalidDataException ex)
             {

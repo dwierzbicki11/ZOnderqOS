@@ -55,21 +55,34 @@ namespace ZonderqOS.SystemCore
         }
         public static bool IsRunning => ProcessManager.IsRunning("sys_guardian");
 
+        private static int startedFlag;
+
         public static void Initialize()
         {
-            if (ProcessManager.IsRunning("sys_guardian"))
-                return;
+            lock (StatusLock)
+            {
+                if (startedFlag != 0 || ProcessManager.IsRunning("sys_guardian"))
+                    return;
+                startedFlag = 1;
+            }
 
             ProcessManager.Start("sys_guardian", token =>
             {
-                DateTime lastWarningAlert = DateTime.MinValue;
-                DateTime lastCriticalAlert = DateTime.MinValue;
+                long freq = System.Diagnostics.Stopwatch.Frequency > 0
+                    ? System.Diagnostics.Stopwatch.Frequency
+                    : 1000000L;
+                long warningIntervalTicks = (long)RamWarningInterval.TotalSeconds * freq;
+                long criticalIntervalTicks = (long)RamCriticalInterval.TotalSeconds * freq;
+                long lastWarningMono = -warningIntervalTicks;
+                long lastCriticalMono = -criticalIntervalTicks;
 
                 SystemLogger.Log(SystemLogLevel.Info, "GUARDIAN", "System guardian started.");
 
                 int guardianTick = 0;
                 while (!token.IsCancellationRequested)
                 {
+                    long monoNow = System.Diagnostics.Stopwatch.GetTimestamp();
+
                     // Existing memory alarms keep their 4-second cadence.
                     if ((guardianTick++ & 1) == 0)
                     {
@@ -93,28 +106,23 @@ namespace ZonderqOS.SystemCore
                             lastCheckTimeUtc = now;
                         }
 
-                        // Keep low-memory tracking strictly in-memory inside the periodic
-                        // guardian loop. Appending to /sysmon.log or /var/log/system.log or
-                        // polling FileInfo("/sysmon.log") on a 32 KiB-cluster FAT32 partition
-                        // allocates 32 KiB cluster buffers (> OrionGC's max free-list class),
-                        // forcing new 64 KiB GCSegments from PageAllocator whenever free RAM is low.
                         if (totalPages == 0)
                         {
                             RecordFault("Page allocator reports zero total pages.");
                         }
                         else if (freePercent <= RamCriticalThresholdPercent &&
-                                 now - lastCriticalAlert >= RamCriticalInterval)
+                                 (monoNow - lastCriticalMono) >= criticalIntervalTicks)
                         {
                             lock (StatusLock)
                                 criticalCount++;
-                            lastCriticalAlert = now;
+                            lastCriticalMono = monoNow;
                         }
                         else if (freePercent <= RamWarningThresholdPercent &&
-                                 now - lastWarningAlert >= RamWarningInterval)
+                                 (monoNow - lastWarningMono) >= warningIntervalTicks)
                         {
                             lock (StatusLock)
                                 warningCount++;
-                            lastWarningAlert = now;
+                            lastWarningMono = monoNow;
                         }
 
                         // OrionGC performs its own collection from the allocator slow path.
@@ -131,9 +139,14 @@ namespace ZonderqOS.SystemCore
                     }
 
                     // 10-second optimizer sample on the existing guardian thread.
-                    MemoryOptimizer.SampleIfDue(
-                        System.Diagnostics.Stopwatch.GetTimestamp(),
-                        System.Diagnostics.Stopwatch.Frequency);
+                    try
+                    {
+                        MemoryOptimizer.SampleIfDue(monoNow, freq);
+                    }
+                    catch (Exception ex)
+                    {
+                        RecordFault(ex.Message);
+                    }
 
                     if (token.WaitHandle.WaitOne(2000))
                         break;

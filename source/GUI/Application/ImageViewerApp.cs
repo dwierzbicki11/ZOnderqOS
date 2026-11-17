@@ -60,6 +60,7 @@ namespace ZonderqOS.GUI.Apps
         private readonly string[] siblingImages = new string[MaxSiblingImages];
         private int siblingCount;
         private int siblingIndex = -1;
+        private readonly Action closeCallback;
 
         // Rotation: 0, 90, 180, 270 degrees clockwise.
         private int rotation;
@@ -68,6 +69,7 @@ namespace ZonderqOS.GUI.Apps
 
         public ImageViewerApp(int x, int y, string path, Action onClose) : base("Zdjecia")
         {
+            closeCallback = onClose;
             Window = new Window(x, y, 980, 650, "Zdjecia - ZOnderqOS");
             Window.CloseAction = Close;
 
@@ -77,6 +79,9 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
+            if (!IsRunning)
+                return;
+
             sourcePixels = null;
             sourceWidth = 0;
             sourceHeight = 0;
@@ -84,11 +89,16 @@ namespace ZonderqOS.GUI.Apps
             previewWidth = 0;
             previewHeight = 0;
             rxMapScratch = null;
+            sharedRxMapScratch = null;
+            currentPath = string.Empty;
+            displayName = string.Empty;
+            status = string.Empty;
             for (int i = 0; i < siblingImages.Length; i++)
                 siblingImages[i] = null;
             siblingCount = 0;
             siblingIndex = -1;
             base.Close();
+            closeCallback?.Invoke();
         }
 
         public override void Update()
@@ -446,6 +456,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void LoadImage(string path, bool rebuildSiblings)
         {
+            path = (path ?? string.Empty).Trim().Replace('\\', '/');
             if (string.IsNullOrEmpty(path))
             {
                 status = "Nie znaleziono pliku obrazu";
@@ -596,8 +607,8 @@ namespace ZonderqOS.GUI.Apps
                 bool currentFound = false;
                 for (int i = 0; i < files.Length && siblingCount < MaxSiblingImages; i++)
                 {
-                    string file = files[i];
-                    if (!IsImagePath(file))
+                    string file = (files[i] ?? string.Empty).Replace('\\', '/');
+                    if (!IsImagePath(file) || !CanReadImageInSession(file))
                         continue;
                     if (string.Equals(file, path, StringComparison.OrdinalIgnoreCase))
                         currentFound = true;

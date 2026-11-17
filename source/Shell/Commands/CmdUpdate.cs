@@ -20,6 +20,7 @@ namespace ZonderqOS.Commands
             if (args.Length < 2)
             {
                 PrintStatusOverview();
+                CommandIO.LastCommandSuccess = true;
                 return;
             }
 
@@ -57,7 +58,7 @@ namespace ZonderqOS.Commands
                     CommandIO.WriteLine("  Architektura:  " + pkg.Architecture);
                     CommandIO.WriteLine("  Waznosc:       " + pkg.Severity);
                     CommandIO.WriteLine("  Data wydania:  " + pkg.ReleaseDate);
-                    CommandIO.WriteLine("  Podpis cyfrowy:" + (pkg.IsSigned ? (pkg.IsSignatureValid ? "ZAUFANY (HMAC-SHA256 DEV-KEY)" : "NIEPRAWIDLOWY!") : "BRAK"));
+                    CommandIO.WriteLine("  Podpis cyfrowy: " + (pkg.IsSigned ? (pkg.IsSignatureValid ? "ZAUFANY (SHA-256 / Ed25519)" : "NIEPRAWIDLOWY!") : "BRAK"));
                     CommandIO.WriteLine("  Suma kernela:  " + (string.IsNullOrEmpty(pkg.KernelSha256) ? "Nieokreslona" : pkg.KernelSha256));
                     CommandIO.WriteLine("  Plik kernela:  " + (string.IsNullOrEmpty(pkg.KernelImagePath) ? "Brak w pakiecie" : pkg.KernelImagePath));
                     CommandIO.WriteLine("  Liczba plikow: " + (pkg.Files != null ? pkg.Files.Count.ToString() : "0"));
@@ -104,7 +105,7 @@ namespace ZonderqOS.Commands
                 {
                     WriteMessage.WriteOK("Integralnosc i autentycznosc pakietu potwierdzona pomyslnie [STATUS: PRAWIDLOWY]", "UPDATE");
                     CommandIO.WriteLine("  Kernel SHA-256: " + pkg.ExpectedSha256);
-                    CommandIO.WriteLine("  Podpis cyfrowy: " + (pkg.IsSigned ? "ZAUFANY" : "Brak (pakiet lokalny)"));
+                    CommandIO.WriteLine("  Podpis cyfrowy: " + (pkg.IsSigned ? "ZAUFANY (SHA-256 / Ed25519)" : "Brak (pakiet lokalny)"));
                     CommandIO.LastCommandSuccess = true;
                 }
                 else
@@ -117,12 +118,8 @@ namespace ZonderqOS.Commands
 
             if (subcmd == "apply" || subcmd == "install")
             {
-                if (SecurityContext.CurrentUser != "root")
-                {
-                    WriteMessage.WriteError("Wymagane uprawnienia administratora root do instalacji aktualizacji.", "UPDATE");
-                    CommandIO.LastCommandSuccess = false;
+                if (!RequireRootPrivilege(subcmd, "Wymagane uprawnienia administratora root do instalacji aktualizacji."))
                     return;
-                }
 
                 UpdatePackageInfo pkg = UpdateManager.AvailablePackage;
                 if (pkg == null)
@@ -163,12 +160,8 @@ namespace ZonderqOS.Commands
 
             if (subcmd == "rollback")
             {
-                if (SecurityContext.CurrentUser != "root")
-                {
-                    WriteMessage.WriteError("Wymagane uprawnienia administratora root do wycofania zmian.", "UPDATE");
-                    CommandIO.LastCommandSuccess = false;
+                if (!RequireRootPrivilege(subcmd, "Wymagane uprawnienia administratora root do wycofania zmian."))
                     return;
-                }
 
                 if (!UpdateManager.HasRollbackSnapshot())
                 {
@@ -233,8 +226,31 @@ namespace ZonderqOS.Commands
                 return;
             }
 
+            if (subcmd == "stage" || subcmd == "confirm" || subcmd == "clean")
+            {
+                if (!RequireRootPrivilege(subcmd, "Wymagane uprawnienia administratora root dla operacji aktualizacji."))
+                    return;
+
+                PrintHelp();
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             PrintHelp();
             CommandIO.LastCommandSuccess = false;
+        }
+
+        private static bool HasRootPrivilege() => SecurityContext.IsAuthenticated && SecurityContext.CurrentUid == 0;
+
+        private static bool RequireRootPrivilege(string subcmd, string deniedMessage)
+        {
+            if (HasRootPrivilege())
+                return true;
+
+            WriteMessage.WriteError(deniedMessage, "UPDATE");
+            SecurityLogger.LogEvent("WARN", $"Unauthorized zupdate '{subcmd}' attempt by {SecurityContext.CurrentUser ?? "?"} (uid={SecurityContext.CurrentUid}, auth={SecurityContext.IsAuthenticated})");
+            CommandIO.LastCommandSuccess = false;
+            return false;
         }
 
         private void PrintStatusOverview()

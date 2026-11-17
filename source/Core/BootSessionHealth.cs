@@ -14,6 +14,7 @@ namespace ZonderqOS.SystemCore
         private const string TempPath = StateDirectory + "/boot-session.state.new";
         private const string BackupPath = StateDirectory + "/boot-session.state.bak";
 
+        private static readonly object InitSync = new object();
         private static bool initialized;
 
         public static bool HasPreviousSession { get; private set; }
@@ -24,10 +25,13 @@ namespace ZonderqOS.SystemCore
 
         public static void Initialize()
         {
-            if (initialized)
-                return;
+            lock (InitSync)
+            {
+                if (initialized)
+                    return;
 
-            initialized = true;
+                initialized = true;
+            }
 
             try
             {
@@ -88,10 +92,17 @@ namespace ZonderqOS.SystemCore
             PreviousExitReason = "unknown";
             PreviousTimestamp = "unknown";
 
-            if (!File.Exists(StatePath))
+            if (!File.Exists(StatePath) && File.Exists(BackupPath))
+            {
+                try { File.Move(BackupPath, StatePath); }
+                catch { }
+            }
+
+            string readPath = File.Exists(StatePath) ? StatePath : (File.Exists(BackupPath) ? BackupPath : null);
+            if (readPath == null)
                 return;
 
-            FileInfo info = new FileInfo(StatePath);
+            FileInfo info = new FileInfo(readPath);
             if (info.Length < 0 || info.Length > 4096)
                 throw new InvalidDataException("boot-session marker size is invalid");
 
@@ -99,7 +110,7 @@ namespace ZonderqOS.SystemCore
             string reason = null;
             string time = null;
 
-            using (StreamReader reader = new StreamReader(StatePath))
+            using (StreamReader reader = new StreamReader(readPath))
             {
                 string line;
                 int lines = 0;
@@ -290,6 +301,12 @@ namespace ZonderqOS.SystemCore
             }
             catch { }
 
+#else
+            try
+            {
+                Cosmos.Kernel.System.Power.Shutdown();
+            }
+            catch { }
 #endif
 
             // 3. Fallback text console screen if no GUI was registered

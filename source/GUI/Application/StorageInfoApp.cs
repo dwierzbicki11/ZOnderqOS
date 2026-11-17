@@ -85,9 +85,12 @@ namespace ZonderqOS.GUI.Apps
                 if (device == null)
                     continue;
 
-                ulong sizeMb = device.BlockCount * device.BlockSize / 1024UL / 1024UL;
+                ulong blockSize = device.BlockSize > 0 ? (ulong)device.BlockSize : 0UL;
+                ulong sizeMb = blockSize > 0UL
+                    ? ((ulong)device.BlockCount * blockSize) / 1024UL / 1024UL
+                    : 0UL;
                 names[itemCount] = device.Name;
-                descriptions[itemCount] = "BLOCK DEVICE  |  BLOK " + device.BlockSize + " B";
+                descriptions[itemCount] = "BLOCK DEVICE  |  BLOK " + blockSize + " B";
                 values[itemCount] = sizeMb + " MB";
                 itemCount++;
             }
@@ -95,14 +98,26 @@ namespace ZonderqOS.GUI.Apps
 
         private void LoadPartitions()
         {
+            if (StorageManager.Partitions == null)
+                return;
+
             int count = StorageManager.Partitions.Count;
             for (int i = 0; i < count && itemCount < MaxItems; i++)
             {
                 Partition part = StorageManager.Partitions[i];
-                ulong sizeMb = part.BlockCount * part.BlockSize / 1024UL / 1024UL;
+                if (part == null)
+                    continue;
+
+                ulong blockSize = part.BlockSize > 0 ? (ulong)part.BlockSize : 0UL;
+                ulong sizeMb = blockSize > 0UL
+                    ? ((ulong)part.BlockCount * blockSize) / 1024UL / 1024UL
+                    : 0UL;
                 string mount = global::ZonderqOS.GUI.StorageMountManager.GetMountPoint(i);
+                string hostName = (part.Host != null && !string.IsNullOrEmpty(part.Host.Name))
+                    ? part.Host.Name
+                    : "N/A";
                 names[itemCount] = part.Name;
-                descriptions[itemCount] = "HOST " + part.Host.Name + "  |  LBA " + part.StartSector;
+                descriptions[itemCount] = "HOST " + hostName + "  |  LBA " + part.StartSector;
                 values[itemCount] = string.IsNullOrEmpty(mount) ? sizeMb + " MB" : sizeMb + " MB  " + mount;
                 itemCount++;
             }
@@ -110,10 +125,15 @@ namespace ZonderqOS.GUI.Apps
 
         private void LoadMounts()
         {
+            if (VfsManager.Mounts == null)
+                return;
+
             foreach (VfsMount mount in VfsManager.Mounts)
             {
                 if (itemCount >= MaxItems)
                     break;
+                if (mount == null)
+                    continue;
                 names[itemCount] = mount.MountPoint;
                 descriptions[itemCount] = "VFS " + mount.Name;
                 values[itemCount] = "SRC " + mount.Source;

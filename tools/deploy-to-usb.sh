@@ -4,26 +4,50 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KERNEL_BIN="$ROOT/output-3095/updates-package/ZonderqOS.elf"
 UPDATES_DIR="$ROOT/output-3095/updates-package"
+MAX_IMAGE_BYTES=$((32 * 1024 * 1024)) # 32 MiB slot/ISO safety guard
 
 echo "=== ZOnderqOS USB Deployer ==="
 
+for cmd in lsblk udisksctl sha256sum stat awk cp mkdir sync date; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "[BLAD] Brakuje wymaganego narzedzia: $cmd" >&2
+    exit 1
+  fi
+done
+
+if [[ ! -f "$KERNEL_BIN" || ! -s "$KERNEL_BIN" ]]; then
+  echo "[BLAD] Brak pliku kernela: $KERNEL_BIN" >&2
+  exit 1
+fi
+
+KERNEL_BYTES="$(stat -c%s "$KERNEL_BIN")"
+if (( KERNEL_BYTES <= 0 || KERNEL_BYTES > MAX_IMAGE_BYTES )); then
+  echo "[BLAD] Obraz kernela $KERNEL_BIN ma niedozwolony rozmiar ($KERNEL_BYTES B; limit <= $MAX_IMAGE_BYTES B / 32 MiB)." >&2
+  exit 1
+fi
+
+if [[ ! -d "$UPDATES_DIR" || ! -f "$UPDATES_DIR/update.manifest" || ! -f "$UPDATES_DIR/ZonderqOS.elf" ]]; then
+  echo "[BLAD] Niekompletny katalog aktualizacji: $UPDATES_DIR" >&2
+  exit 1
+fi
+
 # Find partition with label ZONDERQDATA
-DEV="$(lsblk -lno PATH,LABEL | awk '$2=="ZONDERQDATA"{print $1}' | head -n 1 || true)"
+DEV="$(lsblk -lno PATH,LABEL | awk '$2=="ZONDERQDATA"{print $1; exit}' || true)"
 
 if [[ -z "$DEV" ]]; then
-  echo "[BLAD] Nie wykryto partycji ZONDERQDATA na podlaczonym pendrive!"
-  echo "Podlacz pendrive z systemem ZOnderqOS do portu USB i sprobuj ponownie."
+  echo "[BLAD] Nie wykryto partycji ZONDERQDATA na podlaczonym pendrive!" >&2
+  echo "Podlacz pendrive z systemem ZOnderqOS do portu USB i sprobuj ponownie." >&2
   exit 1
 fi
 
 echo "-> Wykryto partycje ZONDERQDATA na urzadzeniu: $DEV"
 
 # Mount using udisksctl (no sudo password required)
-MOUNT_INFO="$(udisksctl mount -b "$DEV" --no-user-interaction 2>/dev/null || true)"
-MOUNT_PATH="$(lsblk -lno MOUNTPOINT "$DEV" | head -n 1 || true)"
+udisksctl mount -b "$DEV" --no-user-interaction >/dev/null 2>&1 || true
+MOUNT_PATH="$(lsblk -lno MOUNTPOINT "$DEV" | awk 'NF{print; exit}' || true)"
 
 if [[ -z "$MOUNT_PATH" || ! -d "$MOUNT_PATH" ]]; then
-  echo "[BLAD] Nie udalo sie zamontowac partycji $DEV."
+  echo "[BLAD] Nie udalo sie zamontowac partycji $DEV." >&2
   exit 1
 fi
 
@@ -84,6 +108,9 @@ else
 fi
 
 BOOTGUARD_PREBOOT="$(read_boot_cfg "BOOTGUARD_PREBOOT" "0")"
+if [[ "$BOOTGUARD_PREBOOT" != "1" ]]; then
+  BOOTGUARD_PREBOOT="0"
+fi
 
 # 2. Update /etc/os-release and /boot/boot_state.cfg preserving fallback slot rollback metadata
 mkdir -p "$MOUNT_PATH/etc"
@@ -127,6 +154,7 @@ else
 fi
 
 cat > "$MOUNT_PATH/boot/boot_state.cfg" <<EOF
+# ZonderqOS A/B Bootloader State Configuration
 ACTIVE_SLOT=$ACTIVE_SLOT
 FALLBACK_SLOT=$FALLBACK_SLOT
 PENDING_SLOT=
@@ -135,31 +163,38 @@ BOOTGUARD_PREBOOT=$BOOTGUARD_PREBOOT
 BOOTGUARD_FALLBACK=0
 MAX_BOOT_ATTEMPTS=3
 SLOT_A_STATUS=$SLOT_A_STATUS
-SLOT_B_STATUS=$SLOT_B_STATUS
 SLOT_A_VERSION=$SLOT_A_VERSION
 SLOT_A_BUILD=$SLOT_A_BUILD
+SLOT_B_STATUS=$SLOT_B_STATUS
 SLOT_B_VERSION=$SLOT_B_VERSION
 SLOT_B_BUILD=$SLOT_B_BUILD
+LAST_MODIFIED=$(date +'%Y-%m-%d %H:%M:%S')
 EOF
 
-# 2.5. Write autonomous Limine configuration pointing Entry 1 to active slot and Entry 2 to fallback
+# 2.5. Write autonomous Limine configuration with fixed Slot A (1) and Slot B (2) entries
+if [[ "$ACTIVE_SLOT" == "B" ]]; then
+  DEFAULT_ENTRY=2
+else
+  DEFAULT_ENTRY=1
+fi
 mkdir -p "$MOUNT_PATH/boot/limine"
 cat > "$MOUNT_PATH/boot/limine.conf" <<EOF
 # Cosmos Gen3 / Limine v10 A/B dual-slot boot configuration.
-timeout: 2
-default_entry: 1
+timeout: 5
+default_entry: $DEFAULT_ENTRY
+remember_last_entry: no
 
-/ZOnderqOS
+/ZonderqOS Slot A
     protocol: limine
     resolution: 1366x768x32
-    path: fslabel(ZONDERQDATA):/boot/$ACTIVE_DIR/ZonderqOS.elf
+    path: fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf
 
-/ZOnderqOS (Poprzednia wersja / Slot $FALLBACK_SLOT)
+/ZonderqOS Slot B
     protocol: limine
     resolution: 1366x768x32
-    path: fslabel(ZONDERQDATA):/boot/$FALLBACK_DIR/ZonderqOS.elf
+    path: fslabel(ZONDERQDATA):/boot/slot_b/ZonderqOS.elf
 
-/ZOnderqOS (Kopia zapasowa ISO / Ratunkowa)
+/ZonderqOS Recovery ISO
     protocol: limine
     resolution: 1366x768x32
     path: boot():/boot/ZonderqOS.elf
@@ -172,15 +207,16 @@ cp -f "$MOUNT_PATH/boot/limine.conf" "$MOUNT_PATH/boot/limine/limine.conf"
 mkdir -p "$MOUNT_PATH/updates"
 mkdir -p "$MOUNT_PATH/var/updates/incoming"
 echo "-> Kopiowanie pakietu aktualizacji do $MOUNT_PATH/updates/ i /var/updates/incoming/..."
-cp -rf "$UPDATES_DIR"/* "$MOUNT_PATH/updates/"
-cp -rf "$UPDATES_DIR"/* "$MOUNT_PATH/var/updates/incoming/"
+cp -rf "$UPDATES_DIR"/. "$MOUNT_PATH/updates/"
+cp -rf "$UPDATES_DIR"/. "$MOUNT_PATH/var/updates/incoming/"
 
 # Weryfikacja obecnosci plikow aktualizacji
 if [[ ! -f "$MOUNT_PATH/updates/update.manifest" || ! -f "$MOUNT_PATH/updates/ZonderqOS.elf" ]]; then
-    echo "[BLAD] Pliki aktualizacji nie zostaly poprawnie skopiowane do /updates!"
+    echo "[BLAD] Pliki aktualizacji nie zostaly poprawnie skopiowane do /updates!" >&2
     exit 1
 fi
-echo "-> Zweryfikowano: pakiet aktualizacji (wersja $(awk -F= '$1=="VERSION"{print $2}' "$MOUNT_PATH/updates/update.manifest")) jest gotowy w /updates."
+DEPLOYED_VERSION="$(awk -F= '$1=="VERSION"{gsub(/^[[:space:]]+|[[:space:]\r]+$/,"",$2); print $2; exit}' "$MOUNT_PATH/updates/update.manifest" || true)"
+echo "-> Zweryfikowano: pakiet aktualizacji (wersja ${DEPLOYED_VERSION:-unknown}) jest gotowy w /updates."
 
 echo "-> Synchronizacja buforow USB (sync)..."
 sync
