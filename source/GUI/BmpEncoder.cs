@@ -1,6 +1,8 @@
 using System;
 using System.Drawing;
+using System.IO;
 using Cosmos.Kernel.System.Graphics;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.GUI
 {
@@ -99,6 +101,76 @@ namespace ZonderqOS.GUI
             }
 
             return bmp;
+        }
+
+        public static unsafe bool EncodeToStream(Stream output, int width, int height, uint* argbPixels)
+        {
+            if (output == null || width <= 0 || height <= 0 || argbPixels == null)
+                return false;
+
+            int imageSize = width * height * 4;
+            int fileSize = 54 + imageSize;
+            const int chunkBytes = 16384;
+            NativeScratchBuffer<byte> chunk = default;
+            try
+            {
+                chunk.Allocate(chunkBytes);
+                Span<byte> buf = chunk.AsSpan();
+                for (int i = 0; i < 54; i++)
+                    buf[i] = 0;
+
+                buf[0] = (byte)'B';
+                buf[1] = (byte)'M';
+                buf[2] = (byte)fileSize;
+                buf[3] = (byte)(fileSize >> 8);
+                buf[4] = (byte)(fileSize >> 16);
+                buf[5] = (byte)(fileSize >> 24);
+                buf[10] = 54;
+
+                buf[14] = 40;
+                buf[18] = (byte)width;
+                buf[19] = (byte)(width >> 8);
+                buf[20] = (byte)(width >> 16);
+                buf[21] = (byte)(width >> 24);
+
+                int negHeight = -height;
+                buf[22] = (byte)negHeight;
+                buf[23] = (byte)(negHeight >> 8);
+                buf[24] = (byte)(negHeight >> 16);
+                buf[25] = (byte)(negHeight >> 24);
+
+                buf[26] = 1;
+                buf[28] = 32;
+                buf[34] = (byte)imageSize;
+                buf[35] = (byte)(imageSize >> 8);
+                buf[36] = (byte)(imageSize >> 16);
+                buf[37] = (byte)(imageSize >> 24);
+
+                int pos = 54;
+                int total = width * height;
+                for (int i = 0; i < total; i++)
+                {
+                    if (pos + 4 > chunkBytes)
+                    {
+                        output.Write(buf.Slice(0, pos));
+                        pos = 0;
+                    }
+                    uint c = argbPixels[i];
+                    buf[pos] = (byte)(c & 0xFF);
+                    buf[pos + 1] = (byte)((c >> 8) & 0xFF);
+                    buf[pos + 2] = (byte)((c >> 16) & 0xFF);
+                    buf[pos + 3] = (byte)((c >> 24) & 0xFF);
+                    pos += 4;
+                }
+                if (pos > 0)
+                    output.Write(buf.Slice(0, pos));
+                output.Flush();
+                return true;
+            }
+            finally
+            {
+                chunk.Dispose();
+            }
         }
     }
 }

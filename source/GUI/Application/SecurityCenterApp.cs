@@ -7,6 +7,7 @@ using Cosmos.Kernel.System.Graphics;
 using ZonderqOS.GUI;
 using ZonderqOS.GUI.Icons;
 using ZonderqOS.Security;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -37,7 +38,7 @@ namespace ZonderqOS.GUI.Apps
         private List<FileIntegrityRecord> cachedRecords = new List<FileIntegrityRecord>();
         private List<FirewallRule> cachedRules = new List<FirewallRule>();
         private readonly List<string> cachedLogLines = new List<string>(16);
-        private readonly byte[] logTailBuffer = new byte[LogTailMaxBytes];
+        private NativeScratchBuffer<byte> logTailBuffer;
         private readonly string[] logTailRing = new string[LogTailMaxLines];
 
         // Telemetry string caches to eliminate per-frame allocations on idle redraws
@@ -75,6 +76,11 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
+            logTailBuffer.Dispose();
+            cachedRecords.Clear();
+            cachedRules.Clear();
+            cachedLogLines.Clear();
+            Array.Clear(logTailRing, 0, logTailRing.Length);
             base.Close();
             closeCallback?.Invoke();
         }
@@ -96,6 +102,9 @@ namespace ZonderqOS.GUI.Apps
 
             try
             {
+                if (!logTailBuffer.IsAllocated)
+                    logTailBuffer.Allocate(LogTailMaxBytes);
+                Span<byte> bufSpan = logTailBuffer.AsSpan();
                 int totalRead = 0;
                 long offset = 0;
                 using (FileStream fs = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
@@ -110,7 +119,7 @@ namespace ZonderqOS.GUI.Apps
 
                     while (totalRead < LogTailMaxBytes)
                     {
-                        int read = fs.Read(logTailBuffer, totalRead, LogTailMaxBytes - totalRead);
+                        int read = fs.Read(bufSpan.Slice(totalRead, LogTailMaxBytes - totalRead));
                         if (read <= 0)
                             break;
                         totalRead += read;
@@ -120,7 +129,7 @@ namespace ZonderqOS.GUI.Apps
                 if (totalRead <= 0)
                     return;
 
-                string tailText = Encoding.UTF8.GetString(logTailBuffer, 0, totalRead);
+                string tailText = Encoding.UTF8.GetString(bufSpan.Slice(0, totalRead));
                 int pos = 0;
                 if (offset > 0)
                 {

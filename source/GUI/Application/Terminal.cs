@@ -201,6 +201,8 @@ namespace ZonderqOS.GUI.Apps
             if (CommandIO.NanoLauncher == nanoLauncher)
                 CommandIO.NanoLauncher = null;
 
+            htop = null;
+            terminalBox?.ClearForClose();
             base.Close();
             closeCallback?.Invoke();
         }

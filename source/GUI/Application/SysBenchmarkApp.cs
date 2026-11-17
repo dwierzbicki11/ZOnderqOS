@@ -61,13 +61,29 @@ namespace ZonderqOS.GUI.Apps
         private int totalZScore = 0;
         private string testStatus = "Gotowy do uruchomienia realnego testu wydajnosci.";
 
-        // Lazy-allocated memory buffers (allocated on test run, released on Close)
+        // Lazy-allocated memory buffers backed by NativeScratchBuffer (allocated on test run,
+        // physically returned via PageAllocator.Free on Close / CPU test completion).
         // 1. Prime sieve buffer for primes up to 100,000 (100,001 bytes)
-        private byte[] primeSieve;
+        private NativeScratchBuffer<byte> primeSieve;
 
         // 2. RAM benchmark buffer: 256 KB
         private const int RamBufferSize = 262144;
-        private byte[] testRamBuffer;
+        private NativeScratchBuffer<byte> testRamBuffer;
+
+        private string cachedCpuLine = "• Sito Eratostenesa: oczekuje na uruchomienie testu liczb pierwszych";
+        private string cachedMandelLine = "• Zespolony zbiór Mandelbrota i suma CRC32: oczekuje";
+        private string cachedRamLine = "• RAM: Pomiar bufora 256 KB w 40 przejsciach - oczekuje";
+        private string cachedGpuLine = "• Grafika VESA: Renderowanie 600 prostokatow i linii na żywo na Canvas - oczekuje";
+        private string cachedVfsLine = "• Dysk VFS: Tworzenie pliku testowego /root/benchmark_io.tmp i weryfikacja danych - oczekuje";
+        private string cachedScoreLine = "Z-SCORE: URUCHOM TEST";
+        private int cachedCpuMipsLine = -1;
+        private int cachedMandelTimeLine = -1;
+        private int cachedRamSeqWriteLine = -1;
+        private int cachedGpuKpixLine = -1;
+        private bool cachedVfsPerformedLine;
+        private int cachedVfsWriteLine = -1;
+        private int cachedVfsReadLine = -1;
+        private int cachedTotalZScoreLine = -1;
 
         // CRC32 IEEE 802.3 table
         private static readonly uint[] Crc32Table = GenerateCrc32Table();
@@ -88,18 +104,18 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
-            primeSieve = null;
-            testRamBuffer = null;
+            primeSieve.Dispose();
+            testRamBuffer.Dispose();
             base.Close();
             closeCallback?.Invoke();
         }
 
         private void EnsureBuffersAllocated()
         {
-            if (primeSieve == null)
-                primeSieve = new byte[100001];
-            if (testRamBuffer == null)
-                testRamBuffer = new byte[RamBufferSize];
+            if (!primeSieve.IsAllocated)
+                primeSieve.Allocate(100001);
+            if (!testRamBuffer.IsAllocated)
+                testRamBuffer.Allocate(RamBufferSize);
         }
 
         private static uint[] GenerateCrc32Table()
@@ -240,6 +256,9 @@ namespace ZonderqOS.GUI.Apps
             if (crcElapsed <= 0) crcElapsed = 1;
             crcTimeMs = (int)((crcElapsed * 1000) / freq);
 
+            // Release the 100 KB sieve buffer back to PageAllocator as soon as CPU benchmark completes.
+            primeSieve.Dispose();
+
             // Calculate unified real MIPS metric
             long totalComputeOps = ((long)limit * 8L) + ((long)mandelTotalIters * 12L) + (4L * RamBufferSize * 6L);
             long totalElapsed = sieveElapsed + mandelElapsed + crcElapsed;
@@ -284,7 +303,7 @@ namespace ZonderqOS.GUI.Apps
             return totalIterations;
         }
 
-        private static uint RunCrc32(byte[] data, int passes)
+        private static uint RunCrc32(NativeScratchBuffer<byte> data, int passes)
         {
             uint crc = 0xFFFFFFFFU;
             int len = data.Length;
@@ -440,7 +459,7 @@ namespace ZonderqOS.GUI.Apps
 
             // Reuse first 64 KB of testRamBuffer instead of allocating a new 64 KB array
             const int blockLength = 65536;
-            byte[] testBlock = testRamBuffer;
+            Span<byte> testBlock = testRamBuffer.AsSpan();
             for (int i = 0; i < blockLength; i++)
             {
                 testBlock[i] = (byte)((i * 31 + 17) & 0xFF);
@@ -455,9 +474,10 @@ namespace ZonderqOS.GUI.Apps
                 // Write 4 blocks = 256 KB
                 using (var fs = new FileStream(testPath, FileMode.Create, FileAccess.Write))
                 {
+                    Span<byte> writeSlice = testBlock.Slice(0, blockLength);
                     for (int b = 0; b < 4; b++)
                     {
-                        fs.Write(testBlock, 0, blockLength);
+                        fs.Write(writeSlice);
                         totalWritten += blockLength;
                     }
                     fs.Flush();
@@ -470,7 +490,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     using (var fs = new FileStream(testPath, FileMode.Create, FileAccess.Write))
                     {
-                        fs.Write(testBlock, 0, blockLength);
+                        fs.Write(testBlock.Slice(0, blockLength));
                         fs.Flush();
                     }
                     totalWritten = blockLength;
@@ -496,8 +516,9 @@ namespace ZonderqOS.GUI.Apps
                 {
                     using (var fs = new FileStream(testPath, FileMode.Open, FileAccess.Read))
                     {
+                        Span<byte> readSlice = testBlock.Slice(blockLength, blockLength);
                         int bytesRead;
-                        while ((bytesRead = fs.Read(testBlock, blockLength, blockLength)) > 0)
+                        while ((bytesRead = fs.Read(readSlice)) > 0)
                         {
                             totalRead += bytesRead;
                         }
@@ -744,42 +765,68 @@ namespace ZonderqOS.GUI.Apps
                 int lineH = 18;
 
                 // CPU Telemetry
-                string cpuLine = cpuMips > 0
-                    ? "✓ Sito Eratostenesa: znaleziono " + primeCount + " liczb pierwszych (oczekiwano 9592) [ZGODNE]"
-                    : "• Sito Eratostenesa: oczekuje na uruchomienie testu liczb pierwszych";
-                SmallTextRenderer.Draw(canvas, cpuLine, wx + 26, dy, cpuMips > 0 ? GreenColor : TextColor);
+                if (cpuMips != cachedCpuMipsLine)
+                {
+                    cachedCpuMipsLine = cpuMips;
+                    cachedCpuLine = cpuMips > 0
+                        ? "✓ Sito Eratostenesa: znaleziono " + primeCount + " liczb pierwszych (oczekiwano 9592) [ZGODNE]"
+                        : "• Sito Eratostenesa: oczekuje na uruchomienie testu liczb pierwszych";
+                }
+                SmallTextRenderer.Draw(canvas, cachedCpuLine, wx + 26, dy, cpuMips > 0 ? GreenColor : TextColor);
                 dy += lineH;
 
-                string mandelLine = mandelbrotTimeMs > 0
-                    ? "✓ Mandelbrot (160x100 arytm. 16.16): " + mandelbrotTimeMs + " ms | CRC-32 (1 MB): " + crcTimeMs + " ms [Suma: 0x" + crcResult.ToString("X8") + "]"
-                    : "• Zespolony zbiór Mandelbrota i suma CRC32: oczekuje";
-                SmallTextRenderer.Draw(canvas, mandelLine, wx + 26, dy, mandelbrotTimeMs > 0 ? GreenColor : TextColor);
+                if (mandelbrotTimeMs != cachedMandelTimeLine)
+                {
+                    cachedMandelTimeLine = mandelbrotTimeMs;
+                    cachedMandelLine = mandelbrotTimeMs > 0
+                        ? "✓ Mandelbrot (160x100 arytm. 16.16): " + mandelbrotTimeMs + " ms | CRC-32 (1 MB): " + crcTimeMs + " ms [Suma: 0x" + crcResult.ToString("X8") + "]"
+                        : "• Zespolony zbiór Mandelbrota i suma CRC32: oczekuje";
+                }
+                SmallTextRenderer.Draw(canvas, cachedMandelLine, wx + 26, dy, mandelbrotTimeMs > 0 ? GreenColor : TextColor);
                 dy += lineH;
 
                 // RAM Telemetry
-                string ramLine = ramSeqWriteMb > 0
-                    ? "✓ RAM: Zapis sekwencyjny " + ramSeqWriteMb + " MB/s | Odczyt " + ramSeqReadMb + " MB/s | Losowy dostep: " + ramRandomKops + " kOps/s"
-                    : "• RAM: Pomiar bufora 256 KB w 40 przejsciach - oczekuje";
-                SmallTextRenderer.Draw(canvas, ramLine, wx + 26, dy, ramSeqWriteMb > 0 ? AccentColor : TextColor);
+                if (ramSeqWriteMb != cachedRamSeqWriteLine)
+                {
+                    cachedRamSeqWriteLine = ramSeqWriteMb;
+                    cachedRamLine = ramSeqWriteMb > 0
+                        ? "✓ RAM: Zapis sekwencyjny " + ramSeqWriteMb + " MB/s | Odczyt " + ramSeqReadMb + " MB/s | Losowy dostep: " + ramRandomKops + " kOps/s"
+                        : "• RAM: Pomiar bufora 256 KB w 40 przejsciach - oczekuje";
+                }
+                SmallTextRenderer.Draw(canvas, cachedRamLine, wx + 26, dy, ramSeqWriteMb > 0 ? AccentColor : TextColor);
                 dy += lineH;
 
                 // GPU Telemetry
-                string gpuLine = gpuKpixSec > 0
-                    ? "✓ Grafika VESA: Rysowanie rastra: " + gpuKpixSec + " kPix/s (" + gpuPrimitiveOps + " prymitywow/s)"
-                    : "• Grafika VESA: Renderowanie 600 prostokatow i linii na żywo na Canvas - oczekuje";
-                SmallTextRenderer.Draw(canvas, gpuLine, wx + 26, dy, gpuKpixSec > 0 ? GoldColor : TextColor);
+                if (gpuKpixSec != cachedGpuKpixLine)
+                {
+                    cachedGpuKpixLine = gpuKpixSec;
+                    cachedGpuLine = gpuKpixSec > 0
+                        ? "✓ Grafika VESA: Rysowanie rastra: " + gpuKpixSec + " kPix/s (" + gpuPrimitiveOps + " prymitywow/s)"
+                        : "• Grafika VESA: Renderowanie 600 prostokatow i linii na żywo na Canvas - oczekuje";
+                }
+                SmallTextRenderer.Draw(canvas, cachedGpuLine, wx + 26, dy, gpuKpixSec > 0 ? GoldColor : TextColor);
                 dy += lineH;
 
                 // VFS Telemetry
-                string vfsLine = vfsTestPerformed
-                    ? "✓ Dysk VFS: Zapis: " + (vfsWriteSpeedKb / 1024) + " MB/s | Odczyt: " + (vfsReadSpeedKb / 1024) + " MB/s | " + vfsIntegrity
-                    : "• Dysk VFS: Tworzenie pliku testowego /root/benchmark_io.tmp i weryfikacja danych - oczekuje";
-                SmallTextRenderer.Draw(canvas, vfsLine, wx + 26, dy, vfsTestPerformed ? OrangeColor : TextColor);
+                if (vfsTestPerformed != cachedVfsPerformedLine || vfsWriteSpeedKb != cachedVfsWriteLine || vfsReadSpeedKb != cachedVfsReadLine)
+                {
+                    cachedVfsPerformedLine = vfsTestPerformed;
+                    cachedVfsWriteLine = vfsWriteSpeedKb;
+                    cachedVfsReadLine = vfsReadSpeedKb;
+                    cachedVfsLine = vfsTestPerformed
+                        ? "✓ Dysk VFS: Zapis: " + (vfsWriteSpeedKb / 1024) + " MB/s | Odczyt: " + (vfsReadSpeedKb / 1024) + " MB/s | " + vfsIntegrity
+                        : "• Dysk VFS: Tworzenie pliku testowego /root/benchmark_io.tmp i weryfikacja danych - oczekuje";
+                }
+                SmallTextRenderer.Draw(canvas, cachedVfsLine, wx + 26, dy, vfsTestPerformed ? OrangeColor : TextColor);
                 dy += lineH;
 
                 // Overall Score line
-                string scoreStr = totalZScore > 0 ? "WSKAZNIK Z-SCORE: " + totalZScore + " PUNKTOW" : "Z-SCORE: URUCHOM TEST";
-                SmallTextRenderer.Draw(canvas, scoreStr, wx + 26, dy + 2, totalZScore > 4000 ? GreenColor : AccentColor);
+                if (totalZScore != cachedTotalZScoreLine)
+                {
+                    cachedTotalZScoreLine = totalZScore;
+                    cachedScoreLine = totalZScore > 0 ? "WSKAZNIK Z-SCORE: " + totalZScore + " PUNKTOW" : "Z-SCORE: URUCHOM TEST";
+                }
+                SmallTextRenderer.Draw(canvas, cachedScoreLine, wx + 26, dy + 2, totalZScore > 4000 ? GreenColor : AccentColor);
             }
 
             // Progress bar

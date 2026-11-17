@@ -42,7 +42,8 @@ namespace ZonderqOS.GUI
         private bool cachedNetworkReady;
         private bool networkStateInitialized;
         private bool volumeStateInitialized;
-        private string cachedVolumeLabel = "VOL 0";
+        private static readonly string[] VolumeLabels = { "VOL 0", "VOL 1", "VOL 2", "VOL 3", "VOL 4", "VOL 5", "VOL 6", "VOL 7", "VOL 8" };
+        private string cachedVolumeLabel = VolumeLabels[0];
         public bool HasPendingUpdate { get; set; }
 
         private const int StartButtonWidth = 48;
@@ -409,7 +410,9 @@ namespace ZonderqOS.GUI
                         "System wykryl zmiane listy partycji lub woluminow.");
                 }
                 cachedVolumeCount = volumeCount;
-                cachedVolumeLabel = "VOL " + volumeCount;
+                cachedVolumeLabel = (uint)volumeCount < (uint)VolumeLabels.Length
+                    ? VolumeLabels[volumeCount]
+                    : "VOL " + volumeCount;
                 volumeStateInitialized = true;
             }
         }

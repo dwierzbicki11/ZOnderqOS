@@ -873,6 +873,8 @@ namespace ZonderqOS.GUI.Apps
 
         private void CloseNow()
         {
+            lines.Clear();
+            openEntries.Clear();
             base.Close();
             if (closeCallback != null)
                 closeCallback();

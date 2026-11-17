@@ -26,6 +26,8 @@ namespace ZonderqOS.GUI.Apps
         private static readonly Color GreenColor = Color.FromArgb(60, 200, 100);
 
         private readonly int[,] grid = new int[GridSize, GridSize];
+        private readonly int[] scratchLine = new int[GridSize];
+        private readonly int[] scratchNewLine = new int[GridSize];
         private uint score;
         private uint bestScore;
         private bool isGameOver;
@@ -156,40 +158,40 @@ namespace ZonderqOS.GUI.Apps
 
             for (int r = 0; r < GridSize; r++)
             {
-                int[] line = new int[GridSize];
+                Array.Clear(scratchLine, 0, GridSize);
+                Array.Clear(scratchNewLine, 0, GridSize);
                 int idx = 0;
                 for (int c = 0; c < GridSize; c++)
                 {
                     if (grid[c, r] != 0)
-                        line[idx++] = grid[c, r];
+                        scratchLine[idx++] = grid[c, r];
                 }
 
                 for (int i = 0; i < GridSize - 1; i++)
                 {
-                    if (line[i] != 0 && line[i] == line[i + 1])
+                    if (scratchLine[i] != 0 && scratchLine[i] == scratchLine[i + 1])
                     {
-                        line[i] *= 2;
-                        score += (uint)line[i];
-                        if (line[i] > maxMerged) maxMerged = line[i];
-                        line[i + 1] = 0;
+                        scratchLine[i] *= 2;
+                        score += (uint)scratchLine[i];
+                        if (scratchLine[i] > maxMerged) maxMerged = scratchLine[i];
+                        scratchLine[i + 1] = 0;
                         i++;
                     }
                 }
 
-                int[] newLine = new int[GridSize];
                 idx = 0;
                 for (int i = 0; i < GridSize; i++)
                 {
-                    if (line[i] != 0)
-                        newLine[idx++] = line[i];
+                    if (scratchLine[i] != 0)
+                        scratchNewLine[idx++] = scratchLine[i];
                 }
 
                 for (int c = 0; c < GridSize; c++)
                 {
-                    if (grid[c, r] != newLine[c])
+                    if (grid[c, r] != scratchNewLine[c])
                     {
                         changed = true;
-                        grid[c, r] = newLine[c];
+                        grid[c, r] = scratchNewLine[c];
                     }
                 }
             }
@@ -207,37 +209,37 @@ namespace ZonderqOS.GUI.Apps
 
             for (int r = 0; r < GridSize; r++)
             {
-                int[] line = new int[GridSize];
+                Array.Clear(scratchLine, 0, GridSize);
+                Array.Clear(scratchNewLine, 0, GridSize);
                 int idx = 0;
                 for (int c = GridSize - 1; c >= 0; c--)
                 {
                     if (grid[c, r] != 0)
-                        line[idx++] = grid[c, r];
+                        scratchLine[idx++] = grid[c, r];
                 }
 
                 for (int i = 0; i < GridSize - 1; i++)
                 {
-                    if (line[i] != 0 && line[i] == line[i + 1])
+                    if (scratchLine[i] != 0 && scratchLine[i] == scratchLine[i + 1])
                     {
-                        line[i] *= 2;
-                        score += (uint)line[i];
-                        if (line[i] > maxMerged) maxMerged = line[i];
-                        line[i + 1] = 0;
+                        scratchLine[i] *= 2;
+                        score += (uint)scratchLine[i];
+                        if (scratchLine[i] > maxMerged) maxMerged = scratchLine[i];
+                        scratchLine[i + 1] = 0;
                         i++;
                     }
                 }
 
-                int[] newLine = new int[GridSize];
                 idx = 0;
                 for (int i = 0; i < GridSize; i++)
                 {
-                    if (line[i] != 0)
-                        newLine[idx++] = line[i];
+                    if (scratchLine[i] != 0)
+                        scratchNewLine[idx++] = scratchLine[i];
                 }
 
                 for (int c = GridSize - 1; c >= 0; c--)
                 {
-                    int val = newLine[GridSize - 1 - c];
+                    int val = scratchNewLine[GridSize - 1 - c];
                     if (grid[c, r] != val)
                     {
                         changed = true;
@@ -259,40 +261,40 @@ namespace ZonderqOS.GUI.Apps
 
             for (int c = 0; c < GridSize; c++)
             {
-                int[] line = new int[GridSize];
+                Array.Clear(scratchLine, 0, GridSize);
+                Array.Clear(scratchNewLine, 0, GridSize);
                 int idx = 0;
                 for (int r = 0; r < GridSize; r++)
                 {
                     if (grid[c, r] != 0)
-                        line[idx++] = grid[c, r];
+                        scratchLine[idx++] = grid[c, r];
                 }
 
                 for (int i = 0; i < GridSize - 1; i++)
                 {
-                    if (line[i] != 0 && line[i] == line[i + 1])
+                    if (scratchLine[i] != 0 && scratchLine[i] == scratchLine[i + 1])
                     {
-                        line[i] *= 2;
-                        score += (uint)line[i];
-                        if (line[i] > maxMerged) maxMerged = line[i];
-                        line[i + 1] = 0;
+                        scratchLine[i] *= 2;
+                        score += (uint)scratchLine[i];
+                        if (scratchLine[i] > maxMerged) maxMerged = scratchLine[i];
+                        scratchLine[i + 1] = 0;
                         i++;
                     }
                 }
 
-                int[] newLine = new int[GridSize];
                 idx = 0;
                 for (int i = 0; i < GridSize; i++)
                 {
-                    if (line[i] != 0)
-                        newLine[idx++] = line[i];
+                    if (scratchLine[i] != 0)
+                        scratchNewLine[idx++] = scratchLine[i];
                 }
 
                 for (int r = 0; r < GridSize; r++)
                 {
-                    if (grid[c, r] != newLine[r])
+                    if (grid[c, r] != scratchNewLine[r])
                     {
                         changed = true;
-                        grid[c, r] = newLine[r];
+                        grid[c, r] = scratchNewLine[r];
                     }
                 }
             }
@@ -310,37 +312,37 @@ namespace ZonderqOS.GUI.Apps
 
             for (int c = 0; c < GridSize; c++)
             {
-                int[] line = new int[GridSize];
+                Array.Clear(scratchLine, 0, GridSize);
+                Array.Clear(scratchNewLine, 0, GridSize);
                 int idx = 0;
                 for (int r = GridSize - 1; r >= 0; r--)
                 {
                     if (grid[c, r] != 0)
-                        line[idx++] = grid[c, r];
+                        scratchLine[idx++] = grid[c, r];
                 }
 
                 for (int i = 0; i < GridSize - 1; i++)
                 {
-                    if (line[i] != 0 && line[i] == line[i + 1])
+                    if (scratchLine[i] != 0 && scratchLine[i] == scratchLine[i + 1])
                     {
-                        line[i] *= 2;
-                        score += (uint)line[i];
-                        if (line[i] > maxMerged) maxMerged = line[i];
-                        line[i + 1] = 0;
+                        scratchLine[i] *= 2;
+                        score += (uint)scratchLine[i];
+                        if (scratchLine[i] > maxMerged) maxMerged = scratchLine[i];
+                        scratchLine[i + 1] = 0;
                         i++;
                     }
                 }
 
-                int[] newLine = new int[GridSize];
                 idx = 0;
                 for (int i = 0; i < GridSize; i++)
                 {
-                    if (line[i] != 0)
-                        newLine[idx++] = line[i];
+                    if (scratchLine[i] != 0)
+                        scratchNewLine[idx++] = scratchLine[i];
                 }
 
                 for (int r = GridSize - 1; r >= 0; r--)
                 {
-                    int val = newLine[GridSize - 1 - r];
+                    int val = scratchNewLine[GridSize - 1 - r];
                     if (grid[c, r] != val)
                     {
                         changed = true;

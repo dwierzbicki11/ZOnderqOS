@@ -44,6 +44,7 @@ namespace ZonderqOS.GUI.Apps
         private CosmosBitmap previewBitmap;
         private int previewWidth;
         private int previewHeight;
+        private static int[] sharedRxMapScratch;
         private int[] rxMapScratch;
         private int preparedAreaWidth = -1;
         private int preparedAreaHeight = -1;
@@ -83,6 +84,10 @@ namespace ZonderqOS.GUI.Apps
             previewWidth = 0;
             previewHeight = 0;
             rxMapScratch = null;
+            for (int i = 0; i < siblingImages.Length; i++)
+                siblingImages[i] = null;
+            siblingCount = 0;
+            siblingIndex = -1;
             base.Close();
         }
 
@@ -710,8 +715,9 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            if (rxMapScratch == null || rxMapScratch.Length < visibleWidth)
-                rxMapScratch = new int[visibleWidth];
+            if (sharedRxMapScratch == null || sharedRxMapScratch.Length < visibleWidth)
+                sharedRxMapScratch = new int[System.Math.Max(MaxPreviewWidth, visibleWidth)];
+            rxMapScratch = sharedRxMapScratch;
 
             for (int dx = 0; dx < visibleWidth; dx++)
             {

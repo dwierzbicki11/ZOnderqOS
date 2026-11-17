@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.IO;
 using Cosmos.Kernel.System.Graphics;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -38,7 +39,7 @@ namespace ZonderqOS.GUI.Apps
         private string cachedPosText = "Poz: 0x0000 / 0x0000";
         private int cachedPosOffset = -1;
         private int cachedPosTotal = -1;
-        private byte[] fileBytes;
+        private NativeScratchBuffer<byte> fileBuffer;
         private int currentOffset;
         private int sampleIndex;
         private readonly Action closeCallback;
@@ -62,7 +63,7 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
-            fileBytes = null;
+            fileBuffer.Dispose();
             base.Close();
             closeCallback?.Invoke();
         }
@@ -75,24 +76,42 @@ namespace ZonderqOS.GUI.Apps
                 currentOffset = 0;
                 if (File.Exists(path))
                 {
-                    fileBytes = File.ReadAllBytes(path);
+                    using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    {
+                        long rawLen = fs.Length;
+                        int length = rawLen <= 0 ? 0 : (int)Math.Min(rawLen, 16L * 1024L * 1024L);
+                        fileBuffer.Allocate(length);
+                        Span<byte> dest = fileBuffer.AsSpan();
+                        int totalRead = 0;
+                        while (totalRead < length)
+                        {
+                            int read = fs.Read(dest.Slice(totalRead, length - totalRead));
+                            if (read <= 0)
+                                break;
+                            totalRead += read;
+                        }
+                    }
                 }
                 else
                 {
                     // Fallback to placeholder info bytes
                     string fallback = "ZOnderqOS Hex Viewer\nPlik: " + path + "\nNie odnaleziono pliku lub sciezka jest wirtualna.";
-                    fileBytes = System.Text.Encoding.ASCII.GetBytes(fallback);
+                    fileBuffer.Allocate(fallback.Length);
+                    for (int i = 0; i < fallback.Length; i++)
+                        fileBuffer[i] = (byte)fallback[i];
                 }
                 Window.Title = "Hex Viewer - " + Path.GetFileName(path);
-                int len = fileBytes != null ? fileBytes.Length : 0;
+                int len = fileBuffer.Length;
                 cachedTitleText = (currentPath ?? "Brak pliku") + " (" + len + " B)";
                 cachedPosOffset = -1;
             }
             catch (Exception ex)
             {
                 string err = "Blad odczytu: " + ex.Message;
-                fileBytes = System.Text.Encoding.ASCII.GetBytes(err);
-                int len = fileBytes.Length;
+                fileBuffer.Allocate(err.Length);
+                for (int i = 0; i < err.Length; i++)
+                    fileBuffer[i] = (byte)err[i];
+                int len = fileBuffer.Length;
                 cachedTitleText = (currentPath ?? "Brak pliku") + " (" + len + " B)";
                 cachedPosOffset = -1;
             }
@@ -115,7 +134,7 @@ namespace ZonderqOS.GUI.Apps
             }
             else if (key.Key == ConsoleKeyEx.PageDown)
             {
-                int maxOffset = fileBytes != null ? Math.Max(0, fileBytes.Length - BytesPerPage) : 0;
+                int maxOffset = Math.Max(0, fileBuffer.Length - BytesPerPage);
                 currentOffset = Math.Min(maxOffset, currentOffset + BytesPerPage);
             }
             else if (key.Key == ConsoleKeyEx.UpArrow)
@@ -124,7 +143,7 @@ namespace ZonderqOS.GUI.Apps
             }
             else if (key.Key == ConsoleKeyEx.DownArrow)
             {
-                int maxOffset = fileBytes != null ? Math.Max(0, fileBytes.Length - BytesPerRow) : 0;
+                int maxOffset = Math.Max(0, fileBuffer.Length - BytesPerRow);
                 currentOffset = Math.Min(maxOffset, currentOffset + BytesPerRow);
             }
             else if (key.Key == ConsoleKeyEx.Home)
@@ -133,7 +152,7 @@ namespace ZonderqOS.GUI.Apps
             }
             else if (key.Key == ConsoleKeyEx.End)
             {
-                int maxOffset = fileBytes != null ? Math.Max(0, fileBytes.Length - BytesPerPage) : 0;
+                int maxOffset = Math.Max(0, fileBuffer.Length - BytesPerPage);
                 currentOffset = maxOffset;
             }
             else if (key.Key == ConsoleKeyEx.Spacebar)
@@ -178,7 +197,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 else if (hoveredBtn == 1)
                 {
-                    int maxOffset = fileBytes != null ? Math.Max(0, fileBytes.Length - BytesPerPage) : 0;
+                    int maxOffset = Math.Max(0, fileBuffer.Length - BytesPerPage);
                     currentOffset = Math.Min(maxOffset, currentOffset + BytesPerPage);
                 }
                 else if (hoveredBtn == 2)
@@ -219,7 +238,7 @@ namespace ZonderqOS.GUI.Apps
 
             // Hex and ASCII rows
             int rowY = gridTop + 18;
-            int totalBytes = fileBytes != null ? fileBytes.Length : 0;
+            int totalBytes = fileBuffer.Length;
 
             for (int r = 0; r < VisibleRows; r++)
             {
@@ -237,7 +256,7 @@ namespace ZonderqOS.GUI.Apps
                     int byteIdx = rowOffset + b;
                     if (byteIdx < totalBytes)
                     {
-                        byte val = fileBytes[byteIdx];
+                        byte val = fileBuffer[byteIdx];
                         Color col = (val == 0) ? ZeroByteCol : HexByteCol;
                         DrawHex8(canvas, val, hx, rowY, col);
                     }
@@ -258,7 +277,7 @@ namespace ZonderqOS.GUI.Apps
                     int byteIdx = rowOffset + b;
                     if (byteIdx < totalBytes)
                     {
-                        byte val = fileBytes[byteIdx];
+                        byte val = fileBuffer[byteIdx];
                         char ch = (val >= 32 && val <= 126) ? (char)val : '.';
                         SmallTextRenderer.DrawSingleChar(canvas, ch, ax, rowY, AsciiCol);
                     }

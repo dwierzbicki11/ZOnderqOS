@@ -841,6 +841,7 @@ namespace ZonderqOS.GUI.Apps
         {
             try
             {
+                SecurityLogger.Flush();
                 const string path = "/var/log/auth.log";
                 auditLogPresent = File.Exists(path);
                 auditLogBytes = auditLogPresent ? new FileInfo(path).Length : 0;

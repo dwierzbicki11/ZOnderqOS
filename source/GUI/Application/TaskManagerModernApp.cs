@@ -35,20 +35,31 @@ namespace ZonderqOS.GUI.Apps
 
         private sealed class ReusableScratch
         {
+            private const int PreallocatedLogicalCpus = 16;
+            private const int PreallocatedThreadSlots = 128;
+
             public readonly int[] CpuHistory = new int[HistoryLength];
             public readonly int[] MemoryHistory = new int[HistoryLength];
             public readonly List<ModernTaskRow> RecycledRows = new List<ModernTaskRow>(InitialRowPool);
             public readonly TaskManagerMemoryCache MemoryCache = new TaskManagerMemoryCache();
-            public int[][] LogicalHistory = new int[0][];
-            public int[] LogicalHistoryCount = new int[0];
-            public int[] LogicalHistoryWrite = new int[0];
-            public int[] LogicalUsage = new int[0];
-            public ulong[] LogicalBusyDelta = new ulong[0];
-            public int LogicalCapacity;
-            public uint[] PreviousThreadIds = new uint[0];
-            public ulong[] PreviousThreadRuntime = new ulong[0];
-            public bool[] PreviousThreadValid = new bool[0];
-            public int ThreadSlotCapacity;
+            public int[][] LogicalHistory = CreateLogicalHistory(PreallocatedLogicalCpus);
+            public int[] LogicalHistoryCount = new int[PreallocatedLogicalCpus];
+            public int[] LogicalHistoryWrite = new int[PreallocatedLogicalCpus];
+            public int[] LogicalUsage = new int[PreallocatedLogicalCpus];
+            public ulong[] LogicalBusyDelta = new ulong[PreallocatedLogicalCpus];
+            public int LogicalCapacity = PreallocatedLogicalCpus;
+            public uint[] PreviousThreadIds = new uint[PreallocatedThreadSlots];
+            public ulong[] PreviousThreadRuntime = new ulong[PreallocatedThreadSlots];
+            public bool[] PreviousThreadValid = new bool[PreallocatedThreadSlots];
+            public int ThreadSlotCapacity = PreallocatedThreadSlots;
+
+            private static int[][] CreateLogicalHistory(int count)
+            {
+                int[][] arrays = new int[count][];
+                for (int i = 0; i < count; i++)
+                    arrays[i] = new int[HistoryLength];
+                return arrays;
+            }
         }
 
         private static ReusableScratch sharedScratch;
@@ -242,8 +253,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (ownsSharedScratch && sharedScratch.RecycledRows.Count > 0)
             {
-                int take = Math.Min(InitialRowPool, sharedScratch.RecycledRows.Count);
-                for (int i = 0; i < take; i++)
+                while (sharedScratch.RecycledRows.Count > 0)
                 {
                     int last = sharedScratch.RecycledRows.Count - 1;
                     rowPool.Add(sharedScratch.RecycledRows[last]);
@@ -700,7 +710,18 @@ namespace ZonderqOS.GUI.Apps
         private ModernTaskRow AcquireRow(int index)
         {
             while (index >= rowPool.Count)
-                rowPool.Add(new ModernTaskRow());
+            {
+                if (ownsSharedScratch && sharedScratch != null && sharedScratch.RecycledRows.Count > 0)
+                {
+                    int last = sharedScratch.RecycledRows.Count - 1;
+                    rowPool.Add(sharedScratch.RecycledRows[last]);
+                    sharedScratch.RecycledRows.RemoveAt(last);
+                }
+                else
+                {
+                    rowPool.Add(new ModernTaskRow());
+                }
+            }
             return rowPool[index];
         }
 

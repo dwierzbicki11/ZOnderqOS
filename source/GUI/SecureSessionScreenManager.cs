@@ -59,6 +59,8 @@ namespace ZonderqOS.GUI
         private static readonly Color Muted = Color.FromArgb(134, 150, 165);
         private static readonly Color Danger = Color.FromArgb(215, 86, 91);
 
+        private static readonly Screen ReusableScreen = new Screen();
+
         public static SecureSessionAction Run(Canvas canvas)
         {
             if (canvas == null || !SecurityContext.IsAuthenticated)
@@ -67,7 +69,8 @@ namespace ZonderqOS.GUI
             try
             {
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
-                Screen screen = new Screen((int)canvas.Width, (int)canvas.Height);
+                ReusableScreen.Reset((int)canvas.Width, (int)canvas.Height);
+                Screen screen = ReusableScreen;
 
                 bool previousLeft = MouseManager.LeftButton;
                 int previousMouseX = (int)MouseManager.X;
@@ -129,19 +132,30 @@ namespace ZonderqOS.GUI
 
         private sealed class Screen
         {
-            private readonly int screenWidth;
-            private readonly int screenHeight;
+            private int screenWidth;
+            private int screenHeight;
             private int selected;
             private int hovered = -1;
 
             public bool Finished { get; private set; }
             public SecureSessionAction Action { get; private set; }
 
+            public Screen()
+            {
+            }
+
             public Screen(int width, int height)
+            {
+                Reset(width, height);
+            }
+
+            public void Reset(int width, int height)
             {
                 screenWidth = width;
                 screenHeight = height;
                 selected = 0;
+                hovered = -1;
+                Finished = false;
                 Action = SecureSessionAction.Cancel;
             }
 

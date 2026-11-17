@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 
 namespace ZonderqOS
 {
@@ -32,6 +33,7 @@ namespace ZonderqOS
         private static readonly object Sync = new object();
         private static readonly SystemLogEntry[] Entries = new SystemLogEntry[Capacity];
         private static readonly SystemLogEntry[] PendingDiskEntries = new SystemLogEntry[32];
+        private static readonly StringBuilder PendingFlushBuilder = new StringBuilder(1024);
         private static int pendingDiskHead;
         private static int pendingDiskCount;
         private static int writeIndex;
@@ -86,12 +88,26 @@ namespace ZonderqOS
                         writesSinceStat = 0;
                     }
 
-                    int start = count == Capacity ? writeIndex : 0;
-                    for (int i = 0; i < count; i++)
+                    PendingFlushBuilder.Clear();
+                    try
                     {
-                        int index = (start + i) % Capacity;
-                        string line = Format(Entries[index]);
-                        AppendPersistentLocked(line);
+                        int start = count == Capacity ? writeIndex : 0;
+                        for (int i = 0; i < count; i++)
+                        {
+                            int index = (start + i) % Capacity;
+                            AppendFormattedToBuilder(PendingFlushBuilder, Entries[index]);
+                            PendingFlushBuilder.Append('\n');
+                        }
+
+                        if (PendingFlushBuilder.Length > 0)
+                        {
+                            RotateIfNeededLocked(PendingFlushBuilder.Length);
+                            AppendPersistentBatchLocked(PendingFlushBuilder.ToString());
+                        }
+                    }
+                    finally
+                    {
+                        PendingFlushBuilder.Clear();
                     }
 
                     initialized = true;
@@ -123,7 +139,7 @@ namespace ZonderqOS
         /// </summary>
         public static void LogBuffered(SystemLogLevel level, string source, string message)
         {
-            LogCore(level, source, message, flushToDisk: level >= SystemLogLevel.Warning);
+            LogCore(level, source, message, flushToDisk: level >= SystemLogLevel.Error);
         }
 
         public static void Flush()
@@ -166,10 +182,7 @@ namespace ZonderqOS
                     {
                         if (flushToDisk)
                         {
-                            FlushPendingLocked();
-                            string formatted = Format(entry);
-                            RotateIfNeededLocked(formatted.Length + 1);
-                            AppendPersistentLocked(formatted);
+                            FlushPendingBatchLocked(hasExtra: true, extraEntry: entry);
                         }
                         else
                         {
@@ -202,17 +215,56 @@ namespace ZonderqOS
 
         private static void FlushPendingLocked()
         {
+            FlushPendingBatchLocked(hasExtra: false, extraEntry: default(SystemLogEntry));
+        }
+
+        private static void FlushPendingBatchLocked(bool hasExtra, SystemLogEntry extraEntry)
+        {
             int cap = PendingDiskEntries.Length;
-            for (int i = 0; i < pendingDiskCount; i++)
+            if (pendingDiskCount == 0 && !hasExtra)
+                return;
+
+            PendingFlushBuilder.Clear();
+            try
             {
-                int index = (pendingDiskHead + i) % cap;
-                string formatted = Format(PendingDiskEntries[index]);
-                PendingDiskEntries[index] = default(SystemLogEntry);
-                RotateIfNeededLocked(formatted.Length + 1);
-                AppendPersistentLocked(formatted);
+                for (int i = 0; i < pendingDiskCount; i++)
+                {
+                    int index = (pendingDiskHead + i) % cap;
+                    AppendFormattedToBuilder(PendingFlushBuilder, PendingDiskEntries[index]);
+                    PendingFlushBuilder.Append('\n');
+                    PendingDiskEntries[index] = default(SystemLogEntry);
+                }
+                pendingDiskHead = 0;
+                pendingDiskCount = 0;
+
+                if (hasExtra)
+                {
+                    AppendFormattedToBuilder(PendingFlushBuilder, extraEntry);
+                    PendingFlushBuilder.Append('\n');
+                }
+
+                if (PendingFlushBuilder.Length == 0)
+                    return;
+
+                RotateIfNeededLocked(PendingFlushBuilder.Length);
+                AppendPersistentBatchLocked(PendingFlushBuilder.ToString());
             }
-            pendingDiskHead = 0;
-            pendingDiskCount = 0;
+            finally
+            {
+                PendingFlushBuilder.Clear();
+            }
+        }
+
+        private static void AppendFormattedToBuilder(StringBuilder sb, SystemLogEntry entry)
+        {
+            sb.Append('[');
+            sb.Append(entry.TimeText ?? "TIME_ERROR");
+            sb.Append("] [");
+            sb.Append(LevelName(entry.Level));
+            sb.Append("] [");
+            sb.Append(entry.Source ?? "SYS");
+            sb.Append("] ");
+            sb.Append(entry.Message ?? string.Empty);
         }
 
         public static bool TryGetRecent(int newestOffset, out SystemLogEntry entry)
@@ -315,15 +367,16 @@ namespace ZonderqOS
             writesSinceStat = 0;
         }
 
-        private static void AppendPersistentLocked(string formattedLine)
+        private static void AppendPersistentBatchLocked(string batchText)
         {
             try
             {
-                string line = formattedLine + "\n";
-                File.AppendAllText(LogPath, line);
+                if (string.IsNullOrEmpty(batchText))
+                    return;
+                File.AppendAllText(LogPath, batchText);
                 if (approxLogBytes < 0)
                     approxLogBytes = 0;
-                approxLogBytes += line.Length;
+                approxLogBytes += batchText.Length;
                 writesSinceStat++;
             }
             catch { }

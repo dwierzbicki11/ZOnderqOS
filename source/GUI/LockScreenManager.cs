@@ -144,6 +144,13 @@ namespace ZonderqOS.GUI
             private int passwordLength;
             private string status = "SESJA ZABLOKOWANA";
             private Color statusColor = Muted;
+            private string cachedUserForLogs = string.Empty;
+            private string cachedSwitchLog = "Switch-user requested from lock screen.";
+            private string cachedFailedUnlockLog = "Failed graphical unlock attempt.";
+            private int cachedWaitSeconds = -1;
+            private string cachedWaitStatus = string.Empty;
+            private int cachedLockSeconds = -1;
+            private string cachedLockStatus = string.Empty;
 
             public bool Unlocked { get; private set; }
 
@@ -220,7 +227,8 @@ namespace ZonderqOS.GUI
                 if (Hit(mouseX, mouseY, cardX + 48, cardY + 344, 424, 42))
                 {
                     ClearPassword();
-                    SecurityLogger.LogEvent("INFO", "Switch-user requested from lock screen by '" + username + "'.");
+                    EnsureCachedUserLogs();
+                    SecurityLogger.LogEvent("INFO", cachedSwitchLog);
                     UserProfileManager.RememberLastUser(username);
                     UserManager.EndSession();
                     return;
@@ -323,7 +331,7 @@ namespace ZonderqOS.GUI
                 if (!AuthenticationGuard.CanAttempt(username, out retryAfter))
                 {
                     ClearPassword();
-                    SetStatus("ZA DUZO PROB - ODCZEKAJ " + retryAfter + " S", Danger);
+                    SetStatus(GetWaitStatus(retryAfter), Danger);
                     return;
                 }
 
@@ -351,11 +359,43 @@ namespace ZonderqOS.GUI
 
                 AuthenticationGuard.RecordFailure(username);
                 retryAfter = AuthenticationGuard.GetRetryAfterSeconds(username);
-                SecurityLogger.LogEvent("WARN", "Failed graphical unlock attempt for user '" + username + "'.");
+                EnsureCachedUserLogs();
+                SecurityLogger.LogSessionUnlockFailure(cachedFailedUnlockLog, retryAfter > 0);
                 if (retryAfter > 0)
-                    SetStatus("NIEPRAWIDLOWE HASLO - BLOKADA " + retryAfter + " S", Danger);
+                    SetStatus(GetLockStatus(retryAfter), Danger);
                 else
                     SetStatus("NIEPRAWIDLOWE HASLO", Danger);
+            }
+
+            private void EnsureCachedUserLogs()
+            {
+                string user = username ?? string.Empty;
+                if (!string.Equals(cachedUserForLogs, user, StringComparison.Ordinal))
+                {
+                    cachedUserForLogs = user;
+                    cachedSwitchLog = "Switch-user requested from lock screen by '" + user + "'.";
+                    cachedFailedUnlockLog = "Failed graphical unlock attempt for user '" + user + "'.";
+                }
+            }
+
+            private string GetWaitStatus(int retryAfter)
+            {
+                if (retryAfter != cachedWaitSeconds || string.IsNullOrEmpty(cachedWaitStatus))
+                {
+                    cachedWaitSeconds = retryAfter;
+                    cachedWaitStatus = "ZA DUZO PROB - ODCZEKAJ " + retryAfter + " S";
+                }
+                return cachedWaitStatus;
+            }
+
+            private string GetLockStatus(int retryAfter)
+            {
+                if (retryAfter != cachedLockSeconds || string.IsNullOrEmpty(cachedLockStatus))
+                {
+                    cachedLockSeconds = retryAfter;
+                    cachedLockStatus = "NIEPRAWIDLOWE HASLO - BLOKADA " + retryAfter + " S";
+                }
+                return cachedLockStatus;
             }
 
             private void ClearPassword()

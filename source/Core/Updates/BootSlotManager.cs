@@ -415,20 +415,28 @@ namespace ZonderqOS.SystemCore.Updates
                 if (totalBytes < 4)
                     throw new IOException("Obraz kernela jest zbyt krotki.");
                 long copiedBytes = 0;
-                byte[] buffer = new byte[64 * 1024];
-
-                using (FileStream src = new FileStream(sourceKernelPath, FileMode.Open, FileAccess.Read))
-                using (FileStream dst = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write))
+                NativeScratchBuffer<byte> copyBuffer = default;
+                copyBuffer.Allocate(64 * 1024);
+                try
                 {
-                    int read;
-                    while ((read = src.Read(buffer, 0, buffer.Length)) > 0)
+                    Span<byte> buffer = copyBuffer.AsSpan();
+                    using (FileStream src = new FileStream(sourceKernelPath, FileMode.Open, FileAccess.Read))
+                    using (FileStream dst = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write))
                     {
-                        dst.Write(buffer, 0, read);
-                        copiedBytes += read;
-                        int pct = 20 + (int)(copiedBytes * 40 / Math.Max(1, totalBytes));
-                        progress?.Invoke(pct, "Zapis obrazu do nieaktywnego slotu " + targetSlot);
+                        int read;
+                        while ((read = src.Read(buffer)) > 0)
+                        {
+                            dst.Write(buffer.Slice(0, read));
+                            copiedBytes += read;
+                            int pct = 20 + (int)(copiedBytes * 40 / Math.Max(1, totalBytes));
+                            progress?.Invoke(pct, "Zapis obrazu do nieaktywnego slotu " + targetSlot);
+                        }
+                        dst.Flush();
                     }
-                    dst.Flush();
+                }
+                finally
+                {
+                    copyBuffer.Dispose();
                 }
                 if (copiedBytes != totalBytes)
                     throw new IOException("Rozmiar pliku zmienil sie podczas kopiowania.");
