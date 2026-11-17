@@ -86,8 +86,8 @@ def tcp_frame(frame: bytes):
         raise ValueError("invalid TCP data offset")
     # RFC 9293 reserves TCP header byte 12 bits 1..3; NS (bit 0)
     # is separate. Reject impossible reserved-bit wire evidence.
-    if frame[offset + 12] & 0x0E:
-        raise ValueError("TCP reserved header bits set")
+    if frame[offset + 12] & 0x0F:
+        raise ValueError("TCP reserved or NS header bits set")
     # Fail closed on damaged wire data even if another matching TCP
     # exchange appears later in the capture. The QEMU 3.0.95 N6 PCAP
     # baseline has valid IPv4 and TCP checksums in both directions.
@@ -320,6 +320,21 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("accepted checksum-correct TCP reserved header bits")
+    # NS is a TCP control bit outside byte 13. This non-ECN probe must
+    # reject it even if the IPv4 and TCP checksums are both valid.
+    for index in (7, 11):  # outgoing SYN and incoming echo response
+        ns_frame = bytearray(frames[index])
+        ns_frame[46] |= 0x01
+        ns_frame[50:52] = b"\x00\x00"
+        ns_segment = ns_frame[34:]
+        ns_pseudo = ns_frame[26:34] + b"\x00\x06" + len(ns_segment).to_bytes(2, "big")
+        ns_frame[50:52] = internet_checksum(ns_pseudo + ns_segment).to_bytes(2, "big")
+        try:
+            validate(serial, synthetic_capture(frames + [bytes(ns_frame)]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted checksum-correct TCP NS flag")
     # Synthetic packet bit flips must not be ignored or rescued by later
     # valid frames with the same sequence/port tuple.
     for offset in (22, 24, 50, len(frames[-1]) - 1):
