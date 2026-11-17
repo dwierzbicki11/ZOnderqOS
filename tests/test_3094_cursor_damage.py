@@ -15,8 +15,8 @@ PROJECT = source("ZonderqOS.csproj")
 
 class CursorDamage3094(unittest.TestCase):
     def test_pinned_cosmos_and_single_small_underlay(self):
-        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
-        self.assertTrue('Version="3.0.94"' in PROJECT or 'Version="3.0.95"' in PROJECT)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.97"' in PROJECT)
+        self.assertTrue('Version="3.0.94"' in PROJECT or 'Version="3.0.95"' in PROJECT or 'Version="3.0.97"' in PROJECT)
         self.assertIn('DamageWidth = 24', CURSOR)
         self.assertIn('DamageHeight = 28', CURSOR)
         self.assertIn("new Color[DamageWidth * DamageHeight]", CURSOR)

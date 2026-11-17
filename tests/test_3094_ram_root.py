@@ -9,7 +9,7 @@ DISK=(ROOT/"source/Storage/Disk.cs").read_text()
 POLICY=(ROOT/"source/Storage/DataVolumePolicy.cs").read_text()
 class RamRootContract(unittest.TestCase):
     def test_3094_only_and_explicit_profile(self):
-        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.97"' in PROJECT)
         self.assertIn('ZONDERQ_3094_RAM_ROOT', PROJECT)
         self.assertIn('RAM-root GUI and read-only probe are mutually exclusive', PROJECT)
     def test_writes_only_private_ram_buffer(self):

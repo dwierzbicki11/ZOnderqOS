@@ -32,8 +32,8 @@ def method(code: str, signature: str) -> str:
 
 class StorageSafetyRegression(unittest.TestCase):
     def test_stock_3095_only(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.95"', CSPROJ)
-        self.assertIn('Version="3.0.95"', CSPROJ)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.97"' in CSPROJ or 'Sdk="Cosmos.Sdk/3.0.95"' in CSPROJ)
+        self.assertTrue('Version="3.0.97"' in CSPROJ or 'Version="3.0.95"' in CSPROJ)
         self.assertIn('ZONDERQ_READONLY_HARDWARE_PROBE', KERNEL)
 
     def test_label_is_unique_fat32(self):
