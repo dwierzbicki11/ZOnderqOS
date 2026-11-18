@@ -182,7 +182,7 @@ namespace ZonderqOS.GUI.Apps
         private readonly string signatureText;
 
         public TaskManagerModernApp(int x, int y, ApplicationManager manager, Action onClose)
-            : base("Manager zadan")
+            : base("Task Manager")
         {
             applicationManager = manager;
             closeCallback = onClose;
@@ -266,7 +266,7 @@ namespace ZonderqOS.GUI.Apps
             EnsureLogicalCapacity(Math.Max(1, cpuInfo.LogicalProcessors));
             UpdateClock();
 
-            Window = new Window(x, y, 1040, 690, "Manager zadan");
+            Window = new Window(x, y, 1040, 690, "Task Manager");
             Window.CloseAction = Close;
             view = new TaskManagerModernView(10, 40, 1020, 635, this);
             Window.AddChild(view);
@@ -421,7 +421,7 @@ namespace ZonderqOS.GUI.Apps
             if (toolbar == 1)
             {
                 RefreshSnapshot();
-                status = "Refreshono";
+                status = "Refreshed";
                 return;
             }
             if (toolbar == 2)
@@ -453,7 +453,7 @@ namespace ZonderqOS.GUI.Apps
                             cpuGraphMode = graph;
                             OnTelemetrySelectionChanged();
                         }
-                        status = graph == CpuGraphTotal ? "CPU: lacznie" : "CPU: logiczne procesory";
+                        status = graph == CpuGraphTotal ? "CPU: total" : "CPU: logical processors";
                         return;
                     }
 
@@ -496,7 +496,7 @@ namespace ZonderqOS.GUI.Apps
             if (key.Key == ConsoleKeyEx.F5)
             {
                 RefreshSnapshot();
-                status = "Refreshono";
+                status = "Refreshed";
                 return;
             }
             // The left/right arrows switch Task Manager pages without a mouse.
@@ -542,7 +542,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     cpuGraphMode = cpuGraphMode == CpuGraphTotal ? CpuGraphLogical : CpuGraphTotal;
                     OnTelemetrySelectionChanged();
-                    status = cpuGraphMode == CpuGraphTotal ? "CPU: lacznie" : "CPU: logiczne procesory";
+                    status = cpuGraphMode == CpuGraphTotal ? "CPU: total" : "CPU: logical processors";
                     return;
                 }
 
@@ -1620,7 +1620,7 @@ namespace ZonderqOS.GUI.Apps
                 // the same 76x32 hitbox without spilling into the next tile.
                 IconManager.DrawScaled(canvas, icon, compactX + 7, compactY + 7, 18, 18);
                 string compactLabel = page == 0 ? "PROC" : page == 1 ? "CPU" :
-                    page == 2 ? "DET" : "USL";
+                    page == 2 ? "DET" : "SVC";
                 SmallTextRenderer.DrawClipped(canvas, compactLabel,
                     compactX + 29, compactY + 12, 42,
                     compactActive ? Color.WhiteSmoke : Color.FromArgb(196, 205, 213));
@@ -1938,8 +1938,8 @@ namespace ZonderqOS.GUI.Apps
         {
             SmallTextRenderer.Draw(canvas, "CPU", x, y + 4, Color.WhiteSmoke);
             SmallTextRenderer.DrawClipped(canvas, app.CpuInfo.Brand, x + 44, y + 4, width - 48, Text);
-            DrawMode(canvas, x, y + 22, 92, 0, "LACZNIE");
-            DrawMode(canvas, x + 98, y + 22, 114, 1, "LOGICZNE");
+            DrawMode(canvas, x, y + 22, 92, 0, "TOTAL");
+            DrawMode(canvas, x + 98, y + 22, 114, 1, "LOGICAL");
 
             if (app.CpuGraphMode == TaskManagerModernApp.CpuGraphLogical)
                 RenderLogicalCpu(canvas, x, y + 58, width);
@@ -1978,7 +1978,7 @@ namespace ZonderqOS.GUI.Apps
             DrawKeyText(canvas, right, stats + 40, rightW, "VENDOR", app.CpuInfo.Vendor);
             DrawKeyText(canvas, right, stats + 60, rightW, "TOPOLOGY C/L/T", app.TopologyText);
             DrawKeyText(canvas, right, stats + 80, rightW, "CACHE L1/L2/L3", app.CacheText);
-            DrawKeyText(canvas, right, stats + 100, rightW, "HARDWARE", app.CpuInfo.HypervisorPresent ? "VIRTUAL (QEMU/VM)" : "FIZYCZNY (BARE-METAL)");
+            DrawKeyText(canvas, right, stats + 100, rightW, "HARDWARE", app.CpuInfo.HypervisorPresent ? "VIRTUAL (QEMU/VM)" : "PHYSICAL (BARE-METAL)");
         }
 
         private void RenderLogicalCpu(Canvas canvas, int x, int y, int width)
@@ -2039,41 +2039,41 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderMemory(Canvas canvas, int x, int y, int width)
         {
-            SmallTextRenderer.Draw(canvas, "MEMORY (RAM FIZYCZNY I ALOKATOR COSMOS)", x, y + 4, Color.WhiteSmoke);
+            SmallTextRenderer.Draw(canvas, "MEMORY (PHYSICAL RAM AND COSMOS ALLOCATOR)", x, y + 4, Color.WhiteSmoke);
             int graphH = Math.Max(120, Height - 430);
             DrawGraph(canvas, x, y + 36, width, graphH, app.MemoryHistoryCount, GraphMemory, Color.FromArgb(116, 174, 219), true);
             int stats = y + graphH + 50;
             int half = width / 2;
 
             // Physical Hardware RAM & PageAllocator Breakdown
-            DrawKeyText(canvas, x, stats, half, "RAM ZAINSTALOWANY", app.InstalledRamText);
-            DrawKeyText(canvas, x, stats + 20, half, "RAM WYKRYTY (FIRMWARE)", app.UsableRamText);
-            DrawKeyText(canvas, x, stats + 40, half, "PULA HEAP COSMOS", app.HeapPoolText);
+            DrawKeyText(canvas, x, stats, half, "INSTALLED RAM", app.InstalledRamText);
+            DrawKeyText(canvas, x, stats + 20, half, "DETECTED RAM (FIRMWARE)", app.UsableRamText);
+            DrawKeyText(canvas, x, stats + 40, half, "COSMOS HEAP POOL", app.HeapPoolText);
             DrawKeyText(canvas, x, stats + 60, half, "MEMORY PAGES", app.MemoryPagesText);
-            int leftValX = DrawKeyLabel(canvas, x, stats + 80, half, "STRONY GC/RAT/SYS");
+            int leftValX = DrawKeyLabel(canvas, x, stats + 80, half, "GC/RAT/SYS PAGES");
             SmallTextRenderer.DrawPageBreakdown(canvas, app.RawGcHeapPages, app.RawRatHeapPages, app.RawSysPages, leftValX, stats + 80, Text);
-            DrawKeyLabel(canvas, x, stats + 100, half, "BUFORY GRAFICZNE");
+            DrawKeyLabel(canvas, x, stats + 100, half, "GRAPHICS BUFFERS");
             SmallTextRenderer.DrawByteSizeSmart(canvas, app.RawGfxBufferBytes, leftValX, stats + 100, Text);
             DrawKeyLabel(canvas, x, stats + 120, half, "MEMORY DELTA");
             SmallTextRenderer.DrawMemoryDeltaPages(canvas, app.RawDeltaPages, PageAllocator.PageSize, leftValX, stats + 120, Text);
             // Optimizer counters: numeric drawing avoids a fresh string on
             // each telemetry refresh. "Candidate" is unrooted cache memory,
             // NOT physical RAM already reclaimed by OrionGC.
-            DrawKey(canvas, x, stats + 140, half, "MEMOPT PROBKI", app.OptimizerSamples, null);
+            DrawKey(canvas, x, stats + 140, half, "MEMOPT SAMPLES", app.OptimizerSamples, null);
             DrawKey(canvas, x, stats + 160, half, "MEMOPT REQUESTS", app.OptimizerRequests, null);
 
             // Cosmos Heap Allocator & GC Diagnostics
-            DrawKeyText(canvas, x + half, stats, half, "HEAP UZYTY", app.MemoryDetailText);
-            DrawKeyText(canvas, x + half, stats + 20, half, "HEAP WOLNY", app.FreeMemoryText);
+            DrawKeyText(canvas, x + half, stats, half, "HEAP USED", app.MemoryDetailText);
+            DrawKeyText(canvas, x + half, stats + 20, half, "HEAP FREE", app.FreeMemoryText);
             DrawKeyText(canvas, x + half, stats + 40, half, "GC HEAP SIZE", app.GcHeapText);
-            DrawKeyText(canvas, x + half, stats + 60, half, "GC ZATWIERDZONE", app.GcCommittedText);
-            int rightValX = DrawKeyLabel(canvas, x + half, stats + 80, half, "GC FRAGMENTACJA");
+            DrawKeyText(canvas, x + half, stats + 60, half, "GC COMMITTED", app.GcCommittedText);
+            int rightValX = DrawKeyLabel(canvas, x + half, stats + 80, half, "GC FRAGMENTATION");
             SmallTextRenderer.DrawMiBOrNa(canvas, app.RawGcFragmentedBytes, app.RawGcEnabled, rightValX, stats + 80, Text);
-            DrawKeyLabel(canvas, x + half, stats + 100, half, "GC KOLEKCJE / ZWOL.");
+            DrawKeyLabel(canvas, x + half, stats + 100, half, "GC COLLECTIONS / FREED");
             SmallTextRenderer.DrawGcCollections(canvas, app.RawGcCollectionIndex, app.RawGcObjectsFreed, app.RawGcEnabled, rightValX, stats + 100, Text);
             DrawKey(canvas, x + half, stats + 120, half, "CACHE SWEEPS", app.OptimizerSweeps, null);
-            DrawKey(canvas, x + half, stats + 140, half, "ODPIETE BUFORY", app.OptimizerDetachedBuffers, null);
-            DrawKey(canvas, x + half, stats + 160, half, "GC KANDYDAT KiB", app.OptimizerCandidateKiB, null);
+            DrawKey(canvas, x + half, stats + 140, half, "DETACHED BUFFERS", app.OptimizerDetachedBuffers, null);
+            DrawKey(canvas, x + half, stats + 160, half, "GC CANDIDATE KiB", app.OptimizerCandidateKiB, null);
         }
 
         private void RenderSystem(Canvas canvas, int x, int y, int width)
@@ -2108,7 +2108,7 @@ namespace ZonderqOS.GUI.Apps
             DrawKey(canvas, right, row + 100, half, "KERNEL PROCS", (ulong)Math.Max(0, app.KernelProcessCount), null);
             DrawKey(canvas, right, row + 120, half, "STORAGE", (ulong)Math.Max(0, app.StorageDeviceCount), null);
             DrawKeyText(canvas, right, row + 140, half, "NETWORK", app.NetworkReady ? "READY" : "OFFLINE");
-            DrawKeyText(canvas, right, row + 160, half, "RAM UZYTY", app.MemoryDetailText);
+            DrawKeyText(canvas, right, row + 160, half, "RAM USED", app.MemoryDetailText);
         }
 
         private void DrawSystemCard(Canvas canvas, int x, int y, int width, string title, ulong value, string detail)
