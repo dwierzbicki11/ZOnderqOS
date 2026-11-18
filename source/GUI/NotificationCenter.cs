@@ -614,7 +614,7 @@ namespace ZonderqOS.GUI
             FooterButtonBounds(0, out buttonX, out buttonWidth);
             DrawFooterButton(canvas, 0, buttonX, y + 9, buttonWidth, "PRZECZYTANE", IconType.About);
             FooterButtonBounds(1, out buttonX, out buttonWidth);
-            DrawFooterButton(canvas, 1, buttonX, y + 9, buttonWidth, "WYCZYSC", IconType.Trash);
+            DrawFooterButton(canvas, 1, buttonX, y + 9, buttonWidth, "CLEAR", IconType.Trash);
             FooterButtonBounds(2, out buttonX, out buttonWidth);
             DrawFooterButton(canvas, 2, buttonX, y + 9, buttonWidth,
                 NotificationService.DoNotDisturb ? "DND: WL." : "DND: WYL.", IconType.Settings);
