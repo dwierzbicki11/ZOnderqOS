@@ -221,7 +221,7 @@ namespace ZonderqOS.GUI
                 canvas.DrawRectangle(Border, panelX, panelY, panelWidth, panelHeight);
                 canvas.DrawFilledRectangle(SystemTheme.Accent, panelX, panelY, 5, panelHeight);
 
-                canvas.DrawString("Opcje sesji", PCScreenFont.DefaultFont, Text, panelX + 28, panelY + 24);
+                canvas.DrawString("Session options", PCScreenFont.DefaultFont, Text, panelX + 28, panelY + 24);
                 SmallTextRenderer.Draw(canvas, "USER", panelX + 30, panelY + 66, Muted);
                 SmallTextRenderer.DrawClipped(canvas, SecurityContext.CurrentUser ?? "-",
                     panelX + 108, panelY + 66, 240, SystemTheme.Accent);
