@@ -385,7 +385,7 @@ namespace ZonderqOS.SystemCore.Updates
                 KernelBuildInfo.IsHealthyAndConfirmed = true;
 
                 SaveBootState();
-                SystemLogger.Log(SystemLogLevel.Info, "BOOTSLOT", $"Slot {ActiveSlot} pomyslnie zatwierdzony jako zdrowy (HEALTHY).");
+                SystemLogger.Log(SystemLogLevel.Info, "BOOTSLOT", $"Slot {ActiveSlot} successfully marked healthy (HEALTHY).");
             }
             else
             {
@@ -530,7 +530,7 @@ namespace ZonderqOS.SystemCore.Updates
                 if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') ||
                       (ch >= 'A' && ch <= 'F')))
                 {
-                    error = "Niepoprawny format SHA-256 kernela.";
+                    error = "Invalid kernel SHA-256 format.";
                     return false;
                 }
             }
@@ -561,7 +561,7 @@ namespace ZonderqOS.SystemCore.Updates
                 // Previous interrupted attempts must not be treated as valid.
                 if (File.Exists(tempPath)) File.Delete(tempPath);
                 if (File.Exists(backupPath))
-                    throw new IOException("Nieusunieta kopia .previous; wymagana diagnostyka slotu.");
+                    throw new IOException("Stale .previous backup remains; slot diagnostics required.");
                 long totalBytes = new FileInfo(sourceKernelPath).Length;
                 if (totalBytes < 4)
                     throw new IOException("Obraz kernela jest zbyt krotki.");
@@ -580,7 +580,7 @@ namespace ZonderqOS.SystemCore.Updates
                             dst.Write(buffer.Slice(0, read));
                             copiedBytes += read;
                             int pct = 20 + (int)(copiedBytes * 40 / Math.Max(1, totalBytes));
-                            progress?.Invoke(pct, "Zapis obrazu do nieaktywnego slotu " + targetSlot);
+                            progress?.Invoke(pct, "Writing image to inactive slot " + targetSlot);
                         }
                         dst.Flush();
                     }
@@ -610,7 +610,7 @@ namespace ZonderqOS.SystemCore.Updates
 
                 string readback = ComputeFileSha256(targetPath);
                 if (!Crypto.FixedTimeEquals(readback.ToLowerInvariant(), expectedSha256.ToLowerInvariant()))
-                    throw new IOException("Error SHA-256 po przeniesieniu do slotu.");
+                    throw new IOException("SHA-256 verification error after copying to slot.");
 
                 // Metadata must be written before changing in-memory status.
                 File.WriteAllText(Path.Combine(targetDir, "kernel.sha256"), readback + "\n");
@@ -642,7 +642,7 @@ namespace ZonderqOS.SystemCore.Updates
                             "Old inactive kernel backup retained: " + cleanupEx.Message);
                     }
                 }
-                progress?.Invoke(70, "Kernel zweryfikowany w nieaktywnym slocie " + targetSlot);
+                progress?.Invoke(70, "Kernel verified in inactive slot " + targetSlot);
                 return true;
             }
             catch (Exception ex)
@@ -688,7 +688,7 @@ namespace ZonderqOS.SystemCore.Updates
 
             if (targetSlot != SlotA && targetSlot != SlotB)
             {
-                error = "Nieprawidlowy slot docelowy: " + targetSlot;
+                error = "Invalid target slot: " + targetSlot;
                 return false;
             }
             if (targetSlot == ActiveSlot || !string.IsNullOrEmpty(PendingSlot))
@@ -733,7 +733,7 @@ namespace ZonderqOS.SystemCore.Updates
                     !HasValidElfHeaderFile(kernelPath) ||
                     !Crypto.FixedTimeEquals(ComputeFileSha256(kernelPath).ToLowerInvariant(), expectedHash.ToLowerInvariant()))
                 {
-                    error = "Niepoprawny obraz ELF lub SHA-256 docelowego slotu.";
+                    error = "Invalid target slot ELF image or SHA-256 checksum.";
                     return false;
                 }
 
@@ -806,7 +806,7 @@ namespace ZonderqOS.SystemCore.Updates
                 string previousSlot = FallbackSlot;
                 if (previousSlot != SlotA && previousSlot != SlotB)
                 {
-                    error = $"Niepoprawny slot przywracania: '{previousSlot}'.";
+                    error = $"Invalid rollback slot: '{previousSlot}'.";
                     return false;
                 }
                 if (previousSlot == ActiveSlot)
@@ -824,7 +824,7 @@ namespace ZonderqOS.SystemCore.Updates
 
                 if (!HasValidElfHeaderFile(kernelPath))
                 {
-                    error = $"Obraz kernela w slocie przywracania {previousSlot} ma nieprawidlowy naglowek ELF.";
+                    error = $"Kernel image in rollback slot {previousSlot} has an invalid ELF header.";
                     return false;
                 }
 
