@@ -30,7 +30,7 @@ namespace ZonderqOS.GUI.Apps
         public MusicPlayerApp(int x, int y, Action onClose) : base("Muzyka")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 560, 380, "Odtwarzacz Muzyki");
+            Window = new Window(x, y, 560, 380, "Music Player");
             Window.CloseAction = Close;
         }
 
