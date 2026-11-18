@@ -335,7 +335,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Border, contentX, barY - 2, contentWidth, 1);
 
             DrawNavButton(canvas, contentX + 8, barY + 1, 96, 24, "POPRZEDNIE", hoveredBtn == 0);
-            DrawNavButton(canvas, contentX + 110, barY + 1, 96, 24, "NASTEPNE", hoveredBtn == 1);
+            DrawNavButton(canvas, contentX + 110, barY + 1, 96, 24, "NEXT", hoveredBtn == 1);
             DrawNavButton(canvas, contentX + contentWidth - 130, barY + 1, 120, 24, "OTHER FILE [SPACE]", hoveredBtn == 2);
 
             if (currentOffset != cachedPosOffset || totalBytes != cachedPosTotal)
