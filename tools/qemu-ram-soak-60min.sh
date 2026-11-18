@@ -70,6 +70,10 @@ for line in serial_log.read_text(errors="ignore").splitlines():
 if not samples:
     raise SystemExit("[SOAK][FAIL] Brak próbek [MEM_SAMPLE] w serial.log")
 
+# One boot / monotonic kernel timer is required for a meaningful soak.
+if any(samples[i]["sec"] <= samples[i - 1]["sec"] for i in range(1, len(samples))):
+    raise SystemExit("[SOAK][FAIL] Non-monotonic or duplicate MEM_SAMPLE seconds")
+
 t0 = samples[0]["sec"]
 span = samples[-1]["sec"] - t0
 if span < 3600:
