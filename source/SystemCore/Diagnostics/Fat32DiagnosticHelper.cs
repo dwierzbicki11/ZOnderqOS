@@ -66,7 +66,6 @@ namespace ZonderqOS.SystemCore.Diagnostics
                 using (var fs = new FileStream(testFile, FileMode.CreateNew, FileAccess.Write))
                 {
                     fileCreated = true;
-                {
                     fs.Write(writeBuf, 0, size);
                     fs.Flush();
                 }
