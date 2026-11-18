@@ -98,7 +98,7 @@ namespace ZonderqOS.GUI.Apps
                 if (string.IsNullOrEmpty(normalized))
                 {
                     currentPath = string.Empty;
-                    SetStatusBuffer("Nieprawidlowa sciezka", "Nieprawidlowa sciezka", "Nieprawidlowa sciezka pliku.");
+                    SetStatusBuffer("Invalid path", "Invalid path", "Invalid file path.");
                     return;
                 }
 
@@ -110,7 +110,7 @@ namespace ZonderqOS.GUI.Apps
                         "WARN",
                         "Unauthorized HexViewer read attempt on " + normalized + " by " +
                         (global::ZonderqOS.SecurityContext.CurrentUser ?? "?"));
-                    SetStatusBuffer("Permission denied", "Permission denied do odczytu", "Permission denied do odczytu pliku.");
+                    SetStatusBuffer("Permission denied", "Read permission denied", "Permission denied when reading file.");
                     return;
                 }
 
@@ -136,7 +136,7 @@ namespace ZonderqOS.GUI.Apps
                 else
                 {
                     // Fallback to placeholder info bytes
-                    string fallback = "ZOnderqOS Hex Viewer\nPlik: " + normalized + "\nNie odnaleziono pliku lub sciezka jest wirtualna.";
+                    string fallback = "ZOnderqOS Hex Viewer\nFile: " + normalized + "\nFile not found or path is virtual.";
                     fileBuffer.Allocate(fallback.Length);
                     for (int i = 0; i < fallback.Length; i++)
                         fileBuffer[i] = (byte)fallback[i];
@@ -149,7 +149,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                string err = "Error odczytu: " + ex.Message;
+                string err = "Read error: " + ex.Message;
                 fileBuffer.Allocate(err.Length);
                 for (int i = 0; i < err.Length; i++)
                     fileBuffer[i] = (byte)err[i];
@@ -336,7 +336,7 @@ namespace ZonderqOS.GUI.Apps
 
             DrawNavButton(canvas, contentX + 8, barY + 1, 96, 24, "POPRZEDNIE", hoveredBtn == 0);
             DrawNavButton(canvas, contentX + 110, barY + 1, 96, 24, "NASTEPNE", hoveredBtn == 1);
-            DrawNavButton(canvas, contentX + contentWidth - 130, barY + 1, 120, 24, "INNY PLIK [SPACJA]", hoveredBtn == 2);
+            DrawNavButton(canvas, contentX + contentWidth - 130, barY + 1, 120, 24, "OTHER FILE [SPACE]", hoveredBtn == 2);
 
             if (currentOffset != cachedPosOffset || totalBytes != cachedPosTotal)
             {
