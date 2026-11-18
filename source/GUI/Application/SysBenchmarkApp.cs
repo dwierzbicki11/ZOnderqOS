@@ -55,12 +55,12 @@ namespace ZonderqOS.GUI.Apps
         // Real VFS / Storage Results
         private int vfsWriteSpeedKb = 0;
         private int vfsReadSpeedKb = 0;
-        private string vfsIntegrity = "Waiting na test";
+        private string vfsIntegrity = "Waiting for test";
         private bool vfsTestPerformed = false;
 
         // Overall
         private int totalZScore = 0;
-        private string testStatus = "Ready do uruchomienia realnego testu wydajnosci.";
+        private string testStatus = "Ready to run the performance benchmark.";
 
         // Lazy-allocated memory buffers backed by NativeScratchBuffer (allocated on test run,
         // physically returned via PageAllocator.Free on Close / CPU test completion).
@@ -73,9 +73,9 @@ namespace ZonderqOS.GUI.Apps
 
         private readonly string benchmarkDir;
         private readonly string benchmarkTestPath;
-        private string cachedCpuLine = "• Sito Eratostenesa: oczekuje na uruchomienie testu liczb pierwszych";
+        private string cachedCpuLine = "• Sieve of Eratosthenes: prime-number benchmark pending";
         private string cachedMandelLine = "• Mandelbrot complex-set CRC32 check: pending";
-        private string cachedRamLine = "• RAM: Pomiar bufora 256 KB w 40 przejsciach - oczekuje";
+        private string cachedRamLine = "• RAM: 256 KB buffer benchmark (40 passes) - pending";
         private string cachedGpuLine = "• VESA graphics: rendering 600 rectangles and lines on Canvas - pending";
         private string cachedVfsLine;
         private string cachedScoreLine = "Z-SCORE: RUN TEST";
@@ -180,14 +180,14 @@ namespace ZonderqOS.GUI.Apps
             switch (step)
             {
                 case 0:
-                    testStatus = "Trwa realny test CPU (Sito Eratostenesa, Mandelbrot, CRC-32)...";
+                    testStatus = "Running CPU benchmark (Sieve of Eratosthenes, Mandelbrot, CRC-32)...";
                     RunRealCpuBenchmark();
                     progressPercent = 30;
                     testStep = isRunningAll ? 1 : -1;
                     break;
 
                 case 1:
-                    testStatus = "Trwa realny test przepustowosci i opoznien RAM (256 KB x 50 przejsc)...";
+                    testStatus = "Running RAM throughput and latency benchmark (256 KB buffer)...";
                     RunRealRamBenchmark();
                     progressPercent = 60;
                     if (isRunningAll)
@@ -203,12 +203,12 @@ namespace ZonderqOS.GUI.Apps
                     break;
 
                 case 2:
-                    testStatus = "Trwa realny test renderowania Canvas VESA (1000 prostokatow, linie)...";
+                    testStatus = "Running VESA Canvas rendering benchmark...";
                     isGpuBenchmarking = true;
                     break;
 
                 case 3:
-                    testStatus = "Trwa realny test zapisu/odczytu i weryfikacji plikow VFS (" + benchmarkDir + ")...";
+                    testStatus = "Running VFS file read/write and verification benchmark (" + benchmarkDir + ")...";
                     RunRealVfsBenchmark();
                     progressPercent = 100;
                     testStep = -1;
@@ -497,7 +497,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     vfsWriteSpeedKb = 0;
                     vfsReadSpeedKb = 0;
-                    vfsIntegrity = "Permission denied zapisu VFS";
+                    vfsIntegrity = "VFS write permission denied";
                     return;
                 }
             }
@@ -849,7 +849,7 @@ namespace ZonderqOS.GUI.Apps
             // Card 1: CPU MIPS
             DrawMetricCard(canvas, wx + 14, cardY, cardW, cardH, "PROCESOR (CPU)",
                 cpuMips > 0 ? cpuMips + " MIPS" : "---",
-                primeTimeMs > 0 ? "Sito: " + primeTimeMs + "ms | Mand: " + mandelbrotTimeMs + "ms" : "Sito, Mandel, CRC",
+                primeTimeMs > 0 ? "Sieve: " + primeTimeMs + "ms | Mand: " + mandelbrotTimeMs + "ms" : "Sieve, Mandel, CRC",
                 cpuMips > 0 ? GreenColor : MutedColor);
 
             // Card 2: RAM Speed
@@ -896,7 +896,7 @@ namespace ZonderqOS.GUI.Apps
                     cachedCpuMipsLine = cpuMips;
                     cachedCpuLine = cpuMips > 0
                         ? "✓ Sieve of Eratosthenes: found " + primeCount + " primes (expected 9592) [PASS]"
-                        : "• Sito Eratostenesa: oczekuje na uruchomienie testu liczb pierwszych";
+                        : "• Sieve of Eratosthenes: prime-number benchmark pending";
                 }
                 SmallTextRenderer.Draw(canvas, cachedCpuLine, wx + 26, dy, cpuMips > 0 ? GreenColor : TextColor);
                 dy += lineH;
@@ -917,7 +917,7 @@ namespace ZonderqOS.GUI.Apps
                     cachedRamSeqWriteLine = ramSeqWriteMb;
                     cachedRamLine = ramSeqWriteMb > 0
                         ? "✓ RAM: sequential write " + ramSeqWriteMb + " MB/s | read " + ramSeqReadMb + " MB/s | random access: " + ramRandomKops + " kOps/s"
-                        : "• RAM: Pomiar bufora 256 KB w 40 przejsciach - oczekuje";
+                        : "• RAM: 256 KB buffer benchmark (40 passes) - pending";
                 }
                 SmallTextRenderer.Draw(canvas, cachedRamLine, wx + 26, dy, ramSeqWriteMb > 0 ? AccentColor : TextColor);
                 dy += lineH;
@@ -972,7 +972,7 @@ namespace ZonderqOS.GUI.Apps
             DrawButton(canvas, "Test CPU", wx + 206, btnY, 90, 30, PanelHover, testStep == 0);
             DrawButton(canvas, "Test RAM", wx + 302, btnY, 90, 30, PanelHover, testStep == 1);
             DrawButton(canvas, "Test GPU", wx + 398, btnY, 90, 30, PanelHover, isGpuBenchmarking || testStep == 2);
-            DrawButton(canvas, "Test Disku", wx + 494, btnY, 92, 30, PanelHover, testStep == 3);
+            DrawButton(canvas, "Test Disk", wx + 494, btnY, 92, 30, PanelHover, testStep == 3);
         }
 
         private void DrawMetricCard(Canvas canvas, int x, int y, int w, int h, string title, string val, string sub, Color valColor)
@@ -1050,7 +1050,7 @@ namespace ZonderqOS.GUI.Apps
             int panelH = 340;
             UiPainter.RoundedPanel(canvas, wx + 14, cy + 2, panelW, panelH, 6, Panel, Border);
 
-            SmallTextRenderer.Draw(canvas, "RANKING I POROWNANIE WYNIKU Z-SCORE Z PLATFORMAMI REFERENCYJNYMI", wx + 28, cy + 16, GoldColor);
+            SmallTextRenderer.Draw(canvas, "Z-SCORE RANKING AND COMPARISON TO REFERENCE PLATFORMS", wx + 28, cy + 16, GoldColor);
 
             int startY = cy + 46;
             int rowH = 48;
@@ -1071,7 +1071,7 @@ namespace ZonderqOS.GUI.Apps
             int myScore = totalZScore > 0 ? totalZScore : 4200;
             DrawBenchmarkBar(canvas, wx + 28, startY + rowH * 4, "Twoj ZOnderqOS", myScore, maxScore, barStartX, maxBarW, GreenColor);
 
-            SmallTextRenderer.Draw(canvas, "* Wskaznik Z-Score bazuje na realnych testach: sito Eratostenesa, Mandelbrot 16.16, RAM MB/s, VESA oraz I/O VFS.", wx + 28, cy + 310, MutedColor);
+            SmallTextRenderer.Draw(canvas, "* Z-Score uses measured Sieve, Mandelbrot 16.16, RAM MB/s, VESA and VFS I/O benchmarks.", wx + 28, cy + 310, MutedColor);
         }
 
         private void DrawBenchmarkBar(Canvas canvas, int lx, int y, string name, int score, int maxScore, int bx, int maxW, Color color)

@@ -94,7 +94,7 @@ namespace ZonderqOS.GUI.Apps
         private int selectedPage;
         private int lastMouseX = -1;
         private int lastMouseY = -1;
-        private string statusMessage = "GOTOWE";
+        private string statusMessage = "READY";
         private Color statusColor = Good;
 
         private ulong totalPages;
@@ -913,7 +913,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void SetStatus(string message, Color color)
         {
-            statusMessage = string.IsNullOrEmpty(message) ? "GOTOWE" : message;
+            statusMessage = string.IsNullOrEmpty(message) ? "READY" : message;
             statusColor = color;
         }
     }
