@@ -131,7 +131,7 @@ class ResponsiveGui3094(unittest.TestCase):
             "previewBitmap = null;", "currentPath = string.Empty;",
         ):
             self.assertNotIn(destructive_reset, error_handler)
-        self.assertIn('status = "Blad obrazu: " + ex.Message;', error_handler)
+        self.assertIn('status = "Image error: " + ex.Message;', error_handler)
         # A successful navigation must invalidate the old preview and
         # render the new pixels even while the toolbar button is pressed.
         render = IMAGE_VIEWER.split("private void RenderViewport(Canvas canvas)", 1)[1].split(
@@ -175,7 +175,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("for (int i = 0; i < attempts; i++)", navigation)
         self.assertIn("LoadImage(candidate, false);", navigation)
         self.assertIn("string.Equals(currentPath, candidate, StringComparison.OrdinalIgnoreCase)", navigation)
-        self.assertIn('status = "Brak dostepnego sasiedniego obrazu";', navigation)
+        self.assertIn('status = "No available adjacent image";', navigation)
         self.assertIn("if (string.IsNullOrEmpty(candidate))", navigation)
 
         # Independent bounded circular search: a bad B between A and C
@@ -636,7 +636,7 @@ class ResponsiveGui3094(unittest.TestCase):
     def test_sdk_version_still_pinned(self):
         self.assertTrue('Sdk="Cosmos.Sdk/3.0.97"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
         self.assertTrue('Version="3.0.97"' in PROJECT or 'Version="3.0.95"' in PROJECT)
-        self.assertIn('"3.0.95", Good', SETTINGS)
+        self.assertIn('"3.0.97", Good', SETTINGS)
         self.assertNotIn('"3.0.94", Good', SETTINGS)
 
     def test_task_manager_compact_refresh_button_has_no_negative_label_width(self):
@@ -3666,7 +3666,7 @@ class ImageHeaderPreflight3095(unittest.TestCase):
         self.assertIn("if (!CanReadImageInSession(path))", loader)
         self.assertIn("if (!File.Exists(path))", loader)
         self.assertIn("!ImageHeaderGuard.IsSafeToDecode(path,", loader)
-        self.assertIn('status = "Nieprawidlowy lub zbyt duzy obraz";', loader)
+        self.assertIn('status = "Invalid image or file too large";', loader)
         self.assertLess(loader.index("if (!CanReadImageInSession(path))"),
                         loader.index("!ImageHeaderGuard.IsSafeToDecode(path,"))
         self.assertLess(loader.index("if (!File.Exists(path))"),

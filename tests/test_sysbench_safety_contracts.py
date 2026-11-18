@@ -74,7 +74,7 @@ class SysbenchSafetyContracts(unittest.TestCase):
         source = self.load(GUI)
         build = self.load(ROOT / "source/Core/KernelBuildInfo.cs")
         project = self.load(ROOT / "ZonderqOS.csproj")
-        self.assertIn("Rozpocznij szybki test", source)
+        self.assertIn("Start quick test", source)
         self.assertIn("SystemDiagnosticRunner.Shared.IsRunning;", source)
         self.assertIn('CosmosVersion = "Cosmos 3.0.97 Native Core"', build)
         self.assertIn('Sdk="Cosmos.Sdk/3.0.97"', project)

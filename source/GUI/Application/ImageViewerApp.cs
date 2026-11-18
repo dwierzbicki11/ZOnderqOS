@@ -56,7 +56,7 @@ namespace ZonderqOS.GUI.Apps
 
         private string currentPath = string.Empty;
         private string displayName = "NO IMAGE";
-        private string status = "Open plik PNG lub BMP z File Managera";
+        private string status = "Open a PNG or BMP file from File Manager";
         private readonly string[] siblingImages = new string[MaxSiblingImages];
         private int siblingCount;
         private int siblingIndex = -1;
@@ -155,7 +155,7 @@ namespace ZonderqOS.GUI.Apps
                 fitToWindow = true;
                 zoomPercent = 100;
                 previewDirty = true;
-                status = "Dopasowanie do okna";
+                status = "Fit to window";
                 return;
             }
             if (ch == 'r' || ch == 'R')
@@ -210,7 +210,7 @@ namespace ZonderqOS.GUI.Apps
                         fitToWindow = true;
                         zoomPercent = 100;
                         previewDirty = true;
-                        status = "Dopasowanie do okna";
+                        status = "Fit to window";
                         break;
                     case 6: ReloadImage(); break;
                 }
@@ -395,7 +395,7 @@ namespace ZonderqOS.GUI.Apps
             fitToWindow = false;
             zoomPercent = System.Math.Max(25, System.Math.Min(300, zoomPercent + delta));
             previewDirty = true;
-            status = "Zoom zmieniony";
+            status = "Zoom changed";
         }
 
         private void RotateClockwise()
@@ -405,7 +405,7 @@ namespace ZonderqOS.GUI.Apps
 
             rotation = (rotation + 1) & 3;
             previewDirty = true;
-            status = "Obrot 90 stopni";
+            status = "Rotated 90 degrees";
         }
 
         private void ReloadImage()
@@ -459,7 +459,7 @@ namespace ZonderqOS.GUI.Apps
             path = (path ?? string.Empty).Trim().Replace('\\', '/');
             if (string.IsNullOrEmpty(path))
             {
-                status = "File not found obrazu";
+                status = "Image file not found";
                 return;
             }
 
@@ -470,7 +470,7 @@ namespace ZonderqOS.GUI.Apps
                 // reload; a cached directory listing is not authorization.
                 if (!CanReadImageInSession(path))
                 {
-                    status = "Permission denied do obrazu";
+                    status = "Image access denied";
                     return;
                 }
 
@@ -478,7 +478,7 @@ namespace ZonderqOS.GUI.Apps
                 // Keep the previously decoded image when opening a bad sibling.
                 if (!File.Exists(path))
                 {
-                    status = "File not found obrazu";
+                    status = "Image file not found";
                     return;
                 }
 
@@ -513,7 +513,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 else
                 {
-                    status = "Obslugiwane formaty: PNG i BMP";
+                    status = "Supported formats: PNG and BMP";
                     return;
                 }
 
@@ -550,7 +550,7 @@ namespace ZonderqOS.GUI.Apps
                 previewDirty = true;
                 preparedAreaWidth = -1;
                 preparedAreaHeight = -1;
-                status = "Obraz zaladowany";
+                status = "Image loaded";
 
                 if (rebuildSiblings || siblingCount == 0 || !IsCurrentDirectoryInSiblingList())
                     RebuildSiblingList(path);
@@ -561,7 +561,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 // The current image remains usable after a corrupt file,
                 // permission error or transient FAT32 read failure.
-                status = "Error obrazu: " + ex.Message;
+                status = "Image error: " + ex.Message;
             }
         }
 
