@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using ZonderqOS.SystemCore;
+using ZonderqOS.SystemCore.Updates;
 
 namespace ZonderqOS.SystemCore.Diagnostics
 {
@@ -308,6 +309,20 @@ namespace ZonderqOS.SystemCore.Diagnostics
         {
             var sb = new StringBuilder();
             sb.AppendLine("# ZOnderqOS System Benchmark & Diagnostics");
+            sb.AppendLine("Kernel: " + KernelBuildInfo.KernelVersion +
+                " (build " + KernelBuildInfo.KernelBuild + ")");
+            sb.AppendLine("Runtime: " + KernelBuildInfo.CosmosVersion +
+                ", arch: " + KernelBuildInfo.Architecture);
+            sb.AppendLine("Boot slot: " + BootSlotManager.ActiveSlot +
+                ", fallback: " + BootSlotManager.FallbackSlot +
+                ", pending: " + (string.IsNullOrEmpty(BootSlotManager.PendingSlot) ? "none" : BootSlotManager.PendingSlot));
+            sb.AppendLine("Boot attempts: " + BootSlotManager.BootAttempts +
+                "/" + BootSlotManager.MaxBootAttempts);
+            sb.AppendLine("BOOTGUARD_PREBOOT config: " +
+                (BootSlotManager.PrebootGuardEnabled ? "1" : "0") +
+                " (state flag only; not EFI execution attestation)");
+            sb.AppendLine("Report status: observed tests only; NotTested/Skipped are not PASS.");
+            sb.AppendLine();
             sb.AppendLine("| Test | Status | Czas (ms) | Metryki | Uzasadnienie |");
             sb.AppendLine("|------|--------|-----------|---------|--------------|");
             for (int i = 0; i < Results.Count; i++)
