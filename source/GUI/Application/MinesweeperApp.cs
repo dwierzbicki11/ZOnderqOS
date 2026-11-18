@@ -354,7 +354,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Border, headerX, headerY + headerHeight - 1, headerWidth, 1);
 
             // Mine counter (left)
-            SmallTextRenderer.Draw(canvas, "MINY", headerX + 10, headerY + 7, MutedColor);
+            SmallTextRenderer.Draw(canvas, "MINES", headerX + 10, headerY + 7, MutedColor);
             ulong minesDisplay = remainingMines >= 0 ? (ulong)remainingMines : 0;
             SmallTextRenderer.DrawUInt(canvas, minesDisplay, headerX + 10, headerY + 22, TextColor);
 
