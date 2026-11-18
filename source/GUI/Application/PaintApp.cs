@@ -87,7 +87,7 @@ namespace ZonderqOS.GUI.Apps
                 return;
             for (int i = 0; i < canvasBuffer.Length; i++)
                 canvasBuffer[i] = 0xFFFFFFFF; // White
-            statusMessage = "Wyczyszczono plotno";
+            statusMessage = "Canvas cleared";
         }
 
         private unsafe void SaveDrawing()
@@ -145,7 +145,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                statusMessage = "Error zapisu: " + ex.Message;
+                statusMessage = "Save error: " + ex.Message;
             }
         }
 
