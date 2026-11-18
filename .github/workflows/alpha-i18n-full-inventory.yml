@@ -1,0 +1,24 @@
+name: Alpha 1 English full source inventory
+
+on:
+  pull_request:
+    paths:
+      - 'source/**'
+      - 'Kernel.cs'
+      - 'tools/**'
+      - 'output-3095/**'
+      - '.github/workflows/alpha-i18n-full-inventory.yml'
+  push:
+    branches:
+      - fix/alpha1-remaining-runtime-english
+
+jobs:
+  audit-language:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inventory every tracked file and scan runtime strings
+        run: python3 tools/audit-runtime-english.py --ci
+      - name: Existing English regression guards
+        if: always()
+        run: python3 -m unittest discover -s tests -p 'test_alpha_english_ui_contract.py' -v
