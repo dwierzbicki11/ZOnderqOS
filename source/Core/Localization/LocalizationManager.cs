@@ -18,6 +18,7 @@ namespace ZonderqOS.Localization
     {
         public const string LangPolish = "pl-PL";
         public const string LangEnglish = "en-US";
+        public const bool EnglishOnlyAlpha = true;
 
         private static readonly Dictionary<string, string> StringsPl = new Dictionary<string, string>(StringComparer.Ordinal);
         private static readonly Dictionary<string, string> StringsEn = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -44,6 +45,12 @@ namespace ZonderqOS.Localization
 
         public static bool SetLanguage(Language newLang, bool persist = true)
         {
+            // Do not overwrite saved user preferences; Alpha 1 renders in English only.
+            if (EnglishOnlyAlpha)
+            {
+                CurrentLanguage = Language.English;
+                return newLang == Language.English;
+            }
             if (CurrentLanguage == newLang)
                 return true;
 
@@ -88,8 +95,8 @@ namespace ZonderqOS.Localization
             if (dict.TryGetValue(key, out string val))
                 return val;
 
-            // Fallback to Polish if missing in English
-            if (CurrentLanguage == Language.English && StringsPl.TryGetValue(key, out val))
+            // Never display Polish fallbacks in the English-only Alpha 1 build.
+            if (!EnglishOnlyAlpha && CurrentLanguage == Language.English && StringsPl.TryGetValue(key, out val))
                 return val;
 
             return key;
