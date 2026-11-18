@@ -239,7 +239,7 @@ namespace ZonderqOS.GUI.Apps
             if (key.Key == ConsoleKeyEx.Escape)
             {
                 ClearInputState();
-                SetStatus("ANULOWANO", Muted);
+                SetStatus("CANCELLED", Muted);
                 return;
             }
 
@@ -323,7 +323,7 @@ namespace ZonderqOS.GUI.Apps
                 if (!global::ZonderqOS.AuthenticationGuard.CanAttempt(user, out retryAfter))
                 {
                     inputText = string.Empty;
-                    SetStatus("ZA DUZO PROB - ODCZEKAJ " + retryAfter + " S", Danger);
+                    SetStatus("TOO MANY ATTEMPTS - WAIT " + retryAfter + " S", Danger);
                     return;
                 }
 
