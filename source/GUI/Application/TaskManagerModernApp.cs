@@ -638,7 +638,7 @@ namespace ZonderqOS.GUI.Apps
             ModernTaskRow row = visibleRows[selectedIndex];
             if (!row.CanEnd)
             {
-                status = "Zadanie chronione";
+                status = "Protected task";
                 return;
             }
 
@@ -655,7 +655,7 @@ namespace ZonderqOS.GUI.Apps
                     applicationManager.Close(row.GuiApplication);
                 else
                     row.GuiApplication.Close();
-                status = "Completed aplikacje";
+                status = "Completed applications";
                 RefreshSnapshot();
                 return;
             }
@@ -2065,7 +2065,7 @@ namespace ZonderqOS.GUI.Apps
             // Cosmos Heap Allocator & GC Diagnostics
             DrawKeyText(canvas, x + half, stats, half, "HEAP UZYTY", app.MemoryDetailText);
             DrawKeyText(canvas, x + half, stats + 20, half, "HEAP WOLNY", app.FreeMemoryText);
-            DrawKeyText(canvas, x + half, stats + 40, half, "GC ROZMIAR HEAP", app.GcHeapText);
+            DrawKeyText(canvas, x + half, stats + 40, half, "GC HEAP SIZE", app.GcHeapText);
             DrawKeyText(canvas, x + half, stats + 60, half, "GC ZATWIERDZONE", app.GcCommittedText);
             int rightValX = DrawKeyLabel(canvas, x + half, stats + 80, half, "GC FRAGMENTACJA");
             SmallTextRenderer.DrawMiBOrNa(canvas, app.RawGcFragmentedBytes, app.RawGcEnabled, rightValX, stats + 80, Text);
