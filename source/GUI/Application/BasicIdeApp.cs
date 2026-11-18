@@ -40,7 +40,7 @@ namespace ZonderqOS.GUI.Apps
         private bool isPaused;
         private long resumeTimestamp;
         private long toneEndTimestamp;
-        private string statusMessage = "Ready do uruchomienia";
+        private string statusMessage = "Ready to run";
         private Color statusColor = MutedColor;
 
         private readonly Action closeCallback;
@@ -141,7 +141,7 @@ namespace ZonderqOS.GUI.Apps
                 "80 PRINT \"\"",
                 "90 BEEP 320 + R * 45, 30",
                 "100 NEXT R",
-                "110 PRINT \"GOTOWE!\"",
+                "110 PRINT \"READY!\"",
                 "120 END"
             },
             // Sample 4: Ciag Fibonacciego
@@ -330,7 +330,7 @@ namespace ZonderqOS.GUI.Apps
             isPaused = false;
             ZonderqOS.Hardware.Speaker.Stop();
             toneEndTimestamp = 0;
-            statusMessage = "Zatrzymano";
+            statusMessage = "Stopped";
             statusColor = MutedColor;
         }
 
@@ -502,7 +502,7 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            Error("Nierozpoznana instrukcja: " + stmt);
+            Error("Unrecognized statement: " + stmt);
         }
 
         private void ExecutePrint(string expr)
@@ -1089,7 +1089,7 @@ namespace ZonderqOS.GUI.Apps
             // Header tab
             canvas.DrawFilledRectangle(ToolbarBg, x, y, w, 20);
             canvas.DrawLine(Border, x, y + 20, x + w, y + 20);
-            SmallTextRenderer.Draw(canvas, "KONSOLA WYJSCIOWA", x + 8, y + 6, TerminalGreen);
+            SmallTextRenderer.Draw(canvas, "OUTPUT CONSOLE", x + 8, y + 6, TerminalGreen);
 
             int viewY = y + 24;
             int maxRows = (h - 28) / 14;
