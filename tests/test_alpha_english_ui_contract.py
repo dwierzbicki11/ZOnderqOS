@@ -66,7 +66,7 @@ ADDITIONAL_LEGACY_UI_TEXT = {
     "source/GUI/NotificationCenter.cs": ("System nie ma nic nowego do pokazania",),
     "source/GUI/Taskbar.cs": ("System wykryl zmiane listy partycji",),
     "source/GUI/StartMenu.cs": ('IndexOf("Aktualizac"',),
-    "source/GUI/Application/PassVaultApp.cs": ("Wpisz PIN: 1234 aby odblokowac sejf", "Zmieniono PIN glowny", "KATEGORIA:", "KOPIUJ"),
+    "source/GUI/Application/PassVaultApp.cs": ("Wpisz PIN: 1234 aby odblokowac sejf", "Zmieniono PIN glowny", "KATEGORIA:", '"KOPIUJ"'),
     "source/GUI/Application/SecurityCenterApp.cs": ("UWAGA: Zapora zostala wylaczona", "ZAPORA SIECIOWA", "ZGODNY", "zmiana trybu zapory"),
     "source/GUI/Application/SystemUpdaterApp.cs": ("Wymagany restart komputera", "Skanowanie nosnika", "ZRESTARTUJ TERAZ", "ZLY PODPIS"),
     "source/Core/Updates/UpdateManager.cs": ("Wykryto nowa wersje", "Weryfikacja sumy", "NIEPODPISANY", "ZAINSTALOWANO"),
