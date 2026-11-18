@@ -61,9 +61,9 @@ namespace ZonderqOS.GUI.Apps
             DrawRow(canvas, 1, IconType.Settings,
                 "SCHEDULER", "Aktywny scheduler Cosmos Gen3", schedulerName, Text);
             DrawNumericRow(canvas, 2, IconType.Settings,
-                "WATKI", "Liczba watkow schedulera", (ulong)System.Math.Max(0, threadCount), "");
+                "WATKI", "Scheduler thread count", (ulong)System.Math.Max(0, threadCount), "");
             DrawNumericRow(canvas, 3, IconType.Settings,
-                "ONLINE CPU", "CPU obslugiwane obecnie przez scheduler", cpuCount, "");
+                "ONLINE CPU", "CPUs currently managed by the scheduler", cpuCount, "");
             DrawRow(canvas, 4, IconType.Settings,
                 "PROCESOR", cpuInfo.Vendor, cpuInfo.Brand, Text);
             DrawNumericRow(canvas, 5, IconType.Settings,
@@ -85,7 +85,7 @@ namespace ZonderqOS.GUI.Apps
             DrawNumericRow(canvas, 5, IconType.Settings,
                 "PINNED OBJECTS", "Obiekty przypiete raportowane przez OrionGC", gcPinned, "");
             DrawNumericRow(canvas, 6, IconType.Refresh,
-                "KOLEKCJE GC", "Automatyczne kolekcje wykonane przez runtime", gcCollections, "");
+                "KOLEKCJE GC", "Automatic collections performed by runtime", gcCollections, "");
         }
 
 
@@ -220,7 +220,7 @@ namespace ZonderqOS.GUI.Apps
                 SetStatus(cachedMemoryStatus, Warning);
             }
             else
-                SetStatus("HARDWARE: SNAPSHOT TYLKO DO ODCZYTU", Good);
+                SetStatus("HARDWARE: READ-ONLY SNAPSHOT", Good);
         }
 
         protected override void OnClick(int mouseX, int mouseY)
@@ -236,7 +236,7 @@ namespace ZonderqOS.GUI.Apps
             if (row >= 1 && row <= 6)
             {
                 RefreshData();
-                SetStatus("ODSWIEZONO SNAPSHOT KERNELA", Good);
+                SetStatus("KERNEL SNAPSHOT REFRESHED", Good);
             }
         }
     }
