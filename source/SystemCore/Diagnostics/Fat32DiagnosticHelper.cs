@@ -3,106 +3,124 @@ using System.IO;
 
 namespace ZonderqOS.SystemCore.Diagnostics
 {
+    /// <summary>
+    /// Tests only the persistent FAT32 root selected and mounted by Disk.
+    /// Never guesses a writable volume from 0:\\, 1:\\ or /boot contents.
+    /// </summary>
     public static class Fat32DiagnosticHelper
     {
-        private const string DiagDirName = "diag_sysbench_tmp";
-        private const string DiagFileName = "sysbench_4k.bin";
+        private const string TestFileName = "sysbench_4k.bin";
 
         public static bool TryFindZonderqDataRoot(out string rootPath)
         {
-            string[] candidates = { @"0:\", @"1:\" };
-            for (int i = 0; i < candidates.Length; i++)
-            {
-                string root = candidates[i];
-                try
-                {
-                    if (!Directory.Exists(root))
-                        continue;
-
-                    // Never touch EFI or Kali partitions
-                    if (Directory.Exists(Path.Combine(root, "EFI")) ||
-                        Directory.Exists(Path.Combine(root, "boot")))
-                        continue;
-
-                    rootPath = root;
-                    return true;
-                }
-                catch
-                {
-                    // Skip unreadable root
-                }
-            }
-
             rootPath = null;
-            return false;
+            if (!global::ZonderqOS.Disk.IsApprovedPersistentRootMounted)
+                return false;
+
+            try
+            {
+                if (!Directory.Exists("/"))
+                    return false;
+
+                rootPath = "/";
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public static (bool ok, string reason, string metrics) RunIsolatedFat32Test(string rootPath)
         {
-            if (string.IsNullOrEmpty(rootPath))
-                return (false, "Brak zweryfikowanej partycji ZONDERQDATA", "root=null");
+            // Explicit identity + privilege preflight. Never test any other
+            // drive even if a caller supplied a valid-looking path.
+            if (rootPath != "/" || !TryFindZonderqDataRoot(out string approved) ||
+                approved != "/")
+                return (false, "ZONDERQDATA root not verified", "root_rejected");
+            if (!global::ZonderqOS.SecurityContext.IsAuthenticated ||
+                global::ZonderqOS.SecurityContext.CurrentUid != 0)
+                return (false, "FAT32 write test requires authenticated root", "permission_denied");
 
-            string diagDir = Path.Combine(rootPath, DiagDirName);
-            string testFile = Path.Combine(diagDir, DiagFileName);
+            // A fresh run-specific directory prevents truncating any file
+            // left by a previous interrupted benchmark.
+            string diagDir = Path.Combine(rootPath, "diag_sysbench_" +
+                Environment.TickCount64.ToString("X"));
+            string testFile = Path.Combine(diagDir, TestFileName);
+            bool createdDirectory = false;
             const int size = 4096;
             byte[] writeBuf = new byte[size];
             uint expectedSum = 0;
             for (int i = 0; i < size; i++)
             {
-                byte b = (byte)((i * 31 + 7) & 0xFF);
+                byte b = (byte)((i * 31 + 7) & 0xff);
                 writeBuf[i] = b;
                 expectedSum += b;
             }
 
             try
             {
-                if (!Directory.Exists(diagDir))
-                    Directory.CreateDirectory(diagDir);
+                if (Directory.Exists(diagDir) || File.Exists(testFile))
+                    return (false, "Temporary test path already exists; refusing overwrite", "collision");
 
-                using (var fs = new FileStream(testFile, FileMode.Create, FileAccess.Write))
+                Directory.CreateDirectory(diagDir);
+                createdDirectory = true;
+
+                using (var stream = new FileStream(testFile, FileMode.CreateNew, FileAccess.Write))
                 {
-                    fs.Write(writeBuf, 0, size);
-                    fs.Flush();
+                    stream.Write(writeBuf, 0, size);
+                    stream.Flush();
                 }
 
                 byte[] readBuf = new byte[size];
                 int totalRead = 0;
-                using (var fs = new FileStream(testFile, FileMode.Open, FileAccess.Read))
+                using (var stream = new FileStream(testFile, FileMode.Open, FileAccess.Read))
                 {
                     while (totalRead < size)
                     {
-                        int n = fs.Read(readBuf, totalRead, size - totalRead);
-                        if (n <= 0) break;
-                        totalRead += n;
+                        int count = stream.Read(readBuf, totalRead, size - totalRead);
+                        if (count <= 0)
+                            break;
+                        totalRead += count;
                     }
                 }
 
                 if (totalRead != size)
-                    return (false, $"Odczytano {totalRead}/{size} B", $"bytes={totalRead}");
+                    return (false, "FAT32 short read: " + totalRead + "/4096", "bytes=" + totalRead);
 
                 uint actualSum = 0;
                 for (int i = 0; i < size; i++)
+                {
                     actualSum += readBuf[i];
+                    if (readBuf[i] != writeBuf[i])
+                        return (false, "FAT32 data mismatch at byte " + i, "first_mismatch=" + i);
+                }
 
                 if (actualSum != expectedSum)
-                    return (false, "Niezgodna suma kontrolna FAT32", $"exp={expectedSum},act={actualSum}");
+                    return (false, "FAT32 checksum mismatch", "checksum_mismatch");
 
-                return (true, "Zapis, odczyt i suma kontrolna 4KB OK", $"4096B,sum={actualSum}");
+                return (true, "Verified 4 KiB create/write/read/compare", "bytes=4096,sum=" + actualSum);
             }
             catch (Exception ex)
             {
-                return (false, "Wyjatek FAT32: " + ex.Message, "error");
+                return (false, "FAT32 diagnostic I/O failed: " + ex.Message, "error");
             }
             finally
             {
-                try
+                if (createdDirectory)
                 {
-                    if (File.Exists(testFile)) File.Delete(testFile);
-                    if (Directory.Exists(diagDir)) Directory.Delete(diagDir, false);
-                }
-                catch
-                {
-                    // Best-effort cleanup
+                    try
+                    {
+                        if (File.Exists(testFile))
+                            File.Delete(testFile);
+                        if (Directory.Exists(diagDir))
+                            Directory.Delete(diagDir, false);
+                    }
+                    catch
+                    {
+                        // Never delete another directory or user file.
+                        // Remaining test dir is clearly named for inspection.
+                    }
                 }
             }
         }
