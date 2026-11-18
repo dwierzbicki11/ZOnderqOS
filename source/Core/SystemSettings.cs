@@ -102,7 +102,7 @@ namespace ZonderqOS
                     case 4: return "RETRO 95 TEAL";
                     case 5: return "CYBER MATRIX";
                     case 6: return "NORDIC GLACIER";
-                    default: return "TAPETA PNG";
+                    default: return "PNG WALLPAPER";
                 }
             }
         }
