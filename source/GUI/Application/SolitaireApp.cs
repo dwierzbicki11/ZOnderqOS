@@ -725,7 +725,7 @@ namespace ZonderqOS.GUI.Apps
             }
 
             // Footer instructions
-            SmallTextRenderer.Draw(canvas, "Klik: Zaznacz/Przenies  Prawy klik: Auto-baza  Spacja: Dobierz  R: Reset",
+            SmallTextRenderer.Draw(canvas, "Click: Select/Move  Right-click: Auto-foundation  Space: Draw  R: Reset",
                 contentX + 16, contentY + contentHeight - 16, MutedColor);
         }
 
