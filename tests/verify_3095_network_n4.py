@@ -182,6 +182,19 @@ def validate(serial: str, pcap: bytes) -> str:
             ):
                 continue
             peer_mac = synack["src_mac"]
+            # Once the handshake identifies the L2 peer, every packet on
+            # this isolated N4 port pair must use that same Ethernet path.
+            # Otherwise a forged extra packet can be hidden behind an
+            # otherwise valid exchange in the capture.
+            for packet in packets:
+                same_outbound = (packet["src"] == guest and packet["dst"] == SERVER and
+                                 packet["sport"] == sport and packet["dport"] == PORT)
+                same_inbound = (packet["src"] == SERVER and packet["dst"] == guest and
+                                packet["sport"] == PORT and packet["dport"] == sport)
+                if same_outbound and (packet["src_mac"] != MAC or packet["dst_mac"] != peer_mac):
+                    raise ValueError("inconsistent N4 outbound Ethernet peer")
+                if same_inbound and (packet["dst_mac"] != MAC or packet["src_mac"] != peer_mac):
+                    raise ValueError("inconsistent N4 inbound Ethernet peer")
             for k in range(j + 1, len(packets)):
                 ack = packets[k]
                 if not (
@@ -488,6 +501,9 @@ def self_test() -> None:
         (serial, frames[:9] + [corrupt_mac(frames[9], 0)] + frames[10:]),
         (serial, frames[:10] + [corrupt_mac(frames[10], 0)] + frames[11:]),
         (serial, frames[:11] + [corrupt_mac(frames[11], 6)]),
+        # A valid echo must not hide an extra frame with a spoofed L2 peer.
+        (serial, frames + [corrupt_mac(frames[11], 6)]),
+        (serial, frames + [corrupt_mac(frames[10], 0)]),
         (serial.replace(TCP_START, ""), frames),
         (serial.replace(TCP_PASS, ""), frames),
         (serial + "\n" + TCP_PASS, frames),
