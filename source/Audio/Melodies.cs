@@ -8,7 +8,7 @@ namespace ZonderqOS.Audio
 
         public Track(string title, string author, Note[] notes)
         {
-            Title = title ?? "Bez tytulu";
+            Title = title ?? "Untitled";
             Author = author ?? "Unknown";
             Notes = notes ?? System.Array.Empty<Note>();
         }
