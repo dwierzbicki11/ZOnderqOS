@@ -283,7 +283,7 @@ namespace ZonderqOS.GUI.Apps
             int contentY = Window.Y + 38;
             int contentWidth = Math.Max(1, Window.Width - 16);
 
-            // [NOWA GRA] button in header
+            // [NEW GAME] button in header
             int btnX = contentX + contentWidth - 84;
             int btnY = contentY + 6;
             int btnW = 76;
@@ -628,17 +628,17 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "SCORE", contentX + 16, contentY + 11, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, score, contentX + 60, contentY + 11, TextColor);
 
-            SmallTextRenderer.Draw(canvas, "RUCHY", contentX + 130, contentY + 11, MutedColor);
+            SmallTextRenderer.Draw(canvas, "MOVES", contentX + 130, contentY + 11, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, (ulong)moves, contentX + 175, contentY + 11, TextColor);
 
-            // [NOWA GRA] button
+            // [NEW GAME] button
             int btnX = contentX + contentWidth - 84;
             int btnY = contentY + 5;
             int btnW = 74;
             int btnH = 22;
             canvas.DrawFilledRectangle(Color.FromArgb(20, 60, 35), btnX, btnY, btnW, btnH);
             canvas.DrawRectangle(SlotBorder, btnX, btnY, btnW, btnH);
-            SmallTextRenderer.DrawCentered(canvas, "NOWA GRA", btnX, btnY + 7, btnW, TextColor);
+            SmallTextRenderer.DrawCentered(canvas, "NEW GAME", btnX, btnY + 7, btnW, TextColor);
 
             int topRowY = contentY + 38;
             int colStartX = contentX + 22;
@@ -720,7 +720,7 @@ namespace ZonderqOS.GUI.Apps
 
                 canvas.DrawFilledRectangle(Color.FromArgb(14, 20, 26), bx, by, bw, bh);
                 canvas.DrawRectangle(SelectBorder, bx, by, bw, bh);
-                SmallTextRenderer.DrawCentered(canvas, "GRATULACJE! PASJANS UKONCZONY!", bx, by + 14, bw, SelectBorder);
+                SmallTextRenderer.DrawCentered(canvas, "CONGRATULATIONS! SOLITAIRE COMPLETED!", bx, by + 14, bw, SelectBorder);
                 SmallTextRenderer.DrawCentered(canvas, "Click New Game to play again.", bx, by + 30, bw, TextColor);
             }
 
