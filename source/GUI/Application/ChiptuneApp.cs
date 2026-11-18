@@ -345,7 +345,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawRectangle(Border, wx + 16, dispY, ww - 32, dispH);
 
             // Status label & current note
-            string modeText = isPlayingSong ? "ODTWARZANIE DEMO: " + GetSongName(currentSongIndex) : "TRYB SYNTEZATORA NA ZYWO (Steruj mysza lub klawiszami A-K)";
+            string modeText = isPlayingSong ? "PLAYING DEMO: " + GetSongName(currentSongIndex) : "LIVE SYNTHESIZER MODE (Use mouse or keys A-K)";
             SmallTextRenderer.Draw(canvas, modeText, wx + 28, dispY + 10, CyanColor);
             SmallTextRenderer.Draw(canvas, "Biezacy dzwiek: " + lastPlayedNote, wx + 28, dispY + 28, GoldColor);
             SmallTextRenderer.Draw(canvas, "Uklad klawiatury: [A=C] [W=C#] [S=D] [E=D#] [D=E] [F=F] [T=F#] [G=G] [Y=G#] [H=A] [U=A#] [J=B] [K=C+]", wx + 28, dispY + 46, MutedColor);
