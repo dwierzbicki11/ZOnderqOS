@@ -374,9 +374,9 @@ namespace ZonderqOS.GUI
                 cachedNetworkReady = networkReady;
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Network,
-                    "SIEC",
+                    "NETWORK",
                     networkReady ? "Network polaczona" : "Network rozlaczona",
-                    networkReady ? "Interfejs sieciowy jest gotowy do pracy." : "Polaczenie sieciowe nie jest obecnie gotowe.");
+                    networkReady ? "Network interface is ready." : "Network connection is not currently ready.");
             }
 
             // The partition table can involve device/driver work. Do not

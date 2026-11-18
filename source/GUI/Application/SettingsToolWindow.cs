@@ -30,7 +30,7 @@ namespace ZonderqOS.GUI.Apps
         protected SettingsToolWindow(string appName, string title, int x, int y, int width = 900, int height = 620)
             : base(appName)
         {
-            headerName = string.IsNullOrEmpty(appName) ? "USTAWIENIA" : appName.ToUpperInvariant();
+            headerName = string.IsNullOrEmpty(appName) ? "SETTINGS" : appName.ToUpperInvariant();
             Window = new Window(x, y, width, height, title);
             Window.CloseAction = Close;
         }
@@ -86,7 +86,7 @@ namespace ZonderqOS.GUI.Apps
         protected virtual void RenderHeader(Canvas canvas)
         {
             SmallTextRenderer.Draw(canvas, headerName, Window.X + 22, Window.Y + 58, Text);
-            SmallTextRenderer.Draw(canvas, "F5 ODSWIEZ  |  ESC ZAMKNIJ", Window.X + 22, Window.Y + 78, Muted);
+            SmallTextRenderer.Draw(canvas, "F5 REFRESH  |  ESC CLOSE", Window.X + 22, Window.Y + 78, Muted);
             canvas.DrawLine(Border, Window.X + 22, Window.Y + 100, Window.X + Window.Width - 22, Window.Y + 100);
         }
 

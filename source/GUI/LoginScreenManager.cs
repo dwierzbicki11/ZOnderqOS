@@ -120,7 +120,7 @@ namespace ZonderqOS.GUI
             private int passwordLength;
             private bool passwordField;
             private string username = string.Empty;
-            private string status = "WYBIERZ KONTO LUB WPISZ LOGIN";
+            private string status = "SELECT AN ACCOUNT OR ENTER USERNAME";
             private Color statusColor = Muted;
 
             public LoginScreen(int width, int height)
@@ -209,7 +209,7 @@ namespace ZonderqOS.GUI
                         {
                             passwordField = true;
                             ClearPassword();
-                            SetStatus("WPISZ HASLO I NACISNIJ ENTER", Muted);
+                            SetStatus("ENTER PASSWORD AND PRESS ENTER", Muted);
                         }
                     }
                     else
@@ -470,7 +470,7 @@ namespace ZonderqOS.GUI
                     {
                         passwordField = true;
                         ClearPassword();
-                        SetStatus("WPISZ HASLO", Muted);
+                        SetStatus("ENTER PASSWORD", Muted);
                     }
                     else if (passwordField)
                     {
@@ -514,7 +514,7 @@ namespace ZonderqOS.GUI
                 canvas.DrawFilledRectangle(SystemTheme.Accent, layout.CardX + 16, layout.CardY + 2,
                     layout.CardWidth - 32, 2);
 
-                SmallTextRenderer.Draw(canvas, "KONTA", layout.AccountsLabelX, layout.AccountsLabelY, Muted);
+                SmallTextRenderer.Draw(canvas, "ACCOUNTS", layout.AccountsLabelX, layout.AccountsLabelY, Muted);
                 if (userCount > VisibleUsers)
                 {
                     SmallTextRenderer.DrawUInt(canvas, (ulong)(selectedUser + 1),
@@ -532,10 +532,10 @@ namespace ZonderqOS.GUI
                 canvas.DrawLine(Border, layout.RightX, layout.CardY + 18,
                     layout.RightX, layout.CardY + layout.CardHeight - 18);
 
-                SmallTextRenderer.Draw(canvas, "UZYTKOWNIK", layout.InputX, layout.UserLabelY, Muted);
+                SmallTextRenderer.Draw(canvas, "USER", layout.InputX, layout.UserLabelY, Muted);
                 RenderInput(canvas, layout.InputX, layout.UserInputY, layout.InputWidth, layout.InputHeight, false);
 
-                SmallTextRenderer.Draw(canvas, "HASLO", layout.InputX, layout.PassLabelY, Muted);
+                SmallTextRenderer.Draw(canvas, "PASSWORD", layout.InputX, layout.PassLabelY, Muted);
                 RenderInput(canvas, layout.InputX, layout.PassInputY, layout.InputWidth, layout.InputHeight, true);
 
                 Color loginColor = passwordField && !string.IsNullOrEmpty(username) && passwordLength > 0
@@ -548,7 +548,7 @@ namespace ZonderqOS.GUI
                 IconManager.DrawScaled(canvas, IconType.Play,
                     layout.InputX + 16, layout.LoginBtnY + (layout.LoginBtnHeight - btnIconSize) / 2,
                     btnIconSize, btnIconSize);
-                SmallTextRenderer.DrawCentered(canvas, passwordField ? "ZALOGUJ" : "DALEJ",
+                SmallTextRenderer.DrawCentered(canvas, passwordField ? "LOG IN" : "NEXT",
                     layout.InputX + 50, layout.LoginBtnY + (layout.LoginBtnHeight - 7) / 2,
                     layout.InputWidth - 70, Text);
 
@@ -560,7 +560,7 @@ namespace ZonderqOS.GUI
                 canvas.DrawFilledRectangle(statusColor, layout.InputX + 15, layout.StatusY + statusPadY + 1, 6, 6);
                 SmallTextRenderer.DrawClipped(canvas, status,
                     layout.InputX + 33, layout.StatusY + statusPadY, layout.InputWidth - 50, statusColor);
-                SmallTextRenderer.DrawClipped(canvas, "F5 KONTA  |  GORA/DOL WYBOR  |  ESC WSTECZ",
+                SmallTextRenderer.DrawClipped(canvas, "F5 ACCOUNTS  |  UP/DOWN SELECT  |  ESC BACK",
                     layout.InputX + 15, layout.StatusY + helpOffsetY, layout.InputWidth - 26, Muted);
 
                 SmallTextRenderer.DrawClipped(canvas,
@@ -569,14 +569,14 @@ namespace ZonderqOS.GUI
                 RenderPowerButton(canvas, layout.RebootX, layout.PowerBtnY,
                     layout.RebootWidth, layout.PowerBtnHeight, "REBOOT", IconType.Reboot, false);
                 RenderPowerButton(canvas, layout.ShutdownX, layout.PowerBtnY,
-                    layout.ShutdownWidth, layout.PowerBtnHeight, "WYLACZ", IconType.Shutdown, true);
+                    layout.ShutdownWidth, layout.PowerBtnHeight, "SHUT DOWN", IconType.Shutdown, true);
             }
 
             private void RenderUsers(Canvas canvas, ScreenLayout layout)
             {
                 if (userCount <= 0)
                 {
-                    SmallTextRenderer.Draw(canvas, "BRAK KONT", layout.UserRowX, layout.UserRowY + 6, Danger);
+                    SmallTextRenderer.Draw(canvas, "NO ACCOUNTS", layout.UserRowX, layout.UserRowY + 6, Danger);
                     SmallTextRenderer.Draw(canvas, "WPISZ LOGIN RECZNIE",
                         layout.UserRowX, layout.UserRowY + 27, Muted);
                     return;
@@ -626,7 +626,7 @@ namespace ZonderqOS.GUI
                 }
                 else if (passwordLength == 0)
                 {
-                    SmallTextRenderer.Draw(canvas, "haslo", x + 15, textY, Muted);
+                    SmallTextRenderer.Draw(canvas, "password", x + 15, textY, Muted);
                 }
                 else
                 {
@@ -745,7 +745,7 @@ namespace ZonderqOS.GUI
             private void ShowAccountStatus()
             {
                 SetStatus(userCount > 0
-                    ? "WYBRANO KONTO - WPISZ HASLO"
+                    ? "ACCOUNT SELECTED - ENTER PASSWORD"
                     : "WPISZ NAZWE UZYTKOWNIKA", Muted);
             }
 
@@ -755,13 +755,13 @@ namespace ZonderqOS.GUI
                 {
                     passwordField = false;
                     ClearPassword();
-                    SetStatus("BRAK NAZWY UZYTKOWNIKA", Danger);
+                    SetStatus("USERNAME IS REQUIRED", Danger);
                     return;
                 }
 
                 if (passwordLength <= 0)
                 {
-                    SetStatus("HASLO JEST WYMAGANE", Danger);
+                    SetStatus("PASSWORD IS REQUIRED", Danger);
                     return;
                 }
 
@@ -810,9 +810,9 @@ namespace ZonderqOS.GUI
                 AuthenticationGuard.RecordFailure(username);
                 retryAfter = AuthenticationGuard.GetRetryAfterSeconds(username);
                 if (retryAfter > 0)
-                    SetStatus("NIEPRAWIDLOWE DANE - BLOKADA " + retryAfter + " S", Danger);
+                    SetStatus("INVALID CREDENTIALS - LOCKED FOR " + retryAfter + " S", Danger);
                 else
-                    SetStatus("NIEPRAWIDLOWY LOGIN LUB HASLO", Danger);
+                    SetStatus("INVALID USERNAME OR PASSWORD", Danger);
             }
 
             private void ClearPassword()
