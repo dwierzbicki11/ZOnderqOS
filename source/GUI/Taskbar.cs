@@ -406,7 +406,7 @@ namespace ZonderqOS.GUI
                     global::ZonderqOS.NotificationService.Post(
                         global::ZonderqOS.NotificationKind.Storage,
                         "STORAGE",
-                        "Zmiana woluminow",
+                        "Volume change",
                         "System detected a change in partitions or volumes.");
                 }
                 cachedVolumeCount = volumeCount;
