@@ -169,7 +169,7 @@ namespace ZonderqOS.GUI.Apps
                 selectedVisibleIndex = 0;
                 offset = 0;
                 RebuildFilter();
-                SetStatus("ZMIENIONO KATEGORIE", SystemTheme.Accent);
+                SetStatus("CATEGORY CHANGED", SystemTheme.Accent);
                 return;
             }
 
@@ -501,7 +501,7 @@ namespace ZonderqOS.GUI.Apps
             selectedVisibleIndex = 0;
             offset = 0;
             RebuildFilter();
-            SetStatus("ZMIENIONO KATEGORIE", SystemTheme.Accent);
+            SetStatus("CATEGORY CHANGED", SystemTheme.Accent);
         }
 
         private void MoveSelection(int delta)
