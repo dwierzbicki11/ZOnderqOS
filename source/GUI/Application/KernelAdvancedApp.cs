@@ -29,7 +29,7 @@ namespace ZonderqOS.GUI.Apps
         private HardwareSnapshot hardwareSnapshot;
         private string cachedTopologyText = "0 / 0 / 0";
         private string cachedCacheText = "0 B / 0 B / 0 B";
-        private string cachedMemoryStatus = "ORIONGC: COMMITTED 0 MB; RECZNE COLLECT ZABLOKOWANE";
+        private string cachedMemoryStatus = "ORIONGC: COMMITTED 0 MB; MANUAL COLLECTION DISABLED";
         private ulong lastStatusGcCommittedMb = ulong.MaxValue;
 
         private int pageMode; // 0 kernel, 1 memory/gc, 2 hardware
@@ -79,7 +79,7 @@ namespace ZonderqOS.GUI.Apps
             DrawNumericRow(canvas, 2, IconType.Settings,
                 "RAM WOLNY", "Wolne strony fizyczne", freeRamMb, " MB");
             DrawNumericRow(canvas, 3, IconType.Settings,
-                "GC HEAP / COMMITTED", "Heap OrionGC; committed pokazane w opisie statusu", gcHeapMb, " MB");
+                "GC HEAP / COMMITTED", "OrionGC heap; committed memory shown in the status description", gcHeapMb, " MB");
             DrawNumericRow(canvas, 4, IconType.Settings,
                 "FRAGMENTACJA GC", "Wolne/fragmentowane bloki wewnatrz sterty", gcFragmentedKb, " KB");
             DrawNumericRow(canvas, 5, IconType.Settings,
@@ -215,7 +215,7 @@ namespace ZonderqOS.GUI.Apps
                 if (lastStatusGcCommittedMb != gcCommittedMb)
                 {
                     lastStatusGcCommittedMb = gcCommittedMb;
-                    cachedMemoryStatus = "ORIONGC: COMMITTED " + gcCommittedMb + " MB; RECZNE COLLECT ZABLOKOWANE";
+                    cachedMemoryStatus = "ORIONGC: COMMITTED " + gcCommittedMb + " MB; MANUAL COLLECTION DISABLED";
                 }
                 SetStatus(cachedMemoryStatus, Warning);
             }
