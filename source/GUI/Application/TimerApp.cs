@@ -21,7 +21,7 @@ namespace ZonderqOS.GUI.Apps
         private static readonly Color GreenColor = Color.FromArgb(60, 200, 100);
         private static readonly Color YellowColor = Color.FromArgb(240, 195, 45);
 
-        private static readonly string[] TabLabels = { "ZEGAR", "STOPER", "MINUTNIK" };
+        private static readonly string[] TabLabels = { "CLOCK", "STOPWATCH", "TIMER" };
         private int activeTab = 0;
 
         // Stopwatch state
@@ -47,10 +47,10 @@ namespace ZonderqOS.GUI.Apps
         private int cachedTzOffset = int.MinValue;
         private string cachedTzStr = string.Empty;
 
-        public TimerApp(int x, int y, Action onClose) : base("Zegar i Czas")
+        public TimerApp(int x, int y, Action onClose) : base("Clock and Timer")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 420, 420, "Zegar, Stoper i Minutnik");
+            Window = new Window(x, y, 420, 420, "Clock, Stopwatch and Timer");
             Window.CloseAction = Close;
         }
 

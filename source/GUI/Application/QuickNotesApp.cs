@@ -35,12 +35,12 @@ namespace ZonderqOS.GUI.Apps
         private bool isDirty = false;
         private const long AutoSaveDelaySeconds = 2;
 
-        public QuickNotesApp(int x, int y, Action onClose) : base("Szybkie Notatki")
+        public QuickNotesApp(int x, int y, Action onClose) : base("Quick Notes")
         {
             closeCallback = onClose;
             notesDirectory = ResolveNotesDirectory();
             notesFilePath = notesDirectory + "/notes.txt";
-            Window = new Window(x, y, 340, 280, "📌 Szybkie Notatki");
+            Window = new Window(x, y, 340, 280, "📌 Quick Notes");
             Window.CloseAction = Close;
 
             LoadNotes();

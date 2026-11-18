@@ -15,7 +15,7 @@ namespace ZonderqOS.Commands
                 CommandIO.WriteLine("  net info                         - Show network interface status");
                 CommandIO.WriteLine("  net dhcp                         - Konfiguracja DHCP dla aktywnej karty");
                 CommandIO.WriteLine("  net dns <domena>                 - Rozwiaz nazwe domeny");
-                CommandIO.WriteLine("  net udp <ip> <port> <wiadomosc>  - Wyslij pakiet UDP");
+                CommandIO.WriteLine("  net udp <ip> <port> <message>  - Send a UDP packet");
                 CommandIO.WriteLine("  net device <id>                  - Switch active network adapter");
                 CommandIO.LastCommandSuccess = false;
                 return;

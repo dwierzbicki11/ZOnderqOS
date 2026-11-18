@@ -263,7 +263,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawRectangle(string.IsNullOrEmpty(searchText) ? Border : SystemTheme.AccentBorder,
                 x, y, width, 39);
             IconManager.DrawScaled(canvas, IconType.Search, x + 11, y + 9, 20, 20);
-            SmallTextRenderer.Draw(canvas, "SZUKAJ", x + 41, y + 17, Muted);
+            SmallTextRenderer.Draw(canvas, "SEARCH", x + 41, y + 17, Muted);
 
             if (string.IsNullOrEmpty(searchText))
             {
@@ -352,7 +352,7 @@ namespace ZonderqOS.GUI.Apps
 
             DrawDetailLine(canvas, x, y + 127, width, "KATEGORIA", CategoryLabel(app.Category), Text);
             DrawDetailLine(canvas, x, y + 158, width, "STATUS", "ZAINSTALOWANA", Good);
-            DrawDetailLine(canvas, x, y + 189, width, "ZRODLO", "SYSTEM", Text);
+            DrawDetailLine(canvas, x, y + 189, width, "SOURCE", "SYSTEM", Text);
             DrawDetailLine(canvas, x, y + 220, width, "ACTION", "LAUNCH", SystemTheme.Accent);
 
             canvas.DrawFilledRectangle(Color.FromArgb(23, 29, 35), x + 14, y + 262, width - 28, 82);

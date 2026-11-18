@@ -488,7 +488,7 @@ namespace ZonderqOS.GUI.Apps
             int sideW = contentWidth - (sideX - contentX) - 10;
 
             // Next Piece Box
-            SmallTextRenderer.Draw(canvas, "NASTEPNY", sideX, sideY, MutedColor);
+            SmallTextRenderer.Draw(canvas, "NEXT", sideX, sideY, MutedColor);
             int previewBoxY = sideY + 16;
             canvas.DrawFilledRectangle(HeaderPanel, sideX, previewBoxY, 80, 80);
             canvas.DrawFilledRectangle(Border, sideX, previewBoxY, 80, 80);
@@ -516,7 +516,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.DrawUInt(canvas, linesCleared, sideX, statsY + 50, TextColor);
 
             // Level
-            SmallTextRenderer.Draw(canvas, "POZIOM", sideX, statsY + 72, MutedColor);
+            SmallTextRenderer.Draw(canvas, "LEVEL", sideX, statsY + 72, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, level, sideX, statsY + 86, Color.FromArgb(240, 210, 50));
 
             // Controls legend

@@ -248,7 +248,7 @@ namespace ZonderqOS.GUI
             if (Width >= 500)
             {
                 SmallTextRenderer.Draw(canvas, "ALT+SPACE", X + Width - 82, Y + 14, Muted);
-                SmallTextRenderer.Draw(canvas, "URUCHOM APLIKACJE PO NAZWIE LUB ID", X + 54, Y + 32, Muted);
+                SmallTextRenderer.Draw(canvas, "LAUNCH APP BY NAME OR ID", X + 54, Y + 32, Muted);
             }
         }
 
@@ -278,7 +278,7 @@ namespace ZonderqOS.GUI
             int listY = Y + HeaderHeight + SearchHeight + 20;
             if (resultCount == 0)
             {
-                SmallTextRenderer.Draw(canvas, "BRAK PASUJACYCH APLIKACJI", X + 20, listY + 18, Muted);
+                SmallTextRenderer.Draw(canvas, "NO MATCHING APPLICATIONS", X + 20, listY + 18, Muted);
                 return;
             }
 
@@ -328,7 +328,7 @@ namespace ZonderqOS.GUI
             int y = Y + Height - FooterHeight;
             canvas.DrawLine(Border, X + 1, y, X + Width - 2, y);
             SmallTextRenderer.Draw(canvas, Width >= 600
-                ? "UP/DOWN WYBOR   ENTER URUCHOM   DELETE WYCZYSC   ESC ZAMKNIJ"
+                ? "UP/DOWN SELECT   ENTER LAUNCH   DELETE CLEAR   ESC CLOSE"
                 : "UP/DOWN  ENTER  ESC", X + 18, y + 13, Muted);
             SmallTextRenderer.DrawUInt(canvas, (ulong)resultCount, X + Width - 34, y + 13, Text);
         }

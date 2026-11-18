@@ -339,7 +339,7 @@ namespace ZonderqOS.GUI.Apps
 
             canvas.DrawFilledRectangle(Color.FromArgb(32, 40, 50), btnX, btnY, btnW, btnH);
             canvas.DrawRectangle(Border, btnX, btnY, btnW, btnH);
-            SmallTextRenderer.DrawCentered(canvas, "PRZYWROC DOMYSLNE", btnX, btnY + 8, btnW, TextColor);
+            SmallTextRenderer.DrawCentered(canvas, "RESTORE DEFAULTS", btnX, btnY + 8, btnW, TextColor);
 
             // Instructions Footer
             SmallTextRenderer.Draw(canvas, "Tip: use Tab for accent style and B for desktop background.",

@@ -59,10 +59,10 @@ namespace ZonderqOS.GUI.Apps
         // Ship lengths: 4, 3, 3, 2, 2, 2, 1, 1, 1, 1
         private static readonly int[] ShipSizes = new int[] { 4, 3, 3, 2, 2, 2, 1, 1, 1, 1 };
 
-        public BattleshipApp(int x, int y, Action onClose) : base("Statki")
+        public BattleshipApp(int x, int y, Action onClose) : base("Battleship")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 620, 420, "Bitwa Morska (Statki) - Flota Wojenna");
+            Window = new Window(x, y, 620, 420, "Battleship - Naval Fleet");
             Window.CloseAction = Close;
 
             StartNewGame();

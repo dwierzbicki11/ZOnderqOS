@@ -491,7 +491,7 @@ namespace ZonderqOS.GUI
                 IconManager.DrawScaled(canvas, IconType.Start,
                     layout.FieldX + 15, layout.SwitchBtnY + (layout.SwitchBtnHeight - switchIconSize) / 2,
                     switchIconSize, switchIconSize);
-                SmallTextRenderer.Draw(canvas, "ZMIEN UZYTKOWNIKA",
+                SmallTextRenderer.Draw(canvas, "SWITCH USER",
                     layout.FieldX + 50, layout.SwitchBtnY + (layout.SwitchBtnHeight - 7) / 2, Warning);
 
                 canvas.DrawFilledRectangle(CardAlt, layout.FieldX, layout.StatusBoxY,

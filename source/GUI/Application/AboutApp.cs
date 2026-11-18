@@ -79,7 +79,7 @@ namespace ZonderqOS.GUI.Apps
             }
             if (height >= 140)
             {
-                UiTypography.Caption(canvas, "ZESTAW: 29 WBUDOWANYCH APLIKACJI, STATKI, CHIPTUNE, OTA UPDATER",
+                UiTypography.Caption(canvas, "SUITE: 29 BUILT-IN APPLICATIONS, BATTLESHIP, CHIPTUNE, OTA UPDATER",
                     x + 18, y + 124, System.Math.Max(1, width - 36));
             }
             if (height >= 168)

@@ -197,7 +197,7 @@ namespace ZonderqOS.GUI.Apps
 
             clearArmedAt = 0;
             RefreshData();
-            SetStatus("ZMIENIONO ZRODLO LOGU", Accent);
+            SetStatus("LOG SOURCE CHANGED", Accent);
         }
 
         private void RequestClear()

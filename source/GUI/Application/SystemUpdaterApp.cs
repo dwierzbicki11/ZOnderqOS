@@ -499,8 +499,8 @@ namespace ZonderqOS.GUI.Apps
 
             string srcText = UpdateManager.SourceMode switch
             {
-                UpdateSourceMode.CloudOnly => "CHMURA (OTA)",
-                UpdateSourceMode.CloudAuto => "AUTO (USB/CHMURA)",
+                UpdateSourceMode.CloudOnly => "CLOUD (OTA)",
+                UpdateSourceMode.CloudAuto => "AUTO (USB/CLOUD)",
                 _ => "USB (OFFLINE)"
             };
             DrawButton(canvas, srcText, x + 110, y, 115, h, Panel, Border, GoldColor);
@@ -508,7 +508,7 @@ namespace ZonderqOS.GUI.Apps
             DrawButton(canvas, "CHECK USB", x + w - 245, y, 115, h, AccentColor, AccentColor, TextColor);
 
             bool hasBackup = cachedHasRollback;
-            DrawButton(canvas, "PRZYWROC MIGAWE", x + w - 124, y, 120, h, hasBackup ? RedColor : Panel, Border, hasBackup ? TextColor : MutedColor);
+            DrawButton(canvas, "RESTORE SNAPSHOT", x + w - 124, y, 120, h, hasBackup ? RedColor : Panel, Border, hasBackup ? TextColor : MutedColor);
         }
 
         private void RenderActionBanner(Canvas canvas, int x, int y, int w, int h)
@@ -599,7 +599,7 @@ namespace ZonderqOS.GUI.Apps
                 string payloadDir = cachedPayloadDir;
                 string pDirText = string.IsNullOrEmpty(payloadDir) ? "Payload directory is missing" : payloadDir;
 
-                SmallTextRenderer.Draw(canvas, "Komponenty systemowe i ladunek aktualizacji:", x + 14, y + 10, AccentColor);
+                SmallTextRenderer.Draw(canvas, "System components and update payload:", x + 14, y + 10, AccentColor);
                 SmallTextRenderer.Draw(canvas, "Payload directory: " + pDirText + " | Kernel: " + (string.IsNullOrEmpty(pkg.KernelImagePath) ? "Missing" : pkg.KernelImagePath), x + 14, y + 26, MutedColor);
                 canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
 

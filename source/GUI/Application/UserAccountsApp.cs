@@ -38,25 +38,25 @@ namespace ZonderqOS.GUI.Apps
                 "UID", "Selected account identifier",
                 userCount > 0 ? (ulong)System.Math.Max(0, uids[selectedUser]) : 0UL, "");
             DrawRow(canvas, 2, IconType.Folder,
-                "KATALOG DOMOWY", "Home wybranego uzytkownika",
+                "HOME DIRECTORY", "Selected user's home directory",
                 userCount > 0 ? homes[selectedUser] : "NONE", Text);
             DrawRow(canvas, 3, IconType.Settings,
                 "ADD USER", "Root-only: enter a username and password",
-                inputMode == 1 || inputMode == 2 ? "WPROWADZANIE" : "UTWORZ",
+                inputMode == 1 || inputMode == 2 ? "ENTERING" : "CREATE",
                 IsRootSession() ? Good : Muted);
             DrawRow(canvas, 4, IconType.Start,
                 "SWITCH USER", "Confirm account password; the current session will end safely",
                 inputMode == 3 ? "PASSWORD..." : "SWITCH", Warning);
             DrawRow(canvas, 5, IconType.Settings,
                 "CHANGE PASSWORD", "Change your own password or reset one as root after verification",
-                inputMode >= 4 ? "WPROWADZANIE" : CanChangeSelectedPassword() ? "ZMIEN" : "NIEDOSTEPNE",
+                inputMode >= 4 ? "ENTERING" : CanChangeSelectedPassword() ? "CHANGE" : "UNAVAILABLE",
                 CanChangeSelectedPassword() ? Good : Muted);
             DrawRow(canvas, 6, IconType.Settings,
                 "AUTO LOCK", "Lock the desktop when idle; click to change",
                 global::ZonderqOS.SystemSettings.AutoLockName,
                 global::ZonderqOS.SystemSettings.AutoLockMinutes > 0 ? Good : Warning);
             DrawNumericRow(canvas, 7, IconType.About,
-                "CZAS SESJI", "Minuty od ostatniego pomyslnego logowania",
+                "SESSION TIME", "Minutes since last successful login",
                 global::ZonderqOS.SessionManager.ElapsedSeconds / 60UL, " MIN");
 
             if (inputMode != 0)
@@ -282,7 +282,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (string.IsNullOrEmpty(inputText) || global::ZonderqOS.UserManager.UserExists(inputText))
                 {
-                    SetStatus("NAZWA PUSTA LUB KONTO JUZ ISTNIEJE", Danger);
+                    SetStatus("EMPTY NAME OR ACCOUNT ALREADY EXISTS", Danger);
                     return;
                 }
 

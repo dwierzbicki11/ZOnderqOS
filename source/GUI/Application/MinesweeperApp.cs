@@ -62,11 +62,11 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action closeCallback;
         private readonly Random rng = new Random();
 
-        public MinesweeperApp(int x, int y, Action onClose) : base("Saper")
+        public MinesweeperApp(int x, int y, Action onClose) : base("Minesweeper")
         {
             closeCallback = onClose;
             // 9 * 32 = 288 + 32 margin = 320 content width. Window 344 x 420.
-            Window = new Window(x, y, 344, 420, "Saper");
+            Window = new Window(x, y, 344, 420, "Minesweeper");
             Window.CloseAction = Close;
             ResetGame();
         }
