@@ -56,6 +56,24 @@ class SysbenchSafetyContracts(unittest.TestCase):
         self.assertIn("if (File.Exists(testPath))", body)
         self.assertNotIn("vfsReadSpeedKb = 2500", body)
 
+    def test_sysbench_terminal_and_report_status_are_real(self):
+        command = self.load(ROOT / "source/Shell/Commands/CmdSysbench.cs")
+        self.assertIn("CommandIO.WriteLine", command)
+        self.assertNotIn("Console.WriteLine", command)
+        self.assertIn('runner.LastReportPath == "/sysbench_report.md"', command)
+        self.assertIn("CommandIO.LastCommandSuccess = success;", command)
+        self.assertIn("Unknown option:", command)
+
+    def test_gui_quick_label_and_current_cosmos_identity(self):
+        source = self.load(GUI)
+        build = self.load(ROOT / "source/Core/KernelBuildInfo.cs")
+        project = self.load(ROOT / "ZonderqOS.csproj")
+        self.assertIn("Rozpocznij szybki test", source)
+        self.assertIn("SystemDiagnosticRunner.Shared.IsRunning;", source)
+        self.assertIn('CosmosVersion = "Cosmos 3.0.97 Native Core"', build)
+        self.assertIn('Sdk="Cosmos.Sdk/3.0.97"', project)
+        self.assertIn("#if ZONDERQ_ARCH_ARM64", build)
+
     def test_no_manual_gc(self):
         files = [
             DIAG / "AuthDiagnosticHelper.cs",
