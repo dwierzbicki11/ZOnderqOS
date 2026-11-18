@@ -114,7 +114,7 @@ namespace ZonderqOS.SystemCore.Updates
                 int eq = line.IndexOf('=');
                 if (eq <= 0)
                 {
-                    error = "Niepoprawny wpis manifestu w linii " + (i + 1) + ".";
+                    error = "Invalid manifest entry at line " + (i + 1) + ".";
                     return false;
                 }
 
@@ -139,7 +139,7 @@ namespace ZonderqOS.SystemCore.Updates
                     case "UPDATE_FORMAT":
                         if (!int.TryParse(val, out int format) || format != 2)
                         {
-                            error = "Nieobslugiwany format manifestu.";
+                            error = "Unsupported manifest format.";
                             return false;
                         }
                         parsed.UpdateFormat = format;
@@ -205,7 +205,7 @@ namespace ZonderqOS.SystemCore.Updates
                             (parts.Length == 3 && (!long.TryParse(parts[2], out long ignoredSize) || ignoredSize < 0)) ||
                             !seenFiles.Add(parts[0]))
                         {
-                            error = "Niepoprawny lub powtorzony wpis FILE w linii " + (i + 1) + ".";
+                            error = "Invalid or duplicate FILE entry at line " + (i + 1) + ".";
                             return false;
                         }
                         if (parsed.Files.Count >= 1024)
@@ -236,14 +236,14 @@ namespace ZonderqOS.SystemCore.Updates
                         break;
                     }
                     default:
-                        error = "Nieznane pole manifestu: " + key;
+                        error = "Unknown manifest field: " + key;
                         return false;
                 }
             }
 
             if (!hasVersion)
             {
-                error = "Manifest nie zawiera wymaganego pola 'VERSION'.";
+                error = "Manifest is missing the required 'VERSION' field.";
                 return false;
             }
             // Detached signatures cover the EXACT original manifest bytes.
@@ -261,13 +261,13 @@ namespace ZonderqOS.SystemCore.Updates
                 !IsSafeRelativePath(parsed.PayloadDirectory) ||
                 !IsSha256(parsed.KernelSha256))
             {
-                error = "Niepoprawna sciezka kernela/payload lub SHA-256.";
+                error = "Invalid kernel/payload path or SHA-256 checksum.";
                 return false;
             }
 
             if (!string.Equals(parsed.Architecture, ExpectedArchitecture, StringComparison.OrdinalIgnoreCase))
             {
-                error = $"Niezgodna architektura pakietu: {parsed.Architecture} (wymagana: {ExpectedArchitecture}).";
+                error = $"Package architecture mismatch: {parsed.Architecture} (required: {ExpectedArchitecture}).";
                 return false;
             }
 
