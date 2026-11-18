@@ -30,7 +30,7 @@ namespace ZonderqOS.GUI.Apps
         private int VisibleRows => System.Math.Max(1, System.Math.Min(MaxVisibleRows,
             (ActionY - (Window.Y + ListTopOffset) - 8 + RowGap) / (RowHeight + RowGap)));
 
-        private static readonly string[] TabLabels = { "DYSKI", "PARTYCJE", "MONTOWANIA" };
+        private static readonly string[] TabLabels = { "DISKS", "PARTITIONS", "MOUNTS" };
         private static readonly Color Surface = Color.FromArgb(19, 24, 30);
         private static readonly Color Header = Color.FromArgb(25, 32, 39);
         private static readonly Color Panel = Color.FromArgb(29, 36, 44);
@@ -73,7 +73,7 @@ namespace ZonderqOS.GUI.Apps
         private int hoveredRow = -1;
         private int hoveredTab = -1;
         private int hoveredAction = -1;
-        private string statusMessage = "GOTOWE";
+        private string statusMessage = "READY";
         private Color statusColor = Good;
 
         public DiskManagerApp(int x, int y, Action onClose) : base("Disk Manager")
@@ -104,7 +104,7 @@ namespace ZonderqOS.GUI.Apps
             if (key.Key == ConsoleKeyEx.F5)
             {
                 RefreshSnapshot();
-                SetStatus("ODSWIEZONO MAGAZYN DANYCH", Good);
+                SetStatus("STORAGE INFORMATION REFRESHED", Good);
                 return;
             }
 
@@ -147,7 +147,7 @@ namespace ZonderqOS.GUI.Apps
                 else
                 {
                     RefreshSnapshot();
-                    SetStatus("ODSWIEZONO MAGAZYN DANYCH", Good);
+                    SetStatus("STORAGE INFORMATION REFRESHED", Good);
                 }
             }
             else if ((ch == 'm' || ch == 'M') && tab == 1)
@@ -197,7 +197,7 @@ namespace ZonderqOS.GUI.Apps
             if (hoveredAction == 0)
             {
                 RefreshSnapshot();
-                SetStatus("ODSWIEZONO MAGAZYN DANYCH", Good);
+                SetStatus("STORAGE INFORMATION REFRESHED", Good);
             }
             else if (hoveredAction == 1)
             {
@@ -245,7 +245,7 @@ namespace ZonderqOS.GUI.Apps
             if (Window.Width >= 1000)
             {
                 int countX = x + width - 250;
-                SmallTextRenderer.Draw(canvas, "DYSKI", countX, y + 15, Muted);
+                SmallTextRenderer.Draw(canvas, "DISKS", countX, y + 15, Muted);
                 SmallTextRenderer.DrawUInt(canvas, (ulong)deviceCount, countX + 49, y + 15, Text);
                 SmallTextRenderer.Draw(canvas, "PART", countX + 90, y + 15, Muted);
                 SmallTextRenderer.DrawUInt(canvas, (ulong)partitionCount, countX + 132, y + 15, Text);
@@ -320,7 +320,7 @@ namespace ZonderqOS.GUI.Apps
             }
             else if (tab == 1)
             {
-                SmallTextRenderer.DrawClipped(canvas, partitionNames[index] ?? "PARTYCJA", x, y + 15, width - 190, Text);
+                SmallTextRenderer.DrawClipped(canvas, partitionNames[index] ?? "PARTITION", x, y + 15, width - 190, Text);
                 SmallTextRenderer.DrawClipped(canvas, partitionDetails[index] ?? string.Empty, x, y + 35, width - 190, Muted);
                 string mount = partitionMounts[index];
                 if (!string.IsNullOrEmpty(mount))
@@ -377,9 +377,9 @@ namespace ZonderqOS.GUI.Apps
         {
             int index = selection;
             DrawDetailLine(canvas, x, y + 58, width, "NAME", deviceNames[index], Text);
-            DrawDetailLine(canvas, x, y + 88, width, "INDEKS", deviceIndexText[index], Text);
+            DrawDetailLine(canvas, x, y + 88, width, "INDEX", deviceIndexText[index], Text);
             DrawDetailLine(canvas, x, y + 118, width, "SIZE", deviceSizeText[index], Text);
-            DrawDetailLine(canvas, x, y + 148, width, "PARAMETRY", deviceDetails[index], Muted);
+            DrawDetailLine(canvas, x, y + 148, width, "PARAMETERS", deviceDetails[index], Muted);
             DrawInfoBox(canvas, x + 14, y + 205, width - 28,
                 "R reloads the selected disk's partition table. This does not format the device.", Warning);
         }
@@ -389,13 +389,13 @@ namespace ZonderqOS.GUI.Apps
             int index = selection;
             int source = partitionSourceIndex[index];
             string mount = partitionMounts[index];
-            DrawDetailLine(canvas, x, y + 58, width, "PARTYCJA", partitionNames[index], Text);
-            DrawDetailLine(canvas, x, y + 88, width, "INDEKS", partitionIndexText[index], Text);
+            DrawDetailLine(canvas, x, y + 58, width, "PARTITION", partitionNames[index], Text);
+            DrawDetailLine(canvas, x, y + 88, width, "INDEX", partitionIndexText[index], Text);
             DrawDetailLine(canvas, x, y + 118, width, "SIZE", partitionSizeText[index], Text);
-            DrawDetailLine(canvas, x, y + 148, width, "MOUNT", string.IsNullOrEmpty(mount) ? "NIEZAMONTOWANA" : mount,
+            DrawDetailLine(canvas, x, y + 148, width, "MOUNT", string.IsNullOrEmpty(mount) ? "NOT MOUNTED" : mount,
                 string.IsNullOrEmpty(mount) ? Muted : Good);
             DrawInfoBox(canvas, x + 14, y + 205, width - 28,
-                source == 0 ? "Wolumin systemowy / jest chroniony przed odmontowaniem." :
+                source == 0 ? "System volume / is protected from unmounting." :
                 "ENTER or M mounts/unmounts FAT. Automatic formatting is disabled.",
                 source == 0 ? Warning : Good);
         }
@@ -403,11 +403,11 @@ namespace ZonderqOS.GUI.Apps
         private void RenderMountDetails(Canvas canvas, int x, int y, int width)
         {
             int index = selection;
-            DrawDetailLine(canvas, x, y + 58, width, "PUNKT", mountNames[index], Text);
+            DrawDetailLine(canvas, x, y + 58, width, "MOUNT POINT", mountNames[index], Text);
             DrawDetailLine(canvas, x, y + 88, width, "SYSTEM", mountDetails[index], Text);
             DrawDetailLine(canvas, x, y + 118, width, "SOURCE", mountSources[index], Good);
             DrawInfoBox(canvas, x + 14, y + 185, width - 28,
-                "Widok VFS jest tylko informacyjny. Montowanie wykonuj w zakladce PARTYCJE.", Muted);
+                "Widok VFS jest tylko informacyjny. Montowanie wykonuj w zakladce PARTITIONS.", Muted);
         }
 
         private static void DrawDetailLine(Canvas canvas, int x, int y, int width, string label, string value, Color valueColor)
@@ -440,7 +440,7 @@ namespace ZonderqOS.GUI.Apps
             Color color;
             if (tab == 0)
             {
-                label = "SKANUJ PARTYCJE";
+                label = "SKANUJ PARTITIONS";
                 hint = "R";
                 icon = IconType.DiskManager;
                 color = Warning;
@@ -449,15 +449,15 @@ namespace ZonderqOS.GUI.Apps
             {
                 int source = SelectedPartitionSource();
                 string mount = SelectedPartitionMount();
-                label = source == 0 ? "WOLUMIN SYSTEMOWY" : string.IsNullOrEmpty(mount) ? "MONTUJ" : "ODMONTUJ";
-                hint = source == 0 ? "CHRONIONY" : "ENTER / M";
+                label = source == 0 ? "SYSTEM VOLUME" : string.IsNullOrEmpty(mount) ? "MOUNT" : "ODMOUNT";
+                hint = source == 0 ? "PROTECTED" : "ENTER / M";
                 icon = IconType.Folder;
                 color = source == 0 ? Warning : Good;
             }
             else
             {
-                label = "TYLKO PODGLAD VFS";
-                hint = "PARTYCJE -> MOUNT";
+                label = "VFS VIEW ONLY";
+                hint = "PARTITIONS -> MOUNT";
                 icon = IconType.Folder;
                 color = Muted;
             }
@@ -587,7 +587,7 @@ namespace ZonderqOS.GUI.Apps
                     deviceSourceIndex[slot] = source;
                     deviceIndexText[slot] = source.ToString();
                     deviceNames[slot] = string.IsNullOrEmpty(device.Name) ? "DISK " + source : device.Name;
-                    deviceDetails[slot] = "BLOCK " + device.BlockSize + " B  |  " + device.BlockCount + " BLOKOW";
+                    deviceDetails[slot] = "BLOCK " + device.BlockSize + " B  |  " + device.BlockCount + " BLOCKS";
                     deviceSizeMb[slot] = sizeMb;
                     deviceSizeText[slot] = sizeMb + " MB";
                 }
@@ -610,7 +610,7 @@ namespace ZonderqOS.GUI.Apps
                     ulong sizeMb = ToMegabytes(part.BlockCount, part.BlockSize);
                     partitionSourceIndex[slot] = source;
                     partitionIndexText[slot] = source.ToString();
-                    partitionNames[slot] = string.IsNullOrEmpty(part.Name) ? "PARTYCJA " + source : part.Name;
+                    partitionNames[slot] = string.IsNullOrEmpty(part.Name) ? "PARTITION " + source : part.Name;
                     string host = part.Host != null && !string.IsNullOrEmpty(part.Host.Name) ? part.Host.Name : "?";
                     partitionDetails[slot] = "HOST " + host + "  |  LBA " + part.StartSector + "  |  BLOCK " + part.BlockSize;
                     partitionSizeMb[slot] = sizeMb;
@@ -664,7 +664,7 @@ namespace ZonderqOS.GUI.Apps
 
                 StorageManager.RescanPartitions(device);
                 RefreshSnapshot();
-                SetStatus("PONOWNIE ODCZYTANO TABLICE PARTYCJI", Good);
+                SetStatus("PARTITION TABLE RELOADED", Good);
             }
             catch
             {
@@ -680,7 +680,7 @@ namespace ZonderqOS.GUI.Apps
             int source = partitionSourceIndex[selection];
             if (source == 0)
             {
-                SetStatus("WOLUMIN SYSTEMOWY / JEST CHRONIONY", Warning);
+                SetStatus("SYSTEM VOLUME / IS PROTECTED", Warning);
                 return;
             }
 
@@ -692,7 +692,7 @@ namespace ZonderqOS.GUI.Apps
                 if (global::ZonderqOS.GUI.StorageMountManager.TryMount(source, out mountedAt, out error))
                 {
                     RefreshSnapshot();
-                    SetStatus("ZAMONTOWANO PARTYCJE", Good);
+                    SetStatus("ZAMONTOWANO PARTITIONS", Good);
                 }
                 else
                 {
@@ -704,7 +704,7 @@ namespace ZonderqOS.GUI.Apps
                 if (global::ZonderqOS.GUI.StorageMountManager.TryUnmount(source, out error))
                 {
                     RefreshSnapshot();
-                    SetStatus("ODMONTOWANO PARTYCJE", Good);
+                    SetStatus("ODMONTOWANO PARTITIONS", Good);
                 }
                 else
                 {
@@ -781,7 +781,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void SetStatus(string message, Color color)
         {
-            statusMessage = string.IsNullOrEmpty(message) ? "GOTOWE" : message;
+            statusMessage = string.IsNullOrEmpty(message) ? "READY" : message;
             statusColor = color;
         }
 
