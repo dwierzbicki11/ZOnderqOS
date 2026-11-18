@@ -16,7 +16,11 @@ make -C "$ROOT_DIR/tools/bootguard" all >/dev/null
 # Extract production Limine BOOTX64.EFI and ZonderqOS.elf from the built x64 ISO
 mkdir -p "$WORK_DIR/iso_extract"
 if command -v xorriso >/dev/null 2>&1; then
-    xorriso -osirrox on -indev "$ISO_PATH" -extract /EFI/BOOT/BOOTX64.EFI "$WORK_DIR/iso_extract/limine_x64.efi" >/dev/null 2>&1
+if xorriso -osirrox on -indev "$ISO_PATH" -extract /EFI/BOOT/LIMINE.EFI "$WORK_DIR/iso_extract/limine_x64.efi" >/dev/null 2>&1; then
+        true
+    else
+        xorriso -osirrox on -indev "$ISO_PATH" -extract /EFI/BOOT/BOOTX64.EFI "$WORK_DIR/iso_extract/limine_x64.efi" >/dev/null 2>&1
+    fi
     xorriso -osirrox on -indev "$ISO_PATH" -extract /boot/ZonderqOS.elf "$WORK_DIR/iso_extract/ZonderqOS.elf" >/dev/null 2>&1
 else
     echo "FAIL: xorriso required to extract production Limine and ELF from ISO"
