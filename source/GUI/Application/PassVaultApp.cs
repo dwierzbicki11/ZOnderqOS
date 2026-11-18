@@ -70,10 +70,10 @@ namespace ZonderqOS.GUI.Apps
         private Color statusColor = AccentColor;
         private readonly Action closeCallback;
 
-        public PassVaultApp(int x, int y, Action onClose) : base("Sejf Haseł")
+        public PassVaultApp(int x, int y, Action onClose) : base("Password Vault")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 580, 420, "Sejf Haseł & Zaszyfrowany Skarbiec");
+            Window = new Window(x, y, 580, 420, "Password Vault - Encrypted Storage");
             Window.CloseAction = Close;
 
             // Deferred vault metadata load (salt/hash initialized without exposing secrets)
@@ -210,7 +210,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     lockoutUntilTicks = now + (freq * 60L);
                     SecurityLogger.LogEvent("CRITICAL", "Atak brute-force na Sejf Hasel (PassVault)! 8 blednych prob PIN.");
-                    statusMessage = "ALARM: Wykryto atak brute-force! Blokada na 60 s.";
+                    statusMessage = "ALERT: Brute-force attack detected! Locked for 60 seconds.";
                 }
                 else if (failedAttempts >= 5)
                 {
@@ -226,7 +226,7 @@ namespace ZonderqOS.GUI.Apps
                 else
                 {
                     int remain = 3 - failedAttempts;
-                    statusMessage = "Bledny PIN! Pozostalo prob do blokady: " + remain;
+                    statusMessage = "Incorrect PIN! Attempts remaining: " + remain;
                 }
 
                 statusColor = RedColor;
@@ -313,7 +313,7 @@ namespace ZonderqOS.GUI.Apps
                     string expectedPinHash = HashPin(pin, salt);
                     if (!Crypto.FixedTimeEquals(expectedPinHash, storedPinHash))
                     {
-                        statusMessage = "Bledny PIN!";
+                        statusMessage = "Incorrect PIN!";
                         statusColor = RedColor;
                         return false;
                     }
@@ -324,7 +324,7 @@ namespace ZonderqOS.GUI.Apps
                     if (!Crypto.FixedTimeEquals(storedHmac, actualHmac))
                     {
                         entries.Clear();
-                        statusMessage = "Error integralnosci bazy: Dane zostaly zmodyfikowane!";
+                        statusMessage = "Vault integrity error: stored data was modified!";
                         statusColor = RedColor;
                         SecurityLogger.LogEvent("CRITICAL", "PassVault HMAC-SHA256 verification failed! Database tampering detected.");
                         return false;
@@ -363,7 +363,7 @@ namespace ZonderqOS.GUI.Apps
                     string expectedPinHash = HashPin(pin, salt);
                     if (!Crypto.FixedTimeEquals(expectedPinHash, storedPinHash))
                     {
-                        statusMessage = "Bledny PIN!";
+                        statusMessage = "Incorrect PIN!";
                         statusColor = RedColor;
                         return false;
                     }
@@ -374,7 +374,7 @@ namespace ZonderqOS.GUI.Apps
                     if (!Crypto.FixedTimeEquals(storedHmac, actualHmac))
                     {
                         entries.Clear();
-                        statusMessage = "Error integralnosci bazy: Dane zostaly zmodyfikowane!";
+                        statusMessage = "Vault integrity error: stored data was modified!";
                         statusColor = RedColor;
                         SecurityLogger.LogEvent("CRITICAL", "PassVault legacy v2 integrity verification failed!");
                         return false;
@@ -654,7 +654,7 @@ namespace ZonderqOS.GUI.Apps
                 if (key.Key == ConsoleKeyEx.Backspace && pinInput.Length > 0)
                 {
                     pinInput = pinInput.Substring(0, pinInput.Length - 1);
-                    statusMessage = "Nowy PIN (" + pinInput.Length + " cyfr) [Enter=zapisz, Esc=anuluj]";
+                    statusMessage = "New PIN (" + pinInput.Length + " digits) [Enter=save, Esc=cancel]";
                     return;
                 }
 
@@ -682,7 +682,7 @@ namespace ZonderqOS.GUI.Apps
                 if (key.KeyChar >= '0' && key.KeyChar <= '9' && pinInput.Length < 8)
                 {
                     pinInput += key.KeyChar;
-                    statusMessage = "Nowy PIN (" + pinInput.Length + " cyfr) [Enter=zapisz, Esc=anuluj]";
+                    statusMessage = "New PIN (" + pinInput.Length + " digits) [Enter=save, Esc=cancel]";
                     statusColor = YellowColor;
                 }
                 return;
@@ -835,7 +835,7 @@ namespace ZonderqOS.GUI.Apps
                         lastCopiedPassword = entries[selectedIndex].Password;
                         long freq = Stopwatch.Frequency > 0 ? Stopwatch.Frequency : 1000000;
                         clipboardClearTicks = Stopwatch.GetTimestamp() + (ClipboardTimeoutSeconds * freq);
-                        statusMessage = "Skopiowano haslo! Schowek wyczysci sie za 20 s.";
+                        statusMessage = "Password copied! Clipboard clears in 20 seconds.";
                         statusColor = GreenColor;
                     }
                     return;
@@ -867,7 +867,7 @@ namespace ZonderqOS.GUI.Apps
         {
             VaultEntry newEntry;
             newEntry.Title = "Nowe Konto #" + (entries.Count + 1);
-            newEntry.Username = "uzytkownik";
+            newEntry.Username = "user";
             newEntry.Password = GenerateRandomPassword(16);
             newEntry.Category = "System";
             newEntry.Notes = "Utworzono " + DateTime.UtcNow.ToString("dd.MM.yyyy");
@@ -889,7 +889,7 @@ namespace ZonderqOS.GUI.Apps
                 cur.Password = newPass;
                 entries[selectedIndex] = cur;
                 showPassword = true;
-                statusMessage = "Wygenerowano nowe pancerne haslo (18 znakow)!";
+                statusMessage = "Generated a new strong password (18 characters)!";
                 statusColor = GreenColor;
                 SaveEncryptedVault(unlockedPin);
             }
@@ -899,7 +899,7 @@ namespace ZonderqOS.GUI.Apps
         {
             isChangingPin = true;
             pinInput = "";
-            statusMessage = "Wpisz nowy PIN (4-8 cyfr) i nacisnij Enter [Esc=anuluj]";
+            statusMessage = "Enter a new PIN (4-8 digits) and press Enter [Esc=cancel]";
             statusColor = YellowColor;
         }
 
@@ -945,9 +945,9 @@ namespace ZonderqOS.GUI.Apps
             UiPainter.RoundedPanel(canvas, contentX + 4, tbY, contentWidth - 8, 30, 4, Panel, Border);
 
             DrawBtn(canvas, "+ NOWY WPIS", contentX + 6, tbY + 2, 95, 24, AccentColor);
-            DrawBtn(canvas, "GENERUJ HASLO", contentX + 107, tbY + 2, 120, 24, GreenColor);
-            DrawBtn(canvas, "ZMIEN PIN", contentX + 233, tbY + 2, 90, 24, GoldColor);
-            DrawBtn(canvas, "🔒 ZABLOKUJ", contentX + 329, tbY + 2, 90, 24, MutedColor);
+            DrawBtn(canvas, "GENERATE PASSWORD", contentX + 107, tbY + 2, 120, 24, GreenColor);
+            DrawBtn(canvas, "CHANGE PIN", contentX + 233, tbY + 2, 90, 24, GoldColor);
+            DrawBtn(canvas, "🔒 LOCK", contentX + 329, tbY + 2, 90, 24, MutedColor);
 
             // Status message
             SmallTextRenderer.Draw(canvas, statusMessage, contentX + 428, tbY + 10, statusColor);
@@ -968,7 +968,7 @@ namespace ZonderqOS.GUI.Apps
             int centerX = x + w / 2;
 
             SmallTextRenderer.DrawCentered(canvas, "ZASZYFROWANY SEJF HASEL ZONDERQ", x, y + 30, w, TextColor);
-            SmallTextRenderer.DrawCentered(canvas, "Wprowadz cyfrowy Master PIN (domyslnie: 1234)", x, y + 50, w, MutedColor);
+            SmallTextRenderer.DrawCentered(canvas, "Enter your numeric Master PIN (default: 1234)", x, y + 50, w, MutedColor);
 
             // Lockout banner if active
             long now = Stopwatch.GetTimestamp();
@@ -1053,7 +1053,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, entry.Username, x + 14, y + 56, TextColor);
 
             // Password
-            SmallTextRenderer.Draw(canvas, "HASLO (ZASZYFROWANE):", x + 14, y + 78, MutedColor);
+            SmallTextRenderer.Draw(canvas, "PASSWORD (ENCRYPTED):", x + 14, y + 78, MutedColor);
             string maskedPass = showPassword ? entry.Password : "••••••••••••••••";
             SmallTextRenderer.Draw(canvas, maskedPass, x + 14, y + 92, TextColor);
 
@@ -1079,7 +1079,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "Szyfrowanie: PBKDF2 + SHA-256 HMAC | Autoblokada: 90 s", x + 14, y + h - 26, MutedColor);
 
             // Delete button
-            DrawBtn(canvas, "USUN WPIS", x + w - 95, y + h - 34, 85, 24, RedColor);
+            DrawBtn(canvas, "DELETE ENTRY", x + w - 95, y + h - 34, 85, 24, RedColor);
         }
 
         private static int CalculateStrength(string pass)

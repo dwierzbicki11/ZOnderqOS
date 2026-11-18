@@ -85,7 +85,7 @@ namespace ZonderqOS.GUI.Apps
         {
             isDirty = true;
             lastEditTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            statusMessage = "Edycja (oczekuje zapis)...";
+            statusMessage = "Editing (unsaved changes)...";
         }
 
         private void LoadNotes()
@@ -110,7 +110,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 lines.Add("★ Nowa notatka");
                 lines.Add("System zaktualizowany!");
-                lines.Add("Kliknij i wpisuj tekst...");
+                lines.Add("Click here and type...");
             }
 
             cursorRow = lines.Count - 1;
@@ -120,7 +120,7 @@ namespace ZonderqOS.GUI.Apps
         {
             if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
             {
-                statusMessage = "Brak autoryzacji";
+                statusMessage = "Access not authorized";
                 isDirty = false;
                 return;
             }
@@ -323,7 +323,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.DrawCentered(canvas, "WYCZYSC", wx + 180, wy + 8, 65, TextColor);
 
             UiPainter.RoundedPanel(canvas, wx + 252, wy + 4, 75, 20, 3, Color.FromArgb(40, 140, 230), Color.FromArgb(30, 110, 190));
-            SmallTextRenderer.DrawCentered(canvas, "ZAPISZ", wx + 252, wy + 8, 75, Color.White);
+            SmallTextRenderer.DrawCentered(canvas, "SAVE", wx + 252, wy + 8, 75, Color.White);
 
             // Note lines & text
             int textY = wy + 36;
