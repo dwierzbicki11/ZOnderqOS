@@ -58,7 +58,7 @@ POLISH_STEMS = (
     "dotycz", "drukow", "dzisiaj", "ekranu", "formatowan", "glowne",
     "hasla", "hasle", "istnieje", "jednost", "jest", "jezyk",
     "jadra", "koniecznos", "krotk", "miejsc", "minimaln", "mozemy",
-    "najnowsz", "nas", "natychmiast", "nazwa", "nazwe", "nowosci",
+    "najnowsz", "natychmiast", "nazwa", "nazwe", "nowosci",
     "obcego", "obcych", "obsluga", "obslugi", "obslug", "odmonto",
     "odpowied", "oraz", "pamieci", "pelni", "ponizej", "ponad",
     "poprawnie", "pozostal", "przed", "przyczyn", "przykla",
