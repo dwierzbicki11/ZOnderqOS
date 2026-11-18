@@ -26,7 +26,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
         {
             if (rootPath != "/" ||
                 !global::ZonderqOS.Disk.IsVerifiedPersistentDataRootMounted)
-                return (false, "Brak zweryfikowanego montowania ZONDERQDATA pod /", "root_unverified");
+                return (false, "No verified ZONDERQDATA mount at /", "root_unverified");
 
             string diagDir = Path.Combine(rootPath, DiagDirName);
             string testFile = Path.Combine(diagDir, DiagFileName);
@@ -46,7 +46,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
             {
                 // A previous run's files or unknown user data must never be overwritten.
                 if (Directory.Exists(diagDir) || File.Exists(diagDir))
-                    return (false, "Istniejacy katalog diagnostyczny: odmowa nadpisania", "existing_diag_path");
+                    return (false, "Diagnostic directory already exists: refusing to overwrite", "existing_diag_path");
                 Directory.CreateDirectory(diagDir);
                 directoryCreated = true;
 
