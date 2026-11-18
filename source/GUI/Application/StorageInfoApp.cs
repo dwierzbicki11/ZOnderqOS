@@ -151,7 +151,7 @@ namespace ZonderqOS.GUI.Apps
                     viewMode = 0;
                 offset = 0;
                 RefreshData();
-                SetStatus("ZMIENIONO WIDOK MAGAZYNU", Accent);
+                SetStatus("STORAGE VIEW CHANGED", Accent);
                 return;
             }
 
