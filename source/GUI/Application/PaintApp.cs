@@ -140,7 +140,7 @@ namespace ZonderqOS.GUI.Apps
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Info,
                     "PAINT",
-                    "Saved rysunek",
+                    "Drawing saved",
                     "File: " + filePath);
             }
             catch (Exception ex)
@@ -303,8 +303,8 @@ namespace ZonderqOS.GUI.Apps
             {
                 case Tool.Pencil: return "Olowek (1px)";
                 case Tool.Brush: return "Pedzel (3px)";
-                case Tool.Eraser: return "Gumka";
-                case Tool.Line: return "Linia";
+                case Tool.Eraser: return "Eraser";
+                case Tool.Line: return "Line";
                 case Tool.Rectangle: return "Prostokat";
                 case Tool.FilledRectangle: return "Wypelniony prostokat";
                 case Tool.Bucket: return "Wypelnienie";
