@@ -27,7 +27,7 @@ namespace ZonderqOS.GUI.Apps
         private int activeTab = 0; // 0 = Changelog, 1 = Files/Payload, 2 = Storage/Slots, 3 = History
         private readonly Action closeCallback;
 
-        private string statusMessage = "Ready do instalacji aktualizacji z nosnika USB.";
+        private string statusMessage = "Ready to install an update from USB.";
         private Color statusColor = MutedColor;
 
         private enum UpdateOp { None, Checking, Installing, RollingBack }
@@ -49,7 +49,7 @@ namespace ZonderqOS.GUI.Apps
         public SystemUpdaterApp(int x, int y, Action onClose) : base("System Updates")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 620, 440, "Centrum Aktualizacji ZonderqOS");
+            Window = new Window(x, y, 620, 440, "ZonderqOS Update Center");
             Window.CloseAction = Close;
 
             UpdateManager.Initialize();
@@ -199,7 +199,7 @@ namespace ZonderqOS.GUI.Apps
             if (IsRootAuthorized())
                 return true;
 
-            statusMessage = "Permission denied administratora (wymagany root).";
+            statusMessage = "Permission denied: administrator (root) privileges required.";
             statusColor = RedColor;
             SecurityLogger.LogEvent("WARN",
                 "Unauthorized SystemUpdater action (" + actionDescription + ") by " +
@@ -272,7 +272,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     isBusy = false;
                     currentOp = UpdateOp.None;
-                    statusMessage = "Permission denied administratora (wymagany root).";
+                    statusMessage = "Permission denied: administrator (root) privileges required.";
                     statusColor = RedColor;
                     return;
                 }
@@ -299,7 +299,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     isBusy = false;
                     currentOp = UpdateOp.None;
-                    statusMessage = "Error instalacji: " + err;
+                    statusMessage = "Installation error: " + err;
                     statusColor = RedColor;
                     RefreshCachedState();
                 }
@@ -307,7 +307,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     isBusy = false;
                     currentOp = UpdateOp.None;
-                    statusMessage = $"Zainstalowano pomyslnie do slotu {BootSlotManager.ActiveSlot}! Wymagany restart.";
+                    statusMessage = $"Installed successfully to slot {BootSlotManager.ActiveSlot}! Restart required.";
                     statusColor = GreenColor;
                     RefreshCachedState();
                 }
@@ -320,7 +320,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     isBusy = false;
                     currentOp = UpdateOp.None;
-                    statusMessage = "Permission denied administratora (wymagany root).";
+                    statusMessage = "Permission denied: administrator (root) privileges required.";
                     statusColor = RedColor;
                     return;
                 }
@@ -337,7 +337,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     isBusy = false;
                     currentOp = UpdateOp.None;
-                    statusMessage = "Error wycofywania: " + err;
+                    statusMessage = "Rollback error: " + err;
                     statusColor = RedColor;
                     RefreshCachedState();
                 }
@@ -345,7 +345,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     isBusy = false;
                     currentOp = UpdateOp.None;
-                    statusMessage = $"Przywrocono slot {BootSlotManager.ActiveSlot} i stan systemu. Wymagany restart.";
+                    statusMessage = $"Restored slot {BootSlotManager.ActiveSlot} and system state. Restart required.";
                     statusColor = GoldColor;
                     RefreshCachedState();
                 }
@@ -361,8 +361,8 @@ namespace ZonderqOS.GUI.Apps
             isBusy = true;
             currentOp = UpdateOp.Checking;
             currentProgress = 100;
-            currentStepText = "Skanowanie nosnika USB w poszukiwaniu pakietu...";
-            statusMessage = "Wyszukiwanie aktualizacji na USB...";
+            currentStepText = "Scanning USB drive for update packages...";
+            statusMessage = "Checking USB for updates...";
             statusColor = AccentColor;
         }
 
@@ -378,8 +378,8 @@ namespace ZonderqOS.GUI.Apps
             currentOp = UpdateOp.Installing;
             currentOpStep = 0;
             currentProgress = 5;
-            currentStepText = "Inicjalizacja instalatora aktualizacji...";
-            statusMessage = "Trwa instalacja pakietu aktualizacji...";
+            currentStepText = "Initializing update installer...";
+            statusMessage = "Installing update package...";
             statusColor = AccentColor;
         }
 
@@ -399,7 +399,7 @@ namespace ZonderqOS.GUI.Apps
             currentOp = UpdateOp.RollingBack;
             currentOpStep = 0;
             currentProgress = 10;
-            currentStepText = "Inicjalizacja wycofywania zmian (Rollback)...";
+            currentStepText = "Initializing rollback...";
             statusMessage = "Restoring system snapshot...";
             statusColor = GoldColor;
         }
@@ -458,14 +458,14 @@ namespace ZonderqOS.GUI.Apps
 
             if (UpdateManager.IsRebootRequired)
             {
-                title = "Wymagany restart komputera";
+                title = "Restart required";
                 titleCol = GoldColor;
-                subtitle = $"Nowy kernel oczekuje w slocie {BootSlotManager.ActiveSlot}. Reboot system.";
+                subtitle = $"New kernel is ready in slot {BootSlotManager.ActiveSlot}. Restart the system.";
                 bannerBorder = GoldColor;
             }
             else if (UpdateManager.Status == UpdateStatus.Available && UpdateManager.AvailablePackage != null)
             {
-                title = "Dostepna aktualizacja USB: " + UpdateManager.AvailablePackage.Version;
+                title = "USB update available: " + UpdateManager.AvailablePackage.Version;
                 titleCol = AccentColor;
                 subtitle = UpdateManager.AvailablePackage.Title + " (" + UpdateManager.AvailablePackage.Severity + ")";
                 bannerBorder = AccentColor;
@@ -474,7 +474,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 title = "Kernel and disk image mismatch detected!";
                 titleCol = GoldColor;
-                subtitle = $"Uruchomiony: {KernelBuildInfo.KernelVersion} | Na dysku: {UpdateManager.CurrentVersion}. Wymagany restart.";
+                subtitle = $"Running: {KernelBuildInfo.KernelVersion} | On disk: {UpdateManager.CurrentVersion}. Restart required.";
                 bannerBorder = GoldColor;
             }
 
@@ -536,13 +536,13 @@ namespace ZonderqOS.GUI.Apps
                 UpdatePackageInfo pkg = UpdateManager.AvailablePackage;
                 UiPainter.RoundedPanel(canvas, x, y, w, h, 4, Panel, AccentColor);
                 string signText = pkg.IsSigned ? (pkg.IsSignatureValid ? " [PODPIS OK]" : " [ZLY PODPIS]") : "";
-                SmallTextRenderer.Draw(canvas, "Pakiet USB: " + pkg.Version + " - " + pkg.Title + signText, x + 12, y + 11, TextColor);
+                SmallTextRenderer.Draw(canvas, "USB package: " + pkg.Version + " - " + pkg.Title + signText, x + 12, y + 11, TextColor);
                 DrawButton(canvas, "INSTALL NOW", x + w - 158, y + 4, 150, 28, AccentColor, AccentColor, TextColor);
             }
             else if (UpdateManager.IsRebootRequired)
             {
                 UiPainter.RoundedPanel(canvas, x, y, w, h, 4, Panel, GoldColor);
-                SmallTextRenderer.Draw(canvas, "Aktualizacja zainstalowana. Restart zaladuje nowy kernel ze slotu " + BootSlotManager.ActiveSlot, x + 12, y + 11, GoldColor);
+                SmallTextRenderer.Draw(canvas, "Update installed. Restart will load the new kernel from slot " + BootSlotManager.ActiveSlot, x + 12, y + 11, GoldColor);
                 DrawButton(canvas, "ZRESTARTUJ TERAZ", x + w - 158, y + 4, 150, 28, GoldColor, GoldColor, Color.Black);
             }
             else
@@ -576,7 +576,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 // Tab 0: Changelog
                 UpdatePackageInfo pkg = UpdateManager.AvailablePackage ?? EmptyPackage;
-                SmallTextRenderer.Draw(canvas, "Wydanie pakietu: " + pkg.Version + " - " + pkg.Title, x + 14, y + 10, AccentColor);
+                SmallTextRenderer.Draw(canvas, "Package version: " + pkg.Version + " - " + pkg.Title, x + 14, y + 10, AccentColor);
                 SmallTextRenderer.Draw(canvas, "Data wydania: " + pkg.ReleaseDate + " | Waznosc: " + pkg.Severity + " | Motyw: " + pkg.TargetThemeName, x + 14, y + 26, MutedColor);
 
                 canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
@@ -653,12 +653,12 @@ namespace ZonderqOS.GUI.Apps
                 SmallTextRenderer.Draw(canvas, $"Folder /updates na USB: {(env.HasUpdatesDir ? "AVAILABLE" : "MISSING")} | Manifest: {(env.HasManifest ? "DETECTED" : "MISSING")} | Kernel: {(env.HasKernelBinary ? "DETECTED" : "MISSING")}", x + 30, lineY, TextColor);
                 lineY += 26;
 
-                SmallTextRenderer.Draw(canvas, "Slot docelowy dla kolejnej aktualizacji: Slot " + BootSlotManager.GetInactiveSlot(), x + 14, y + h - 20, AccentColor);
+                SmallTextRenderer.Draw(canvas, "Target slot for next update: Slot " + BootSlotManager.GetInactiveSlot(), x + 14, y + h - 20, AccentColor);
             }
             else if (activeTab == 3)
             {
                 // Tab 3: History & Snapshots
-                SmallTextRenderer.Draw(canvas, "Historia instalacji i wycofywania aktualizacji (/var/log/update.log):", x + 14, y + 10, AccentColor);
+                SmallTextRenderer.Draw(canvas, "Update and rollback history (/var/log/update.log):", x + 14, y + 10, AccentColor);
                 SmallTextRenderer.Draw(canvas, "Restore point: " + (cachedHasRollback ? "ACTIVE (snapshot saved to /var/updates/backup)" : "MISSING"), x + 14, y + 26, MutedColor);
                 canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
 
