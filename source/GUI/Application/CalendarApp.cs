@@ -56,7 +56,7 @@ namespace ZonderqOS.GUI.Apps
         private int hoveredControl = -1;
         private int lastMouseX = -1;
         private int lastMouseY = -1;
-        private string statusMessage = "GOTOWE";
+        private string statusMessage = "READY";
 
         public CalendarApp(int x, int y, Action onClose) : base("Kalendarz")
         {
@@ -87,7 +87,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 RefreshTodaySnapshot();
                 RebuildMonth();
-                statusMessage = "ODSWIEZONO DATE SYSTEMOWA";
+                statusMessage = "SYSTEM DATE REFRESHED";
                 return;
             }
 
@@ -180,7 +180,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "ARROWS MONTH  |  T TODAY  |  F5 REFRESH", x + 55, y + 37, Muted);
 
             DrawControl(canvas, 0, x + width - 254, y + 13, 54, 36, "<");
-            DrawControl(canvas, 1, x + width - 192, y + 13, 122, 36, "DZISIAJ");
+            DrawControl(canvas, 1, x + width - 192, y + 13, 122, 36, "TODAY");
             DrawControl(canvas, 2, x + width - 62, y + 13, 54, 36, ">");
         }
 
@@ -272,7 +272,7 @@ namespace ZonderqOS.GUI.Apps
 
             canvas.DrawFilledRectangle(Color.FromArgb(23, 29, 35), x + 14, y + 278, width - 28, 116);
             canvas.DrawRectangle(Border, x + 14, y + 278, width - 28, 116);
-            SmallTextRenderer.Draw(canvas, "DZISIAJ", x + 28, y + 295, Muted);
+            SmallTextRenderer.Draw(canvas, "TODAY", x + 28, y + 295, Muted);
             SmallTextRenderer.DrawInt(canvas, todayDay, x + 28, y + 319, Good);
             SmallTextRenderer.Draw(canvas, MonthNames[todayMonth - 1], x + 28, y + 344, Text);
             SmallTextRenderer.DrawInt(canvas, todayYear, x + 28, y + 367, Text);
@@ -306,7 +306,7 @@ namespace ZonderqOS.GUI.Apps
             displayMonth = todayMonth;
             selectedDay = todayDay;
             RebuildMonth();
-            statusMessage = "DZISIAJ";
+            statusMessage = "TODAY";
         }
 
         private void RefreshTodaySnapshot()
