@@ -888,7 +888,7 @@ namespace ZonderqOS.GUI.Apps
 
         private static string BoolLabel(bool value)
         {
-            return value ? "WLACZONE" : "WYLACZONE";
+            return value ? "ENABLED" : "DISABLED";
         }
 
         private static ulong PagesToMb(ulong pages)

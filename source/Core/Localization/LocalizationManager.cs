@@ -249,11 +249,11 @@ namespace ZonderqOS.Localization
             d["welcome.tab.overview"] = "Overview";
             d["welcome.tab.alpha"] = "Alpha Highlights";
             d["welcome.tab.shortcuts"] = "Shortcuts";
-            d["welcome.tab.language"] = "Language / Jezyk";
+            d["welcome.tab.language"] = "Language";
             d["welcome.tab.about"] = "About System";
-            d["welcome.select_lang"] = "Select system language / Wybierz jezyk systemu:";
+            d["welcome.select_lang"] = "System language: English (en-US)";
             d["welcome.lang_desc"] = "Language changes take effect immediately and are saved to persistent settings.";
-            d["welcome.alpha_stage"] = "Pre-Alpha Release (targeting Alpha 1.0 Release Candidate)";
+            d["welcome.alpha_stage"] = "Alpha 1 Test Release";
             d["welcome.quick_launch"] = "Quick Launch:";
 
             // Settings App

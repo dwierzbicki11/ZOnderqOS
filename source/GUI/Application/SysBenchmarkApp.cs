@@ -822,7 +822,7 @@ namespace ZonderqOS.GUI.Apps
             // Action buttons
             int btnY = y + 296;
             canvas.DrawFilledRectangle(runner.IsRunning ? Panel : AccentColor, wx + 14, btnY, 195, 30);
-            SmallTextRenderer.DrawClipped(canvas, "Rozpocznij szybki test", wx + 24, btnY + 8, 175, TextColor);
+            SmallTextRenderer.DrawClipped(canvas, "Start quick test", wx + 24, btnY + 8, 175, TextColor);
 
             canvas.DrawFilledRectangle(runner.IsRunning ? RedColor : Panel, wx + 220, btnY, 110, 30);
             SmallTextRenderer.DrawClipped(canvas, "Abort", wx + 245, btnY + 8, 80, TextColor);
