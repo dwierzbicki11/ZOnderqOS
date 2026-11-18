@@ -40,7 +40,7 @@ namespace ZonderqOS.GUI
             // The selected data volume is already mounted at / by Disk.
             mountPoint = null;
             error = "Manual mounts disabled in Cosmos 3.0.95; the approved data root is already mounted.";
-            NotifyFailure("Montowanie zablokowane", error);
+            NotifyFailure("Mounting blocked", error);
             return false;
         }
 
@@ -54,7 +54,7 @@ namespace ZonderqOS.GUI
                 if (mountPoint == "/")
                 {
                     error = "Active system root cannot be unmounted";
-                    NotifyFailure("Odmontowanie zablokowane", error);
+                    NotifyFailure("Unmounting blocked", error);
                     return false;
                 }
                 if (string.IsNullOrEmpty(mountPoint))
@@ -66,22 +66,22 @@ namespace ZonderqOS.GUI
                 if (!VfsManager.TryUnmount(mountPoint))
                 {
                     error = "Unmount failed: volume may still be in use";
-                    NotifyFailure("Odmontowanie nie powiodlo sie", error);
+                    NotifyFailure("Unmounting failed", error);
                     return false;
                 }
 
                 mountedPartitions.Remove(partitionIndex);
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Storage,
-                    "MAGAZYN",
-                    "Wolumin odmontowany",
+                    "STORAGE",
+                    "Volume unmounted",
                     mountPoint);
                 return true;
             }
             catch (Exception ex)
             {
                 error = "Unmount exception: " + ex.Message;
-                NotifyFailure("Error odmontowania woluminu", error);
+                NotifyFailure("Failed to unmount volume", error);
                 return false;
             }
         }
@@ -90,7 +90,7 @@ namespace ZonderqOS.GUI
         {
             global::ZonderqOS.NotificationService.Post(
                 global::ZonderqOS.NotificationKind.Warning,
-                "MAGAZYN",
+                "STORAGE",
                 title,
                 message);
         }
