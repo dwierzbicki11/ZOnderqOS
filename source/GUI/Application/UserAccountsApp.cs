@@ -222,7 +222,7 @@ namespace ZonderqOS.GUI.Apps
             }
 
             if (row == 7)
-                SetStatus("CZAS BIEZACEJ UWIERZYTELNIONEJ SESJI", Accent);
+                SetStatus("CURRENT AUTHENTICATED SESSION TIME", Accent);
         }
 
         public override void HandleKeyboard(KeyEvent key)
