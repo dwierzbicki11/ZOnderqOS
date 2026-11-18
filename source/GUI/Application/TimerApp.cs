@@ -481,7 +481,7 @@ namespace ZonderqOS.GUI.Apps
             if (tzOffset != cachedTzOffset)
             {
                 cachedTzOffset = tzOffset;
-                cachedTzStr = "Strefa: UTC" + (tzOffset >= 0 ? "+" : "") + tzOffset;
+                cachedTzStr = "Time zone: UTC" + (tzOffset >= 0 ? "+" : "") + tzOffset;
             }
             SmallTextRenderer.DrawCentered(canvas, cachedTzStr, cx, digY + 56, cw, SystemTheme.Accent);
         }
