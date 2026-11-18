@@ -150,7 +150,7 @@ namespace ZonderqOS.GUI
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Security,
                     "SESJA",
-                    "Witaj, " + SecurityContext.CurrentUser,
+                    "Welcome, " + SecurityContext.CurrentUser,
                     "Bezpieczna sesja ZOnderqOS zostala uruchomiona.");
 
                 string curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion;
@@ -160,7 +160,7 @@ namespace ZonderqOS.GUI
                         global::ZonderqOS.NotificationKind.Success,
                         "AKTUALIZACJA",
                         "ZOnderqOS " + curVer,
-                        "System jest zaktualizowany! Sprawdz nowe aplikacje i raport zmian.");
+                        "System updated! Check out the new applications and release notes.");
                 }
 
                 // Show Welcome App on desktop startup
@@ -1913,7 +1913,7 @@ namespace ZonderqOS.GUI
                     SmallTextRenderer.DrawCentered(canvas, "Twoj komputer moze byc teraz bezpiecznie wylaczony.",
                         boxX, boxY + 92, boxW, Color.FromArgb(135, 150, 168));
 
-                    SmallTextRenderer.DrawCentered(canvas, "Przytrzymaj przycisk ZASILANIA na laptopie, aby odciac prad.",
+                    SmallTextRenderer.DrawCentered(canvas, "Hold down the laptop POWER button to turn off the power.",
                         boxX, boxY + 122, boxW, Color.FromArgb(55, 215, 105));
 
                     SmallTextRenderer.DrawCentered(canvas, "[ R ]  Nacisnij klawisz R, aby zrestartowac komputer",
