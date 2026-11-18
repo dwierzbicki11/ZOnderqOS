@@ -653,7 +653,7 @@ namespace ZonderqOS.GUI.Apps
             }
             else
             {
-                SmallTextRenderer.DrawCentered(canvas, "PUSTO", stockX, topRowY + 26, CardW, MutedColor);
+                SmallTextRenderer.DrawCentered(canvas, "EMPTY", stockX, topRowY + 26, CardW, MutedColor);
             }
 
             // 2. Waste pile
