@@ -40,11 +40,11 @@ namespace ZonderqOS.GUI.Apps
         private int lastWindowWidth = -1;
         private int lastWindowHeight = -1;
 
-        public NotepadApp(int x, int y, string path, Action onClose) : base("Notatnik")
+        public NotepadApp(int x, int y, string path, Action onClose) : base("Notepad")
         {
             closeCallback = onClose;
             openDirectory = GetDefaultDirectory();
-            Window = new Window(x, y, 980, 650, "Notatnik");
+            Window = new Window(x, y, 980, 650, "Notepad");
             Window.CloseAction = RequestClose;
 
             lines.Add("");
@@ -849,7 +849,7 @@ namespace ZonderqOS.GUI.Apps
                 scrollY = 0;
                 dirty = false;
                 documentVersion++;
-                status = "Otwarto: " + normalized;
+                status = "Opened: " + normalized;
                 UpdateWindowTitle();
                 UpdatePositionText();
                 return true;
@@ -921,7 +921,7 @@ namespace ZonderqOS.GUI.Apps
             string name = string.IsNullOrEmpty(filePath) ? "Untitled" : Path.GetFileName(filePath);
             if (string.IsNullOrEmpty(name))
                 name = filePath ?? "Untitled";
-            Window.Title = "Notatnik - " + name + (dirty ? " *" : "");
+            Window.Title = "Notepad - " + name + (dirty ? " *" : "");
         }
 
         private void UpdatePositionText()
