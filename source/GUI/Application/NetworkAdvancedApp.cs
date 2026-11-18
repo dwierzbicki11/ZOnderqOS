@@ -30,7 +30,7 @@ namespace ZonderqOS.GUI.Apps
             base.Render(canvas);
             canvas.DrawString("Obsluga sieci zostala usunieta z ZonderqOS.", PCScreenFont.DefaultFont,
                 Color.Black, Window.X + 28, Window.Y + 70);
-            canvas.DrawString("Cosmos Gen3 nie zapewnia jeszcze pelnego wsparcia", PCScreenFont.DefaultFont,
+            canvas.DrawString("Cosmos Gen3 does not yet provide full support", PCScreenFont.DefaultFont,
                 Color.DimGray, Window.X + 28, Window.Y + 110);
             canvas.DrawString("dla docelowego sprzetu systemu.", PCScreenFont.DefaultFont,
                 Color.DimGray, Window.X + 28, Window.Y + 140);

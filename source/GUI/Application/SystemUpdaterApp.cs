@@ -38,7 +38,7 @@ namespace ZonderqOS.GUI.Apps
         private int currentProgress = 0;
         private string currentStepText = string.Empty;
 
-        private static readonly string[] TabLabels = { "DZIENNIK ZMIAN", "PLIKI I LADUNEK", "SLOTY A/B I USB", "HISTORIA I MIGAWKI" };
+        private static readonly string[] TabLabels = { "CHANGELOG", "FILES AND PAYLOAD", "A/B SLOTS AND USB", "HISTORY AND SNAPSHOTS" };
         private static readonly UpdatePackageInfo EmptyPackage = new UpdatePackageInfo();
 
         private StorageEnvironmentInfo cachedEnvInfo = new StorageEnvironmentInfo();
@@ -46,7 +46,7 @@ namespace ZonderqOS.GUI.Apps
         private bool cachedHasRollback = false;
         private string cachedPayloadDir = string.Empty;
 
-        public SystemUpdaterApp(int x, int y, Action onClose) : base("Aktualizacje Systemu")
+        public SystemUpdaterApp(int x, int y, Action onClose) : base("System Updates")
         {
             closeCallback = onClose;
             Window = new Window(x, y, 620, 440, "Centrum Aktualizacji ZonderqOS");
@@ -282,7 +282,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     isBusy = false;
                     currentOp = UpdateOp.None;
-                    statusMessage = "Brak wybranego pakietu aktualizacji.";
+                    statusMessage = "No update package selected.";
                     statusColor = RedColor;
                     return;
                 }
@@ -390,7 +390,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (!UpdateManager.HasRollbackSnapshot())
             {
-                statusMessage = "Brak dostepnej migawki do wycofania zmian.";
+                statusMessage = "No rollback snapshot is available.";
                 statusColor = RedColor;
                 return;
             }
@@ -452,7 +452,7 @@ namespace ZonderqOS.GUI.Apps
         {
             Color bannerBg = Panel;
             Color bannerBorder = Border;
-            string title = "Kernel ZonderqOS jest aktualny";
+            string title = "ZonderqOS kernel is up to date";
             Color titleCol = GreenColor;
             string subtitle = $"Kernel: {KernelBuildInfo.KernelVersion} (Build {KernelBuildInfo.KernelBuild}) | Slot: {BootSlotManager.ActiveSlot} | Cosmos 3.0.95";
 
@@ -472,7 +472,7 @@ namespace ZonderqOS.GUI.Apps
             }
             else if (!string.Equals(KernelBuildInfo.KernelVersion, UpdateManager.CurrentVersion, StringComparison.OrdinalIgnoreCase))
             {
-                title = "Wykryto niezgodnosc kernela z dyskiem!";
+                title = "Kernel and disk image mismatch detected!";
                 titleCol = GoldColor;
                 subtitle = $"Uruchomiony: {KernelBuildInfo.KernelVersion} | Na dysku: {UpdateManager.CurrentVersion}. Wymagany restart.";
                 bannerBorder = GoldColor;
@@ -505,7 +505,7 @@ namespace ZonderqOS.GUI.Apps
             };
             DrawButton(canvas, srcText, x + 110, y, 115, h, Panel, Border, GoldColor);
 
-            DrawButton(canvas, "SPRAWDZ USB", x + w - 245, y, 115, h, AccentColor, AccentColor, TextColor);
+            DrawButton(canvas, "CHECK USB", x + w - 245, y, 115, h, AccentColor, AccentColor, TextColor);
 
             bool hasBackup = cachedHasRollback;
             DrawButton(canvas, "PRZYWROC MIGAWE", x + w - 124, y, 120, h, hasBackup ? RedColor : Panel, Border, hasBackup ? TextColor : MutedColor);
@@ -548,7 +548,7 @@ namespace ZonderqOS.GUI.Apps
             else
             {
                 UiPainter.RoundedPanel(canvas, x, y, w, h, 4, Panel, Border);
-                SmallTextRenderer.Draw(canvas, "Brak oczekujacych aktualizacji. Wciskaj F5 lub [SPRAWDZ USB] aby odswiezyc.", x + 12, y + 11, MutedColor);
+                SmallTextRenderer.Draw(canvas, "No pending updates. Press F5 or [CHECK USB] to refresh.", x + 12, y + 11, MutedColor);
             }
         }
 
@@ -589,7 +589,7 @@ namespace ZonderqOS.GUI.Apps
                     lineY += 23;
                 }
 
-                string hashDisplay = string.IsNullOrEmpty(pkg.KernelSha256) ? (string.IsNullOrEmpty(pkg.ExpectedSha256) ? "Brak hash" : pkg.ExpectedSha256) : pkg.KernelSha256;
+                string hashDisplay = string.IsNullOrEmpty(pkg.KernelSha256) ? (string.IsNullOrEmpty(pkg.ExpectedSha256) ? "No checksum" : pkg.ExpectedSha256) : pkg.KernelSha256;
                 SmallTextRenderer.Draw(canvas, "Kernel SHA-256: " + hashDisplay, x + 14, y + h - 20, MutedColor);
             }
             else if (activeTab == 1)
@@ -597,10 +597,10 @@ namespace ZonderqOS.GUI.Apps
                 // Tab 1: Components and Payload Files
                 UpdatePackageInfo pkg = UpdateManager.AvailablePackage ?? EmptyPackage;
                 string payloadDir = cachedPayloadDir;
-                string pDirText = string.IsNullOrEmpty(payloadDir) ? "Brak fizycznego katalogu payload" : payloadDir;
+                string pDirText = string.IsNullOrEmpty(payloadDir) ? "Payload directory is missing" : payloadDir;
 
                 SmallTextRenderer.Draw(canvas, "Komponenty systemowe i ladunek aktualizacji:", x + 14, y + 10, AccentColor);
-                SmallTextRenderer.Draw(canvas, "Katalog ladunku: " + pDirText + " | Kernel: " + (string.IsNullOrEmpty(pkg.KernelImagePath) ? "Brak" : pkg.KernelImagePath), x + 14, y + 26, MutedColor);
+                SmallTextRenderer.Draw(canvas, "Payload directory: " + pDirText + " | Kernel: " + (string.IsNullOrEmpty(pkg.KernelImagePath) ? "Missing" : pkg.KernelImagePath), x + 14, y + 26, MutedColor);
                 canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
 
                 int lineY = y + 50;
@@ -613,7 +613,7 @@ namespace ZonderqOS.GUI.Apps
 
                 lineY += 6;
                 canvas.DrawFilledRectangle(GoldColor, x + 16, lineY + 4, 6, 6);
-                string signDesc = pkg.IsSigned ? (pkg.IsSignatureValid ? "Podpis SHA-256 / Ed25519: ZWERYFIKOWANY" : "Podpis cyfrowy: NIEPOPRAWNY!") : "Podpis cyfrowy: Brak (wydanie niepodpisane)";
+                string signDesc = pkg.IsSigned ? (pkg.IsSignatureValid ? "SHA-256 / Ed25519 signature: VERIFIED" : "Digital signature: INVALID!") : "Digital signature: Missing (unsigned release)";
                 SmallTextRenderer.Draw(canvas, signDesc, x + 30, lineY, pkg.IsSigned && pkg.IsSignatureValid ? GreenColor : GoldColor);
                 lineY += 22;
 
@@ -623,7 +623,7 @@ namespace ZonderqOS.GUI.Apps
             else if (activeTab == 2)
             {
                 // Tab 2: Dual Boot Slots A/B & Storage Environment
-                SmallTextRenderer.Draw(canvas, "Układ rozruchowy A/B i diagnostyka slotów Limine:", x + 14, y + 10, AccentColor);
+                SmallTextRenderer.Draw(canvas, "A/B boot layout and Limine slot diagnostics:", x + 14, y + 10, AccentColor);
                 SmallTextRenderer.Draw(canvas, $"Aktywny: Slot {BootSlotManager.ActiveSlot} | Rezerwowy: Slot {BootSlotManager.FallbackSlot} | Stan: {(KernelBuildInfo.IsHealthyAndConfirmed ? "ZATWIERDZONY (HEALTHY)" : "OCZEKUJE")}", x + 14, y + 26, MutedColor);
                 canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
 
@@ -650,7 +650,7 @@ namespace ZonderqOS.GUI.Apps
                 StorageEnvironmentInfo env = cachedEnvInfo;
                 Color c4 = env.HasUpdatesDir ? GreenColor : GoldColor;
                 canvas.DrawFilledRectangle(c4, x + 16, lineY + 4, 6, 6);
-                SmallTextRenderer.Draw(canvas, $"Folder /updates na USB: {(env.HasUpdatesDir ? "DOSTEPNY" : "BRAK")} | Manifest: {(env.HasManifest ? "WYKRYTO" : "BRAK")} | Kernel: {(env.HasKernelBinary ? "WYKRYTO" : "BRAK")}", x + 30, lineY, TextColor);
+                SmallTextRenderer.Draw(canvas, $"Folder /updates na USB: {(env.HasUpdatesDir ? "AVAILABLE" : "MISSING")} | Manifest: {(env.HasManifest ? "DETECTED" : "MISSING")} | Kernel: {(env.HasKernelBinary ? "DETECTED" : "MISSING")}", x + 30, lineY, TextColor);
                 lineY += 26;
 
                 SmallTextRenderer.Draw(canvas, "Slot docelowy dla kolejnej aktualizacji: Slot " + BootSlotManager.GetInactiveSlot(), x + 14, y + h - 20, AccentColor);
@@ -659,13 +659,13 @@ namespace ZonderqOS.GUI.Apps
             {
                 // Tab 3: History & Snapshots
                 SmallTextRenderer.Draw(canvas, "Historia instalacji i wycofywania aktualizacji (/var/log/update.log):", x + 14, y + 10, AccentColor);
-                SmallTextRenderer.Draw(canvas, "Punkt przywrocenia: " + (cachedHasRollback ? "AKTYWNY (Saved migawke /var/updates/backup)" : "BRAK"), x + 14, y + 26, MutedColor);
+                SmallTextRenderer.Draw(canvas, "Restore point: " + (cachedHasRollback ? "ACTIVE (snapshot saved to /var/updates/backup)" : "MISSING"), x + 14, y + 26, MutedColor);
                 canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
 
                 List<string> history = cachedHistory;
                 if (history.Count == 0)
                 {
-                    SmallTextRenderer.Draw(canvas, "Brak zarejestrowanych wpisow historii aktualizacji w systemie.", x + 16, y + 60, MutedColor);
+                    SmallTextRenderer.Draw(canvas, "No update history entries have been recorded.", x + 16, y + 60, MutedColor);
                 }
                 else
                 {

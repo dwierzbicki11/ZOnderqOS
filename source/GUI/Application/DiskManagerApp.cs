@@ -76,10 +76,10 @@ namespace ZonderqOS.GUI.Apps
         private string statusMessage = "GOTOWE";
         private Color statusColor = Good;
 
-        public DiskManagerApp(int x, int y, Action onClose) : base("Menedzer dyskow")
+        public DiskManagerApp(int x, int y, Action onClose) : base("Disk Manager")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 1040, 700, "Menedzer dyskow - ZOnderqOS");
+            Window = new Window(x, y, 1040, 700, "Disk Manager - ZOnderqOS");
             Window.CloseAction = Close;
             RefreshSnapshot();
         }
@@ -239,8 +239,8 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawRectangle(Border, x, y, width, 54);
             canvas.DrawFilledRectangle(SystemTheme.Accent, x, y, 4, 54);
             IconManager.DrawScaled(canvas, IconType.DiskManager, x + 15, y + 13, 28, 28);
-            SmallTextRenderer.Draw(canvas, "MENEDZER DYSKOW", x + 55, y + 13, Text);
-            SmallTextRenderer.Draw(canvas, "F5 ODSWIEZ  |  STRZALKI WYBOR  |  ENTER/M MONTUJ", x + 55, y + 32, Muted);
+            SmallTextRenderer.Draw(canvas, "DISK MANAGER", x + 55, y + 13, Text);
+            SmallTextRenderer.Draw(canvas, "F5 REFRESH  |  ARROWS SELECT  |  ENTER/M MOUNT", x + 55, y + 32, Muted);
 
             if (Window.Width >= 1000)
             {
@@ -300,7 +300,7 @@ namespace ZonderqOS.GUI.Apps
                 if (!exists)
                 {
                     if (row == 0 && CurrentCount() == 0)
-                        SmallTextRenderer.Draw(canvas, "BRAK ELEMENTOW", x + 18, ry + 24, Muted);
+                        SmallTextRenderer.Draw(canvas, "NO ITEMS", x + 18, ry + 24, Muted);
                     continue;
                 }
 
@@ -356,12 +356,12 @@ namespace ZonderqOS.GUI.Apps
             int height = 382;
             canvas.DrawFilledRectangle(Panel, x, y, width, height);
             canvas.DrawRectangle(Border, x, y, width, height);
-            SmallTextRenderer.Draw(canvas, "SZCZEGOLY", x + 16, y + 16, Text);
+            SmallTextRenderer.Draw(canvas, "DETAILS", x + 16, y + 16, Text);
             canvas.DrawLine(Border, x + 16, y + 36, x + width - 16, y + 36);
 
             if (CurrentCount() <= 0 || selection < 0 || selection >= CurrentCount())
             {
-                SmallTextRenderer.Draw(canvas, "BRAK WYBRANEGO ELEMENTU", x + 16, y + 58, Muted);
+                SmallTextRenderer.Draw(canvas, "NO ITEM SELECTED", x + 16, y + 58, Muted);
                 return;
             }
 
@@ -381,7 +381,7 @@ namespace ZonderqOS.GUI.Apps
             DrawDetailLine(canvas, x, y + 118, width, "ROZMIAR", deviceSizeText[index], Text);
             DrawDetailLine(canvas, x, y + 148, width, "PARAMETRY", deviceDetails[index], Muted);
             DrawInfoBox(canvas, x + 14, y + 205, width - 28,
-                "R ponownie odczytuje tablice partycji wybranego dysku. Operacja nie formatuje nosnika.", Warning);
+                "R reloads the selected disk's partition table. This does not format the device.", Warning);
         }
 
         private void RenderPartitionDetails(Canvas canvas, int x, int y, int width)
@@ -396,7 +396,7 @@ namespace ZonderqOS.GUI.Apps
                 string.IsNullOrEmpty(mount) ? Muted : Good);
             DrawInfoBox(canvas, x + 14, y + 205, width - 28,
                 source == 0 ? "Wolumin systemowy / jest chroniony przed odmontowaniem." :
-                "ENTER lub M montuje/odmontowuje FAT. Brak automatycznego formatowania.",
+                "ENTER or M mounts/unmounts FAT. Automatic formatting is disabled.",
                 source == 0 ? Warning : Good);
         }
 
@@ -432,7 +432,7 @@ namespace ZonderqOS.GUI.Apps
             int gap = 10;
             int buttonWidth = (width - gap) / 2;
 
-            DrawAction(canvas, 0, x, y, buttonWidth, "ODSWIEZ", "F5", IconType.Refresh, Good);
+            DrawAction(canvas, 0, x, y, buttonWidth, "REFRESH", "F5", IconType.Refresh, Good);
 
             string label;
             string hint;
@@ -648,7 +648,7 @@ namespace ZonderqOS.GUI.Apps
         {
             if (tab != 0 || deviceCount <= 0 || selection < 0 || selection >= deviceCount)
             {
-                SetStatus("BRAK WYBRANEGO DYSKU", Danger);
+                SetStatus("NO DISK SELECTED", Danger);
                 return;
             }
 
@@ -658,7 +658,7 @@ namespace ZonderqOS.GUI.Apps
                 var device = StorageManager.GetDevice(source);
                 if (device == null)
                 {
-                    SetStatus("NIE MOZNA ODCZYTAC DYSKU", Danger);
+                    SetStatus("CANNOT READ DISK", Danger);
                     return;
                 }
 
@@ -668,7 +668,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch
             {
-                SetStatus("BLAD PONOWNEGO SKANOWANIA DYSKU", Danger);
+                SetStatus("DISK RESCAN FAILED", Danger);
             }
         }
 
@@ -696,7 +696,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 else
                 {
-                    SetStatus(string.IsNullOrEmpty(error) ? "NIE UDALO SIE ZAMONTOWAC" : error, Danger);
+                    SetStatus(string.IsNullOrEmpty(error) ? "MOUNT FAILED" : error, Danger);
                 }
             }
             else
@@ -708,7 +708,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 else
                 {
-                    SetStatus(string.IsNullOrEmpty(error) ? "NIE UDALO SIE ODMONTOWAC" : error, Danger);
+                    SetStatus(string.IsNullOrEmpty(error) ? "UNMOUNT FAILED" : error, Danger);
                 }
             }
         }
