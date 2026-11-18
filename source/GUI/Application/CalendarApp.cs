@@ -264,7 +264,7 @@ namespace ZonderqOS.GUI.Apps
             DrawInfoLine(canvas, x, y + 155, width, "YEAR", displayYear);
 
             int zone = global::ZonderqOS.SystemSettings.TimeZoneOffsetHours;
-            SmallTextRenderer.Draw(canvas, "STREFA CZASOWA", x + 16, y + 207, Muted);
+            SmallTextRenderer.Draw(canvas, "TIME ZONE", x + 16, y + 207, Muted);
             SmallTextRenderer.Draw(canvas, "UTC", x + 16, y + 228, Text);
             if (zone >= 0)
                 SmallTextRenderer.Draw(canvas, "+", x + 43, y + 228, Text);
@@ -277,7 +277,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, MonthNames[todayMonth - 1], x + 28, y + 344, Text);
             SmallTextRenderer.DrawInt(canvas, todayYear, x + 28, y + 367, Text);
 
-            SmallTextRenderer.DrawClipped(canvas, "Kalendarz korzysta z czasu systemowego i ustawionej strefy UTC.",
+            SmallTextRenderer.DrawClipped(canvas, "Calendar uses system time and the configured UTC time zone.",
                 x + 16, y + 420, width - 32, Muted);
         }
 
