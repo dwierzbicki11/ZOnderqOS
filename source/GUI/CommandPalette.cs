@@ -261,7 +261,7 @@ namespace ZonderqOS.GUI
                 UiMetrics.ButtonRadius, SearchSurface,
                 string.IsNullOrEmpty(query) ? Border : SystemTheme.AccentBorder);
 
-            string display = string.IsNullOrEmpty(query) ? "Wpisz np. terminal, settings, disk..." : query;
+            string display = string.IsNullOrEmpty(query) ? "Type e.g. terminal, settings, disk..." : query;
             Color color = string.IsNullOrEmpty(query) ? Muted : Text;
             SmallTextRenderer.DrawClipped(canvas, display, x + 13, y + 15,
                 System.Math.Max(40, width - 42), color);
