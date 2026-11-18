@@ -24,7 +24,8 @@ commit=$COMMIT_SHA
 iso=$ISO_PATH
 iso_sha256=$ISO_SHA256
 vm_config=-M q35 -accel tcg -cpu Nehalem -smp 1 -m 8192M -vga std
-duration_sec=3600
+requested_sample_span_sec=3600
+qemu_wall_min_duration_sec=3780
 EOF
 
 echo "[SOAK] Branch: $BRANCH_NAME ($COMMIT_SHA)"
@@ -35,7 +36,7 @@ python3 -u "$ROOT_DIR/tools/measure_scenarios.py" \
     --scenario A \
     --smp 1 \
     --ram 8192M \
-    --duration 3600 \
+    --duration 3780 \
     --iso "$ISO_PATH" \
     --kernel "$ELF_PATH" \
     --out-dir "$OUT_DIR"
@@ -69,17 +70,30 @@ for line in serial_log.read_text(errors="ignore").splitlines():
 if not samples:
     raise SystemExit("[SOAK][FAIL] Brak próbek [MEM_SAMPLE] w serial.log")
 
+# One boot / monotonic kernel timer is required for a meaningful soak.
+if any(samples[i]["sec"] <= samples[i - 1]["sec"] for i in range(1, len(samples))):
+    raise SystemExit("[SOAK][FAIL] Non-monotonic or duplicate MEM_SAMPLE seconds")
+
 t0 = samples[0]["sec"]
-def nearest(target_offset):
+span = samples[-1]["sec"] - t0
+if span < 3600:
+    raise SystemExit(
+        f"[SOAK][FAIL] Niepełne 60 min od pierwszej próbki: {span}s < 3600s"
+    )
+
+def at_or_after(target_offset):
     target = t0 + target_offset
-    return min(samples, key=lambda s: abs(s["sec"] - target))
+    for sample in samples:
+        if sample["sec"] >= target:
+            return sample
+    raise SystemExit(f"[SOAK][FAIL] Brak próbki dla T+{target_offset}s")
 
 marks = {
     0: samples[0],
-    10: nearest(600),
-    20: nearest(1200),
-    30: nearest(1800),
-    60: samples[-1],
+    10: at_or_after(600),
+    20: at_or_after(1200),
+    30: at_or_after(1800),
+    60: at_or_after(3600),
 }
 
 base = marks[0]["used_mb"]
@@ -90,7 +104,7 @@ lines = [
     f"- Commit: `{commit}`",
     f"- ISO SHA-256: `{iso_sha}`",
     f"- VM: `-M q35 -accel tcg -cpu Nehalem -smp 1 -m 8192M`",
-    f"- Samples captured: `{len(samples)}` (span `{samples[-1]['sec'] - t0}s`)",
+    f"- Samples captured: `{len(samples)}` (span `{span}s`, >=3600s verified)",
     f"",
     f"| Czas | sec | Used RAM (MiB) | Przyrost od T=0 (MiB) | p_gc | gc_comm (KB) | gc_heap (KB) | gc_gen | threads |",
     f"|---|---:|---:|---:|---:|---:|---:|---:|---:|",

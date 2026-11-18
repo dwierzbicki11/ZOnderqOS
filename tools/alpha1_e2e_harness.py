@@ -273,19 +273,53 @@ def stage_auth_lock_wrong_pass(work_dir):
 
 def stage_fat32_and_acl(work_dir):
     print("[STAGE: fat32_acl] Running live FAT32 + non-root ACL QEMU E2E...", flush=True)
-    res = subprocess.run(
-        ["python3", str(ROOT / "tools/qemu_audit_e2e.py")],
-        capture_output=True, text=True, check=True
-    )
-    print(res.stdout, flush=True)
-    return {"status": "PASS"}
+    # These are host-side source/regression tests, NOT the missing guest
+    # FAT32/ACL QEMU integration runner. Never promote them to E2E PASS.
+    host_cases = [
+        ROOT / "tests/test_gui_filemanager_create_acl.py",
+        ROOT / "tests/test_gui_fat32_create_incomplete_scan.py",
+        ROOT / "tests/test_gui_malformed_fat32_entries.py",
+    ]
+    subprocess.run([sys.executable, "-m", "pytest", "-q", *map(str, host_cases)],
+                   cwd=ROOT, check=True)
+    return {
+        "status": "BLOCKED",
+        "host_fat32_acl_regressions": "PASS",
+        "guest_fat32_acl_e2e": "NOT_TESTED",
+        "reason": "The former qemu_audit_e2e.py was an untracked AGY scratch file. "
+                  "A checked-in real guest FAT32/ACL runner is required. "
+                  "Host source contracts are not guest I/O evidence.",
+    }
 
 
 def stage_updates_and_bootguard():
     print("[STAGE: updates_bootguard] Running UpdateEngineSmoke + C BootGuard + pytest...", flush=True)
     subprocess.run(["dotnet", "run", "--project", str(ROOT / "tests/UpdateEngineSmoke/UpdateEngineSmoke.csproj"), "-v:minimal"], check=True)
     subprocess.run(["python3", "-m", "pytest", "-q", str(ROOT / "tests/test_p0_update_trust_gate.py"), str(ROOT / "tests/test_update_engine_ab.py")], check=True)
-    return {"status": "PASS", "ovmf_efi": "BLOCKED (no gnu-efi headers on host)"}
+    # OVMF executes a real EFI BootGuard with a test-only Limine stub.
+    # It does NOT execute the production Limine -> ZOnderqOS kernel chain.
+    make = subprocess.run(
+        ["make", "-C", str(ROOT / "tools/bootguard"),
+         "all", "build/limine_stub.efi"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    if make.returncode != 0:
+        return {
+            "status": "BLOCKED",
+            "update_engine_smoke": "PASS",
+            "ovmf_efi_stub": "BLOCKED",
+            "real_uefi_kernel_chain": "NOT_TESTED",
+            "reason": "GNU-EFI build failed: " + make.stdout[-2000:],
+        }
+    subprocess.run(["bash", str(ROOT / "tests/test_bootguard_ovmf.sh")],
+                   cwd=ROOT, check=True)
+    return {
+        "status": "PARTIAL",
+        "update_engine_smoke": "PASS",
+        "ovmf_efi_stub": "PASS",
+        "real_uefi_kernel_chain": "NOT_TESTED",
+        "reason": "OVMF test uses limine_stub.efi, not a production Limine+kernel boot.",
+    }
 
 
 def main():
@@ -309,6 +343,11 @@ def main():
 
     (OUT_BASE / "e2e_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     print("\n[ALPHA1-E2E] SUMMARY:", json.dumps(report, indent=2), flush=True)
+    incomplete = [name for name, result in report["stages"].items()
+                  if result.get("status") != "PASS"]
+    if incomplete:
+        raise SystemExit("[ALPHA1-E2E] Release gate NOT PASSED: "
+                         + ", ".join(incomplete))
 
 
 if __name__ == "__main__":

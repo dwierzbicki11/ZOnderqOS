@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from pyfatfs.PyFatFS import PyFatFS
 
-ROOT = Path("/home/zonderq/Pulpit/ZOnderqOS")
+ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT_ISO = ROOT / "output-x64/ZonderqOS.iso"
 DEFAULT_OUTPUT_ELF = ROOT / "output-x64/ZonderqOS.elf"
 DEFAULT_DEBUG_ISO = ROOT / "bin/Debug/net10.0/linux-x64/cosmos/ZonderqOS.iso"

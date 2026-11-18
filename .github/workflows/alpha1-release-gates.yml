@@ -1,0 +1,26 @@
+name: Alpha 1 release harness contracts
+
+on:
+  pull_request:
+    paths:
+      - 'tools/alpha1_e2e_harness.py'
+      - 'tools/qemu-ram-soak-60min.sh'
+      - 'tools/measure_scenarios.py'
+      - 'tests/test_alpha1_release_gates.py'
+      - '.github/workflows/alpha1-release-gates.yml'
+  push:
+    branches:
+      - 'fix/alpha1-release-gates-3097'
+
+jobs:
+  host-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shell and Python syntax
+        run: |
+          bash -n tools/qemu-ram-soak-60min.sh
+          python3 -m py_compile tools/alpha1_e2e_harness.py tools/measure_scenarios.py tests/test_alpha1_release_gates.py
+      - name: Fail-closed soak and release status regressions
+        run: python3 -m unittest discover -s tests -p 'test_alpha1_release_gates.py' -v
