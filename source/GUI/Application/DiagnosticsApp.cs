@@ -20,7 +20,7 @@ namespace ZonderqOS.GUI.Apps
             Window.CloseAction = Close;
 
             titleLabel = new Label(25, 55, "Diagnostyka systemu", Color.MidnightBlue);
-            statusLabel = new Label(25, 100, "Status: GUI dziala poprawnie", Color.Green);
+            statusLabel = new Label(25, 100, "Status: GUI is working correctly", Color.Green);
             keyboardLabel = new Label(25, 135, "Klawiatura: aktywna", Color.Black);
             mouseLabel = new Label(25, 170, "Mysz: aktywna", Color.Black);
             graphicsLabel = new Label(25, 205, "Grafika: framebuffer Canvas aktywny", Color.Black);
