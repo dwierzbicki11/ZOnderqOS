@@ -469,7 +469,7 @@ namespace ZonderqOS.GUI.Apps
             string rotLabel = isRotating ? "OBROT: WL" : "OBROT: STOP";
             DrawBtn(canvas, rotLabel, contentX + 14, btnY + 32, 94, 22, isRotating);
 
-            SmallTextRenderer.Draw(canvas, "Chwyc myszka aby obracac recznie  Spacja: Pauza  Tab: Tryb",
+            SmallTextRenderer.Draw(canvas, "Drag the mouse to rotate manually  Space: Pause  Tab: Mode",
                 contentX + 118, btnY + 37, MutedColor);
         }
 

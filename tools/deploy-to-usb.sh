@@ -10,24 +10,24 @@ echo "=== ZOnderqOS USB Deployer ==="
 
 for cmd in lsblk udisksctl sha256sum stat awk cp mkdir sync date; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "[BLAD] Brakuje wymaganego narzedzia: $cmd" >&2
+    echo "[ERROR] Missing required tool: $cmd" >&2
     exit 1
   fi
 done
 
 if [[ ! -f "$KERNEL_BIN" || ! -s "$KERNEL_BIN" ]]; then
-  echo "[BLAD] Brak pliku kernela: $KERNEL_BIN" >&2
+  echo "[ERROR] Kernel file not found: $KERNEL_BIN" >&2
   exit 1
 fi
 
 KERNEL_BYTES="$(stat -c%s "$KERNEL_BIN")"
 if (( KERNEL_BYTES <= 0 || KERNEL_BYTES > MAX_IMAGE_BYTES )); then
-  echo "[BLAD] Obraz kernela $KERNEL_BIN ma niedozwolony rozmiar ($KERNEL_BYTES B; limit <= $MAX_IMAGE_BYTES B / 32 MiB)." >&2
+  echo "[ERROR] Kernel image $KERNEL_BIN has an invalid size ($KERNEL_BYTES B; limit <= $MAX_IMAGE_BYTES B / 32 MiB)." >&2
   exit 1
 fi
 
 if [[ ! -d "$UPDATES_DIR" || ! -f "$UPDATES_DIR/update.manifest" || ! -f "$UPDATES_DIR/ZonderqOS.elf" ]]; then
-  echo "[BLAD] Niekompletny katalog aktualizacji: $UPDATES_DIR" >&2
+  echo "[ERROR] Incomplete update directory: $UPDATES_DIR" >&2
   exit 1
 fi
 
@@ -35,23 +35,23 @@ fi
 DEV="$(lsblk -lno PATH,LABEL | awk '$2=="ZONDERQDATA"{print $1; exit}' || true)"
 
 if [[ -z "$DEV" ]]; then
-  echo "[BLAD] Nie wykryto partycji ZONDERQDATA na podlaczonym pendrive!" >&2
-  echo "Podlacz pendrive z systemem ZOnderqOS do portu USB i sprobuj ponownie." >&2
+  echo "[ERROR] ZONDERQDATA partition was not detected on the connected USB drive!" >&2
+  echo "Connect the ZOnderqOS USB drive and try again." >&2
   exit 1
 fi
 
-echo "-> Wykryto partycje ZONDERQDATA na urzadzeniu: $DEV"
+echo "-> Detected ZONDERQDATA partition on device: $DEV"
 
 # Mount using udisksctl (no sudo password required)
 udisksctl mount -b "$DEV" --no-user-interaction >/dev/null 2>&1 || true
 MOUNT_PATH="$(lsblk -lno MOUNTPOINT "$DEV" | awk 'NF{print; exit}' || true)"
 
 if [[ -z "$MOUNT_PATH" || ! -d "$MOUNT_PATH" ]]; then
-  echo "[BLAD] Nie udalo sie zamontowac partycji $DEV." >&2
+  echo "[ERROR] Failed to mount partition $DEV." >&2
   exit 1
 fi
 
-echo "-> Zamontowano w: $MOUNT_PATH"
+echo "-> Mounted at: $MOUNT_PATH"
 
 # 1. Update boot kernel in active slot and root while preserving existing A/B fallback slot
 mkdir -p "$MOUNT_PATH/boot/slot_a"
@@ -85,23 +85,23 @@ else
   FALLBACK_DIR="slot_b"
 fi
 
-echo "-> Kopiowanie nowego kernela do aktywnego Slotu $ACTIVE_SLOT ($MOUNT_PATH/boot/$ACTIVE_DIR/ZonderqOS.elf)..."
+echo "-> Copying new kernel to active slot $ACTIVE_SLOT ($MOUNT_PATH/boot/$ACTIVE_DIR/ZonderqOS.elf)..."
 cp -f "$KERNEL_BIN" "$MOUNT_PATH/boot/$ACTIVE_DIR/ZonderqOS.elf"
-echo "-> Kopiowanie nowego kernela do /boot/ZonderqOS.elf..."
+echo "-> Copying new kernel to /boot/ZonderqOS.elf..."
 cp -f "$KERNEL_BIN" "$MOUNT_PATH/boot/ZonderqOS.elf"
 
 KERNEL_SHA="$(sha256sum "$KERNEL_BIN" | awk '{print $1}')"
 echo "$KERNEL_SHA" > "$MOUNT_PATH/boot/$ACTIVE_DIR/kernel.sha256"
 
 if [[ ! -s "$MOUNT_PATH/boot/$FALLBACK_DIR/ZonderqOS.elf" ]]; then
-  echo "-> Inicjalizacja pustego slota zapasowego $FALLBACK_SLOT ($MOUNT_PATH/boot/$FALLBACK_DIR/ZonderqOS.elf)..."
+  echo "-> Initializing empty fallback slot $FALLBACK_SLOT ($MOUNT_PATH/boot/$FALLBACK_DIR/ZonderqOS.elf)..."
   cp -f "$KERNEL_BIN" "$MOUNT_PATH/boot/$FALLBACK_DIR/ZonderqOS.elf"
   echo "$KERNEL_SHA" > "$MOUNT_PATH/boot/$FALLBACK_DIR/kernel.sha256"
   FALLBACK_STATUS="Healthy"
   FALLBACK_VERSION="1.0.2"
   FALLBACK_BUILD="3120"
 else
-  echo "-> Zachowano istniejacy slot zapasowy $FALLBACK_SLOT ($MOUNT_PATH/boot/$FALLBACK_DIR/ZonderqOS.elf) dla rollbacku A/B."
+  echo "-> Preserved existing fallback slot $FALLBACK_SLOT ($MOUNT_PATH/boot/$FALLBACK_DIR/ZonderqOS.elf) for A/B rollback."
   FALLBACK_STATUS="$(read_boot_cfg "SLOT_${FALLBACK_SLOT}_STATUS" "Healthy")"
   FALLBACK_VERSION="$(read_boot_cfg "SLOT_${FALLBACK_SLOT}_VERSION" "1.0.1")"
   FALLBACK_BUILD="$(read_boot_cfg "SLOT_${FALLBACK_SLOT}_BUILD" "3100")"
@@ -206,23 +206,23 @@ cp -f "$MOUNT_PATH/boot/limine.conf" "$MOUNT_PATH/boot/limine/limine.conf"
 # 3. Update incoming packages in /updates and /var/updates/incoming
 mkdir -p "$MOUNT_PATH/updates"
 mkdir -p "$MOUNT_PATH/var/updates/incoming"
-echo "-> Kopiowanie pakietu aktualizacji do $MOUNT_PATH/updates/ i /var/updates/incoming/..."
+echo "-> Copying update package to $MOUNT_PATH/updates/ i /var/updates/incoming/..."
 cp -rf "$UPDATES_DIR"/. "$MOUNT_PATH/updates/"
 cp -rf "$UPDATES_DIR"/. "$MOUNT_PATH/var/updates/incoming/"
 
 # Weryfikacja obecnosci plikow aktualizacji
 if [[ ! -f "$MOUNT_PATH/updates/update.manifest" || ! -f "$MOUNT_PATH/updates/ZonderqOS.elf" ]]; then
-    echo "[BLAD] Pliki aktualizacji nie zostaly poprawnie skopiowane do /updates!" >&2
+    echo "[ERROR] Update files were not copied correctly to /updates!" >&2
     exit 1
 fi
 DEPLOYED_VERSION="$(awk -F= '$1=="VERSION"{gsub(/^[[:space:]]+|[[:space:]\r]+$/,"",$2); print $2; exit}' "$MOUNT_PATH/updates/update.manifest" || true)"
-echo "-> Zweryfikowano: pakiet aktualizacji (wersja ${DEPLOYED_VERSION:-unknown}) jest gotowy w /updates."
+echo "-> Verified: update package (version ${DEPLOYED_VERSION:-unknown}) is ready in /updates."
 
-echo "-> Synchronizacja buforow USB (sync)..."
+echo "-> Flushing USB buffers (sync)..."
 sync
 
-echo "-> Bezpieczne odmontowywanie partycji USB..."
+echo "-> Safely unmounting USB partition..."
 udisksctl unmount -b "$DEV" --no-user-interaction || true
 
-echo "=== Pomyslnie zaktualizowano pendrive ZOnderqOS! ==="
-echo "Mozesz bezpiecznie odpiac pendrive i uruchomic laptopa."
+echo "=== ZOnderqOS USB drive updated successfully! ==="
+echo "You may safely unplug the USB drive and boot the laptop."

@@ -17,7 +17,7 @@ echo "Source ISO:    $ISO"
 # Safety verification: ensure DEVICE is strictly the SanDisk USB
 MODEL="$(lsblk -dno MODEL "$DEVICE" || true)"
 if [[ "$MODEL" != *"SanDisk"* ]]; then
-  echo "[BLAD] Urzadzenie $DEVICE nie jest pendrivem SanDisk (wykryto: $MODEL)!"
+  echo "[ERROR] Device $DEVICE is not a SanDisk USB drive (detected: $MODEL)!"
   exit 1
 fi
 
@@ -41,10 +41,10 @@ sleep 1
 # Verify PART4 exists and has ZONDERQDATA label
 LABEL4="$(blkid -p -s LABEL -o value "$PART4" || true)"
 if [[ "$LABEL4" != "ZONDERQDATA" ]]; then
-  echo "[BLAD] Partycja $PART4 nie ma etykiety ZONDERQDATA (otrzymano: $LABEL4)!"
+  echo "[ERROR] Partition $PART4 does not have the ZONDERQDATA label (found: $LABEL4)!"
   exit 1
 fi
-echo "-> Partycja ZONDERQDATA ($PART4) zweryfikowana pomyslnie."
+echo "-> ZONDERQDATA partition ($PART4) verified successfully."
 
 # Mount EFI partition PART2 and seed UEFI Limine configuration
 MOUNT_EFI="$(mktemp -d /tmp/zonderq-efi-mount.XXXXXX)"
@@ -80,7 +80,7 @@ cp -f "$MOUNT_EFI/EFI/BOOT/limine.conf" "$MOUNT_EFI/EFI/limine/limine.conf"
 sync
 umount "$MOUNT_EFI"
 rmdir "$MOUNT_EFI"
-echo "-> Konfiguracja rozruchowa UEFI Limine na partycji EFI zaktualizowana pomyslnie."
+echo "-> Limine UEFI boot configuration on EFI partition updated successfully."
 
 # Mount data partition PART4 and ensure latest kernel and configs are in place
 MOUNT_DATA="$(mktemp -d /tmp/zonderq-data-mount.XXXXXX)"
@@ -92,7 +92,7 @@ if [[ ! -f "$KERNEL_BIN" && -f "$ROOT/output-3095/updates-package/ZonderqOS.elf"
 fi
 mkdir -p "$MOUNT_DATA/boot/slot_a" "$MOUNT_DATA/boot/slot_b" "$MOUNT_DATA/boot/limine" "$MOUNT_DATA/etc"
 
-echo "-> Instalowanie nowego kernela 1.0.2 do slotow i glownego pliku boot..."
+echo "-> Installing new kernel 1.0.2 to both slots and the main boot image..."
 cp -f "$KERNEL_BIN" "$MOUNT_DATA/boot/slot_a/ZonderqOS.elf"
 cp -f "$KERNEL_BIN" "$MOUNT_DATA/boot/slot_b/ZonderqOS.elf"
 cp -f "$KERNEL_BIN" "$MOUNT_DATA/boot/ZonderqOS.elf"
@@ -170,5 +170,5 @@ sync
 umount "$MOUNT_DATA"
 rmdir "$MOUNT_DATA"
 
-echo "=== Wdrozenie zakonczone pelnym sukcesem! ==="
-echo "Pendrive zostal w pelni i na czysto przygotowany."
+echo "=== Deployment completed successfully! ==="
+echo "USB drive fully prepared with a clean installation."

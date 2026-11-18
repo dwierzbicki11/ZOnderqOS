@@ -31,7 +31,7 @@ namespace ZonderqOS.GUI
         private static Canvas canvas;
         private static int frame;
         private static int progress;
-        private static string currentStep = "URUCHAMIANIE SYSTEMU";
+        private static string currentStep = "STARTING SYSTEM";
 
         internal static bool IsActive { get; private set; }
 

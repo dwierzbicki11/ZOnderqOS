@@ -13,10 +13,10 @@ SIGNER_KEY="${ZONDERQ_SIGNER_KEY:-ZONDERQ_OFFICIAL_RELEASE_KEY_GEN3}"
 fail() { printf '[ZONDERQ-PKG][ERROR] %s\n' "$*" >&2; exit 1; }
 
 for cmd in sha256sum openssl python3 mkdir cp stat; do
-    command -v "$cmd" >/dev/null 2>&1 || fail "Brakuje narzedzia: $cmd"
+    command -v "$cmd" >/dev/null 2>&1 || fail "Missing required tool: $cmd"
 done
 
-[[ -f "$KERNEL_BIN" && -s "$KERNEL_BIN" ]] || fail "Nie znaleziono pliku kernela ELF: $KERNEL_BIN"
+[[ -f "$KERNEL_BIN" && -s "$KERNEL_BIN" ]] || fail "Kernel ELF file not found: $KERNEL_BIN"
 
 mkdir -p "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/payload"
@@ -58,11 +58,11 @@ CHANGELOG=Aktualizacja jadra Cosmos 3.0.95 x64 Native Core;Obsluga bezpiecznego 
 COMPONENTS=Cosmos 3.0.95 x64 Native Core;ZonderqOS Kernel ELF;BootSlotManager A/B;IntegrityGuard 2.4
 EOF
 
-printf '\n[ZONDERQ-PKG] Pomyslnie wygenerowano pakiet aktualizacji USB!\n'
-printf '  Katalog:        %s\n' "$OUTPUT_DIR"
-printf '  Wersja celu:    %s (Build %s)\n' "$VERSION" "$BUILD"
-printf '  Architektura:   %s\n' "$ARCH"
-printf '  Kernel ELF:     %s (%s bajtow)\n' "$KERNEL_NAME" "$KERNEL_SIZE"
+printf '\n[ZONDERQ-PKG] USB update package generated successfully!\n'
+printf '  Directory:        %s\n' "$OUTPUT_DIR"
+printf '  Target version:    %s (Build %s)\n' "$VERSION" "$BUILD"
+printf '  Architecture:   %s\n' "$ARCH"
+printf '  Kernel ELF:     %s (%s bytes)\n' "$KERNEL_NAME" "$KERNEL_SIZE"
 printf '  SHA-256 kernel: %s\n' "$KERNEL_SHA256"
-printf '  Podpis HMAC:    %s\n' "$SIGNATURE"
-printf '  Plik manifestu: %s\n\n' "$MANIFEST"
+printf '  HMAC signature:    %s\n' "$SIGNATURE"
+printf '  Manifest file: %s\n\n' "$MANIFEST"

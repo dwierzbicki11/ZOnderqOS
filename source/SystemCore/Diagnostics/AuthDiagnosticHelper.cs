@@ -8,7 +8,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
         public static (bool ok, string reason, string metrics) RunIsolatedAuthTest()
         {
             return (false,
-                "Nie wykonywano rzeczywistych cykli GUI Lock/Unlock; konta pozostaly nietkniete",
+                "No real GUI lock/unlock cycles were performed; user accounts remained unchanged",
                 "auth_mutations=0;lock_cycles=NOT_TESTED;wrong_attempts=NOT_TESTED");
         }
     }

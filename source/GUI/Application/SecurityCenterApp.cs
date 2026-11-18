@@ -32,7 +32,7 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action closeCallback;
 
         // Status
-        private string statusMessage = "Ready do monitorowania bezpieczenstwa.";
+        private string statusMessage = "Ready to monitor security.";
 
         // Cached data
         private List<FileIntegrityRecord> cachedRecords = new List<FileIntegrityRecord>();
@@ -59,7 +59,7 @@ namespace ZonderqOS.GUI.Apps
         private string cachedFwCountsText = string.Empty;
 
         private string cachedStatusSource;
-        private string cachedStatusLine = "Status: Ready do monitorowania bezpieczenstwa.";
+        private string cachedStatusLine = "Status: Ready to monitor security.";
         private string cachedLastLogSource;
         private string cachedLastLogShort = "No log entries";
 
@@ -228,19 +228,19 @@ namespace ZonderqOS.GUI.Apps
                     // [ Przełącz Zaporę ]
                     if (Hit(mouseX, mouseY, wx + 196, btnY, 170, 30))
                     {
-                        if (!RequireRootSession("zmiana trybu zapory"))
+                        if (!RequireRootSession("change firewall mode"))
                             return;
                         FirewallMode next = FirewallManager.Mode == FirewallMode.Enabled ? FirewallMode.Strict : (FirewallManager.Mode == FirewallMode.Strict ? FirewallMode.Disabled : FirewallMode.Enabled);
                         FirewallManager.SetMode(next);
                         RefreshAllData();
-                        statusMessage = "Zmieniono tryb zapory na: " + ModeLabel(next);
+                        statusMessage = "Firewall mode changed to: " + ModeLabel(next);
                         return;
                     }
                     // [ Refresh Logi ]
                     if (Hit(mouseX, mouseY, wx + 376, btnY, 150, 30))
                     {
                         RefreshAllData();
-                        statusMessage = "Zaktualizowano stan telemetrii bezpieczenstwa.";
+                        statusMessage = "Security telemetry refreshed.";
                         return;
                     }
                 }
@@ -253,17 +253,17 @@ namespace ZonderqOS.GUI.Apps
                     {
                         IntegrityGuard.ScanAll();
                         RefreshAllData();
-                        statusMessage = "Completed skanowanie integralnosci.";
+                        statusMessage = "Integrity scan completed.";
                         return;
                     }
                     // [ Zaktualizuj Bazę (Re-baseline) ]
                     if (Hit(mouseX, mouseY, wx + 196, btnY, 210, 30))
                     {
-                        if (!RequireRootSession("aktualizacja bazy sum SHA-256"))
+                        if (!RequireRootSession("update SHA-256 hash database"))
                             return;
                         IntegrityGuard.UpdateBaseline();
                         RefreshAllData();
-                        statusMessage = "Baza sum kontrolnych SHA-256 zaktualizowana.";
+                        statusMessage = "SHA-256 hash database updated.";
                         return;
                     }
                 }
@@ -274,29 +274,29 @@ namespace ZonderqOS.GUI.Apps
                     int modeY = wy + 70;
                     if (Hit(mouseX, mouseY, wx + 26, modeY, 130, 24))
                     {
-                        if (!RequireRootSession("wlaczenie zapory"))
+                        if (!RequireRootSession("enable firewall"))
                             return;
                         FirewallManager.SetMode(FirewallMode.Enabled);
                         RefreshAllData();
-                        statusMessage = "Ustawiono tryb: STANDARDOWY.";
+                        statusMessage = "Firewall mode set to: STANDARD.";
                         return;
                     }
                     if (Hit(mouseX, mouseY, wx + 162, modeY, 130, 24))
                     {
-                        if (!RequireRootSession("tryb scisly zapory"))
+                        if (!RequireRootSession("strict firewall mode"))
                             return;
                         FirewallManager.SetMode(FirewallMode.Strict);
                         RefreshAllData();
-                        statusMessage = "Ustawiono tryb: SCISLY (STEALTH).";
+                        statusMessage = "Firewall mode set to: STRICT (STEALTH).";
                         return;
                     }
                     if (Hit(mouseX, mouseY, wx + 298, modeY, 130, 24))
                     {
-                        if (!RequireRootSession("wylaczenie zapory"))
+                        if (!RequireRootSession("disable firewall"))
                             return;
                         FirewallManager.SetMode(FirewallMode.Disabled);
                         RefreshAllData();
-                        statusMessage = "UWAGA: Zapora zostala wylaczona.";
+                        statusMessage = "WARNING: Firewall has been disabled.";
                         return;
                     }
 
@@ -304,11 +304,11 @@ namespace ZonderqOS.GUI.Apps
                     int btnY = wy + FooterButtonYOffset;
                     if (Hit(mouseX, mouseY, wx + 16, btnY, 200, 30))
                     {
-                        if (!RequireRootSession("reset regul zapory"))
+                        if (!RequireRootSession("reset firewall rules"))
                             return;
                         FirewallManager.ResetDefaultRules();
                         RefreshAllData();
-                        statusMessage = "Przywrocono domyslne reguly zapory.";
+                        statusMessage = "Default firewall rules restored.";
                         return;
                     }
                 }
@@ -319,7 +319,7 @@ namespace ZonderqOS.GUI.Apps
                     if (Hit(mouseX, mouseY, wx + 16, btnY, 150, 30))
                     {
                         RefreshLogs();
-                        statusMessage = "Dziennik audytu odswiezony.";
+                        statusMessage = "Audit log refreshed.";
                         return;
                     }
                 }
@@ -353,8 +353,8 @@ namespace ZonderqOS.GUI.Apps
 
             DrawTab(canvas, "🛡 STAN OCHRONY", wx + 12, tabY, tabW, tabH, activeTab == 0);
             DrawTab(canvas, "🔍 INTEGRALNOSC", wx + 12 + (tabW + tabGap), tabY, tabW, tabH, activeTab == 1);
-            DrawTab(canvas, "🧱 ZAPORA SIECIOWA", wx + 12 + (tabW + tabGap) * 2, tabY, tabW, tabH, activeTab == 2);
-            DrawTab(canvas, "📜 DZIENNIK AUDYTU", wx + 12 + (tabW + tabGap) * 3, tabY, tabW, tabH, activeTab == 3);
+            DrawTab(canvas, "🧱 FIREWALL", wx + 12 + (tabW + tabGap) * 2, tabY, tabW, tabH, activeTab == 2);
+            DrawTab(canvas, "📜 AUDIT LOG", wx + 12 + (tabW + tabGap) * 3, tabY, tabW, tabH, activeTab == 3);
 
             canvas.DrawLine(Border, wx + 10, tabY + tabH + 6, wx + ww - 10, tabY + tabH + 6);
 
@@ -414,8 +414,8 @@ namespace ZonderqOS.GUI.Apps
             cachedFwLastProto = lastProto;
 
             cachedFwCardStatus = "Tryb: " + ModeLabel(mode) + " (Blok: " + blocked + ")";
-            cachedFwLastBlockText = "Ostatnia blokada: " + lastPort + " (" + lastProto + ")";
-            cachedFwCountsText = "Przepuszczone: " + allowed + " | Zablokowane: " + blocked;
+            cachedFwLastBlockText = "Last blocked: " + lastPort + " (" + lastProto + ")";
+            cachedFwCountsText = "Allowed: " + allowed + " | Blocked: " + blocked;
         }
 
         private string GetStatusLine()
@@ -518,7 +518,7 @@ namespace ZonderqOS.GUI.Apps
             }
             else
             {
-                SmallTextRenderer.Draw(canvas, "SYSTEM JEST BEZPIECZNY I W PELNI CHRONIONY", textX, cy + 22, GreenColor);
+                SmallTextRenderer.Draw(canvas, "SYSTEM IS SECURE AND FULLY PROTECTED", textX, cy + 22, GreenColor);
                 SmallTextRenderer.Draw(canvas, cachedDashSafeText, textX, cy + 44, TextColor);
                 SmallTextRenderer.Draw(canvas, "Brute-force protection: PBKDF2-HMAC-SHA256 (4096 rounds) and AuthenticationGuard.", textX, cy + 64, MutedColor);
             }
@@ -532,11 +532,11 @@ namespace ZonderqOS.GUI.Apps
             UiPainter.RoundedPanel(canvas, wx + 16, cardY, cardW, cardH, 4, Panel, Border);
             SmallTextRenderer.Draw(canvas, "ANTY-TAMPER & INTEGRALNOSC", wx + 26, cardY + 10, GoldColor);
             SmallTextRenderer.Draw(canvas, cachedIntCardStatus, wx + 26, cardY + 30, isIntegrityClean ? GreenColor : RedColor);
-            SmallTextRenderer.Draw(canvas, "Baza: /etc/integrity.db", wx + 26, cardY + 50, MutedColor);
+            SmallTextRenderer.Draw(canvas, "Database: /etc/integrity.db", wx + 26, cardY + 50, MutedColor);
 
             // Card 2: Firewall
             UiPainter.RoundedPanel(canvas, wx + 16 + cardW + 18, cardY, cardW, cardH, 4, Panel, Border);
-            SmallTextRenderer.Draw(canvas, "ZAPORA SIECIOWA (FIREWALL)", wx + 26 + cardW + 18, cardY + 10, AccentColor);
+            SmallTextRenderer.Draw(canvas, "FIREWALL (FIREWALL)", wx + 26 + cardW + 18, cardY + 10, AccentColor);
             SmallTextRenderer.Draw(canvas, cachedFwCardStatus, wx + 26 + cardW + 18, cardY + 30, isFirewallActive ? GreenColor : GoldColor);
             SmallTextRenderer.Draw(canvas, cachedFwLastBlockText, wx + 26 + cardW + 18, cardY + 50, MutedColor);
 
@@ -544,14 +544,14 @@ namespace ZonderqOS.GUI.Apps
             int row2Y = cardY + cardH + 10;
             UiPainter.RoundedPanel(canvas, wx + 16, row2Y, cardW, cardH, 4, Panel, Border);
             SmallTextRenderer.Draw(canvas, "ACCOUNT AND LOGIN PROTECTION", wx + 26, row2Y + 10, GreenColor);
-            SmallTextRenderer.Draw(canvas, "✓ AuthenticationGuard dlawienie aktywne", wx + 26, row2Y + 30, TextColor);
-            SmallTextRenderer.Draw(canvas, "Zasada hasel: min. 8 znakow, cyfra i litera", wx + 26, row2Y + 50, MutedColor);
+            SmallTextRenderer.Draw(canvas, "✓ AuthenticationGuard throttling active", wx + 26, row2Y + 30, TextColor);
+            SmallTextRenderer.Draw(canvas, "Password policy: minimum 8 characters, a digit and a letter", wx + 26, row2Y + 50, MutedColor);
 
             // Card 4: Audit Logs
             UiPainter.RoundedPanel(canvas, wx + 16 + cardW + 18, row2Y, cardW, cardH, 4, Panel, Border);
-            SmallTextRenderer.Draw(canvas, "DZIENNIK ZDARZEN (AUDYT)", wx + 26 + cardW + 18, row2Y + 10, AccentColor);
+            SmallTextRenderer.Draw(canvas, "EVENT LOG (AUDIT)", wx + 26 + cardW + 18, row2Y + 10, AccentColor);
             SmallTextRenderer.Draw(canvas, GetLastLogShort(), wx + 26 + cardW + 18, row2Y + 30, TextColor);
-            SmallTextRenderer.Draw(canvas, "Plik: /var/log/auth.log", wx + 26 + cardW + 18, row2Y + 50, MutedColor);
+            SmallTextRenderer.Draw(canvas, "File: /var/log/auth.log", wx + 26 + cardW + 18, row2Y + 50, MutedColor);
 
             // Bottom Action Buttons
             int btnY = cy + 280;
@@ -594,7 +594,7 @@ namespace ZonderqOS.GUI.Apps
 
             int startY = cy + 34;
             // Table Header
-            SmallTextRenderer.Draw(canvas, "SCIEZKA PLIKU", wx + 26, startY, MutedColor);
+            SmallTextRenderer.Draw(canvas, "FILE PATH", wx + 26, startY, MutedColor);
             SmallTextRenderer.Draw(canvas, "CHMOD", wx + 210, startY, MutedColor);
             SmallTextRenderer.Draw(canvas, "STATUS", wx + 270, startY, MutedColor);
             SmallTextRenderer.Draw(canvas, "SUMA SHA-256 (PREFIX)", wx + 380, startY, MutedColor);
@@ -610,11 +610,11 @@ namespace ZonderqOS.GUI.Apps
                 SmallTextRenderer.Draw(canvas, r.Path, wx + 26, rowY + 4, TextColor);
                 SmallTextRenderer.DrawInt(canvas, r.CurrentPerms, wx + 210, rowY + 4, TextColor);
 
-                string st = "✓ ZGODNY";
+                string st = "✓ MATCH";
                 Color stCol = GreenColor;
-                if (r.Status == IntegrityStatus.Modified) { st = "⚠ ZMODYFIKOWANY"; stCol = RedColor; }
+                if (r.Status == IntegrityStatus.Modified) { st = "⚠ MODIFIED"; stCol = RedColor; }
                 else if (r.Status == IntegrityStatus.Missing) { st = "✕ FILE MISSING"; stCol = RedColor; }
-                else if (r.Status == IntegrityStatus.PermissionMismatch) { st = "⚠ ZLY CHMOD"; stCol = GoldColor; }
+                else if (r.Status == IntegrityStatus.PermissionMismatch) { st = "⚠ INVALID CHMOD"; stCol = GoldColor; }
 
                 SmallTextRenderer.Draw(canvas, st, wx + 270, rowY + 4, stCol);
 
@@ -649,7 +649,7 @@ namespace ZonderqOS.GUI.Apps
             int cardW = ww - 32;
             UiPainter.RoundedPanel(canvas, wx + 16, cy + 2, cardW, 55, 6, Panel, Border);
 
-            SmallTextRenderer.Draw(canvas, "TRYB OCHRONY ZAPORY:", wx + 26, cy + 10, GoldColor);
+            SmallTextRenderer.Draw(canvas, "FIREWALL PROTECTION MODE:", wx + 26, cy + 10, GoldColor);
             int mY = cy + 24;
 
             DrawModeBtn(canvas, "STANDARDOWA", wx + 26, mY, 130, 24, FirewallManager.Mode == FirewallMode.Enabled);
@@ -664,7 +664,7 @@ namespace ZonderqOS.GUI.Apps
             int tableH = 205;
             UiPainter.RoundedPanel(canvas, wx + 16, tableY, cardW, tableH, 6, Panel, Border);
 
-            SmallTextRenderer.Draw(canvas, "REGULY FILTROWANIA PAKIETOW:", wx + 26, tableY + 10, AccentColor);
+            SmallTextRenderer.Draw(canvas, "PACKET FILTERING RULES:", wx + 26, tableY + 10, AccentColor);
 
             int startY = tableY + 28;
             SmallTextRenderer.Draw(canvas, "PORT", wx + 26, startY, MutedColor);
@@ -729,7 +729,7 @@ namespace ZonderqOS.GUI.Apps
             int panelH = 265;
             UiPainter.RoundedPanel(canvas, wx + 16, cy + 2, panelW, panelH, 6, Panel, Border);
 
-            SmallTextRenderer.Draw(canvas, "DZIENNIK ZDARZEN BEZPIECZENSTWA (/var/log/auth.log):", wx + 26, cy + 12, GoldColor);
+            SmallTextRenderer.Draw(canvas, "SECURITY EVENT LOG (/var/log/auth.log):", wx + 26, cy + 12, GoldColor);
 
             int startY = cy + 34;
             int lineH = 18;

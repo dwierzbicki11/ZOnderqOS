@@ -167,7 +167,7 @@ namespace ZonderqOS.GUI.Apps
 
                 // Buttons row at wy + 10
                 int btnY = wy + 10;
-                // [NOWA GRA] wx + 16, w: 90
+                // [NEW GAME] wx + 16, w: 90
                 if (Hit(mouseX, mouseY, wx + 16, btnY, 90, 24))
                 {
                     StartNewGame();
@@ -361,10 +361,10 @@ namespace ZonderqOS.GUI.Apps
 
             // Controls Toolbar (wy + 8, h: 28)
             int btnY = wy + 8;
-            DrawButton(canvas, "NOWA GRA", wx + 14, btnY, 90, 24, Panel, Border, TextColor);
+            DrawButton(canvas, "NEW GAME", wx + 14, btnY, 90, 24, Panel, Border, TextColor);
             if (phase == GamePhase.Placement)
             {
-                DrawButton(canvas, "LOSUJ FLOTE", wx + 110, btnY, 105, 24, Panel, Border, AccentColor);
+                DrawButton(canvas, "RANDOM FLEET", wx + 110, btnY, 105, 24, Panel, Border, AccentColor);
                 DrawButton(canvas, "START BITWY", wx + 222, btnY, 115, 24, GreenColor, Border, Color.Black);
             }
 

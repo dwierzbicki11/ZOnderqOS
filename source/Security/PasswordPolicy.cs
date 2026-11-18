@@ -23,13 +23,13 @@ namespace ZonderqOS
 
             if (password.Length < MinLength)
             {
-                reason = "HASLO MUSI MIEC MINIMUM 8 ZNAKOW";
+                reason = "PASSWORD MUST BE AT LEAST 8 CHARACTERS LONG";
                 return false;
             }
 
             if (password.Length > MaxLength)
             {
-                reason = "HASLO JEST ZA DLUGIE";
+                reason = "PASSWORD IS TOO LONG";
                 return false;
             }
 
@@ -41,7 +41,7 @@ namespace ZonderqOS
                 char ch = password[i];
                 if (ch < 32 || ch > 126)
                 {
-                    reason = "HASLO MOZE UZYWAC TYLKO DRUKOWALNYCH ZNAKOW ASCII";
+                    reason = "PASSWORD MAY CONTAIN ONLY PRINTABLE ASCII CHARACTERS";
                     return false;
                 }
 
@@ -53,7 +53,7 @@ namespace ZonderqOS
 
             if (!hasLetter || !hasDigit)
             {
-                reason = "HASLO MUSI ZAWIERAC LITERE I CYFRE";
+                reason = "PASSWORD MUST CONTAIN A LETTER AND A DIGIT";
                 return false;
             }
 

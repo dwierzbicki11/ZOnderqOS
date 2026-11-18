@@ -235,7 +235,7 @@ namespace ZonderqOS.GUI.Apps
 
             // Mini titlebar
             canvas.DrawFilledRectangle(SystemTheme.Accent, prevX + 1, prevY + 1, prevW - 2, 14);
-            SmallTextRenderer.Draw(canvas, "PODGLAD MOTYWU", prevX + 6, prevY + 4, Color.White);
+            SmallTextRenderer.Draw(canvas, "THEME PREVIEW", prevX + 6, prevY + 4, Color.White);
 
             // Mini buttons
             canvas.DrawFilledRectangle(Color.FromArgb(200, 220, 240), prevX + prevW - 26, prevY + 4, 6, 6);

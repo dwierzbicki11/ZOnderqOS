@@ -55,7 +55,7 @@ namespace ZonderqOS.GUI.Apps
         private int hoveredRow = -1;
         private int hoveredAction = -1;
         private string searchText = string.Empty;
-        private string statusMessage = "GOTOWE";
+        private string statusMessage = "READY";
         private Color statusColor = Good;
 
         public AppCenterApp(int x, int y, AppRegistry appRegistry, Action onClose)
@@ -169,7 +169,7 @@ namespace ZonderqOS.GUI.Apps
                 selectedVisibleIndex = 0;
                 offset = 0;
                 RebuildFilter();
-                SetStatus("ZMIENIONO KATEGORIE", SystemTheme.Accent);
+                SetStatus("CATEGORY CHANGED", SystemTheme.Accent);
                 return;
             }
 
@@ -350,7 +350,7 @@ namespace ZonderqOS.GUI.Apps
                 Math.Max(50, width - 92), Text);
             SmallTextRenderer.Draw(canvas, "ZONDERQOS BUILT-IN", x + 76, y + 87, Good);
 
-            DrawDetailLine(canvas, x, y + 127, width, "KATEGORIA", CategoryLabel(app.Category), Text);
+            DrawDetailLine(canvas, x, y + 127, width, "CATEGORY", CategoryLabel(app.Category), Text);
             DrawDetailLine(canvas, x, y + 158, width, "STATUS", "ZAINSTALOWANA", Good);
             DrawDetailLine(canvas, x, y + 189, width, "SOURCE", "SYSTEM", Text);
             DrawDetailLine(canvas, x, y + 220, width, "ACTION", "LAUNCH", SystemTheme.Accent);
@@ -501,7 +501,7 @@ namespace ZonderqOS.GUI.Apps
             selectedVisibleIndex = 0;
             offset = 0;
             RebuildFilter();
-            SetStatus("ZMIENIONO KATEGORIE", SystemTheme.Accent);
+            SetStatus("CATEGORY CHANGED", SystemTheme.Accent);
         }
 
         private void MoveSelection(int delta)
@@ -567,7 +567,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void SetStatus(string message, Color color)
         {
-            statusMessage = message ?? "GOTOWE";
+            statusMessage = message ?? "READY";
             statusColor = color;
         }
 

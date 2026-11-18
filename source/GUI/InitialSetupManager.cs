@@ -153,7 +153,7 @@ namespace ZonderqOS.GUI
                 if (key.Key == ConsoleKeyEx.Escape || key.Key == ConsoleKeyEx.Delete)
                 {
                     ClearActiveField();
-                    SetStatus("POLE WYCZYSZCZONE", Muted);
+                    SetStatus("FIELD CLEARED", Muted);
                     return;
                 }
 
@@ -450,7 +450,7 @@ namespace ZonderqOS.GUI
 
                 IconManager.DrawScaled(canvas, IconType.Settings,
                     layout.HeaderIconX, layout.HeaderIconY, layout.HeaderIconSize, layout.HeaderIconSize);
-                canvas.DrawString("Pierwsza konfiguracja", PCScreenFont.DefaultFont, Text,
+                canvas.DrawString("Initial setup", PCScreenFont.DefaultFont, Text,
                     layout.HeaderTitleX, layout.HeaderTitleY);
                 SmallTextRenderer.DrawClipped(canvas,
                     "DEFAULT ROOT PASSWORD MUST BE CHANGED BEFORE STARTING THE DESKTOP",

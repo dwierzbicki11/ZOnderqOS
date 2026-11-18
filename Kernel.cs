@@ -41,7 +41,7 @@ namespace ZonderqOS
                 if (!DiagnosticConsoleBoot)
                 {
                     BootSplash.Start();
-                    BootSplash.Advance(8, "SPRAWDZANIE PAMIECI I DYSKOW");
+                    BootSplash.Advance(8, "CHECKING MEMORY AND DISKS");
                 }
                 if (!Disk.Initialize())
                     throw new InvalidOperationException(
@@ -54,7 +54,7 @@ namespace ZonderqOS
                 ZonderqOS.Platform.SpeakerInitializer.Initialize();
                 UserManager.Initialize();
                 Command.Initialize();
-                BootSplash.Advance(43, "URUCHAMIANIE POWLOKI");
+                BootSplash.Advance(43, "STARTING SHELL");
                 EnvironmentManager.Initialize();
                 SecurityLogger.Initialize();
                 PermissionManager.Initialize();
@@ -66,7 +66,7 @@ namespace ZonderqOS
                 SystemGuardian.Initialize();
                 SystemSettings.Load();
                 ZonderqOS.Localization.LocalizationManager.Initialize();
-                BootSplash.Advance(72, "WCZYTYWANIE USTAWIEN");
+                BootSplash.Advance(72, "LOADING SETTINGS");
                 if (DiagnosticConsoleBoot)
                 {
                     Console.WriteLine("ZOnderqOS - physical hardware input diagnostics");

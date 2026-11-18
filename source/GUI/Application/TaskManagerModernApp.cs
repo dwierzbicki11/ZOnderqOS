@@ -2049,12 +2049,12 @@ namespace ZonderqOS.GUI.Apps
             DrawKeyText(canvas, x, stats, half, "RAM ZAINSTALOWANY", app.InstalledRamText);
             DrawKeyText(canvas, x, stats + 20, half, "RAM WYKRYTY (FIRMWARE)", app.UsableRamText);
             DrawKeyText(canvas, x, stats + 40, half, "PULA HEAP COSMOS", app.HeapPoolText);
-            DrawKeyText(canvas, x, stats + 60, half, "STRONY PAMIECI", app.MemoryPagesText);
+            DrawKeyText(canvas, x, stats + 60, half, "MEMORY PAGES", app.MemoryPagesText);
             int leftValX = DrawKeyLabel(canvas, x, stats + 80, half, "STRONY GC/RAT/SYS");
             SmallTextRenderer.DrawPageBreakdown(canvas, app.RawGcHeapPages, app.RawRatHeapPages, app.RawSysPages, leftValX, stats + 80, Text);
             DrawKeyLabel(canvas, x, stats + 100, half, "BUFORY GRAFICZNE");
             SmallTextRenderer.DrawByteSizeSmart(canvas, app.RawGfxBufferBytes, leftValX, stats + 100, Text);
-            DrawKeyLabel(canvas, x, stats + 120, half, "DELTA PAMIECI");
+            DrawKeyLabel(canvas, x, stats + 120, half, "MEMORY DELTA");
             SmallTextRenderer.DrawMemoryDeltaPages(canvas, app.RawDeltaPages, PageAllocator.PageSize, leftValX, stats + 120, Text);
             // Optimizer counters: numeric drawing avoids a fresh string on
             // each telemetry refresh. "Candidate" is unrooted cache memory,

@@ -195,7 +195,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
             {
                 Name = "App Cycles (100x)",
                 Status = DiagnosticStatus.NotTested,
-                Reason = "Nie wykonywano operacji GUI; petla nie jest testem otwierania aplikacji",
+                Reason = "No GUI interactions were performed; the loop is not an application launch test",
                 DurationMs = sw.ElapsedMilliseconds,
                 Metrics = $"simulated_iterations={completed};real_app_cycles=0"
             });

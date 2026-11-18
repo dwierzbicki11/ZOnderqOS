@@ -384,7 +384,7 @@ namespace ZonderqOS.GUI.Apps
 
             // Timer (right)
             int timerX = headerX + headerWidth - 45;
-            SmallTextRenderer.Draw(canvas, "CZAS", timerX, headerY + 7, MutedColor);
+            SmallTextRenderer.Draw(canvas, "TIME", timerX, headerY + 7, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, elapsedSeconds, timerX, headerY + 22, TextColor);
 
             // Board grid

@@ -1197,8 +1197,8 @@ namespace ZonderqOS.GUI
                 SecurityLogger.LogSessionLockEvent(cachedUnlockLogMessage);
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Security,
-                    "BEZPIECZENSTWO",
-                    "Sesja odblokowana",
+                    "SECURITY",
+                    "Session unlocked",
                     "Desktop access restored after authentication.");
             }
             return unlocked;
@@ -1812,7 +1812,7 @@ namespace ZonderqOS.GUI
                 {
                     if (stream == null)
                     {
-                        Console.WriteLine("[GUI] Not found zasobu tapety PNG.");
+                        Console.WriteLine("[GUI] PNG wallpaper resource not found.");
                         return;
                     }
 
@@ -1878,7 +1878,7 @@ namespace ZonderqOS.GUI
             {
                 string curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion;
                 string curBuild = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentBuild;
-                cachedWatermarkBuild = "ZOnderqOS 1.0 Alpha • Build " + curBuild + " [ALFA 1]";
+                cachedWatermarkBuild = "ZOnderqOS 1.0 Alpha • Build " + curBuild + " [ALPHA 1]";
                 cachedWatermarkVersion = "Version " + curVer + " • Cosmos 3.0.95 x64 Native";
             }
 

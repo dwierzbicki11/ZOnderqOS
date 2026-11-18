@@ -1023,7 +1023,7 @@ namespace ZonderqOS.GUI.Apps
             sy += lineH;
             SmallTextRenderer.Draw(canvas, "  Uzyta:        " + usedMb + " MB (" + ((usedMb * 100) / Math.Max(1, totalMb)) + "%)", sx, sy, TextColor);
             sy += lineH;
-            SmallTextRenderer.Draw(canvas, "  Dostepna:     " + freeMb + " MB", sx, sy, TextColor);
+            SmallTextRenderer.Draw(canvas, "  Available:     " + freeMb + " MB", sx, sy, TextColor);
 
             // Memory bar
             sy += lineH - 4;
@@ -1039,7 +1039,7 @@ namespace ZonderqOS.GUI.Apps
             sy += lineH;
             int drives = hardware != null ? hardware.StorageDeviceCount : 1;
             int parts = hardware != null ? hardware.StoragePartitionCount : 2;
-            SmallTextRenderer.Draw(canvas, "  Memory masowa:" + drives + " naped(ow), " + parts + " partycji (VFS FAT32 / ZONDERQDATA)", sx, sy, TextColor);
+            SmallTextRenderer.Draw(canvas, "  Mass storage:" + drives + " drive(s), " + parts + " partition(s) (VFS FAT32 / ZONDERQDATA)", sx, sy, TextColor);
             sy += lineH;
             SmallTextRenderer.Draw(canvas, "  Jadro:        Cosmos C# Kernel v3.0.95 Upstream (Single-vCPU)", sx, sy, TextColor);
         }

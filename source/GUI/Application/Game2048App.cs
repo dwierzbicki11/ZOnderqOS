@@ -445,7 +445,7 @@ namespace ZonderqOS.GUI.Apps
             int contentY = Window.Y + 38;
             int contentWidth = Math.Max(1, Window.Width - 16);
 
-            // [NOWA GRA] button in header
+            // [NEW GAME] button in header
             int btnX = contentX + contentWidth - 84;
             int btnY = contentY + 36;
             int btnW = 76;
@@ -561,7 +561,7 @@ namespace ZonderqOS.GUI.Apps
 
             // Header: Title & Subtitle
             SmallTextRenderer.Draw(canvas, "2048", contentX + 14, contentY + 12, GoldColor);
-            SmallTextRenderer.Draw(canvas, "Polacz kafelki!", contentX + 14, contentY + 28, MutedColor);
+            SmallTextRenderer.Draw(canvas, "Merge the tiles!", contentX + 14, contentY + 28, MutedColor);
 
             // Score & Best boxes
             int scoreBoxW = 68;
@@ -577,17 +577,17 @@ namespace ZonderqOS.GUI.Apps
 
             canvas.DrawFilledRectangle(HeaderPanel, bestBoxX, scoreBoxY, scoreBoxW, scoreBoxH);
             canvas.DrawRectangle(Border, bestBoxX, scoreBoxY, scoreBoxW, scoreBoxH);
-            SmallTextRenderer.DrawCentered(canvas, "REKORD", bestBoxX, scoreBoxY + 4, scoreBoxW, MutedColor);
+            SmallTextRenderer.DrawCentered(canvas, "BEST", bestBoxX, scoreBoxY + 4, scoreBoxW, MutedColor);
             SmallTextRenderer.DrawCentered(canvas, bestScore.ToString(), bestBoxX, scoreBoxY + 18, scoreBoxW, AccentColor);
 
-            // [NOWA GRA] button
+            // [NEW GAME] button
             int btnX = contentX + contentWidth - 84;
             int btnY = contentY + 46;
             int btnW = 68;
             int btnH = 18;
             canvas.DrawFilledRectangle(Color.FromArgb(36, 45, 55), btnX, btnY, btnW, btnH);
             canvas.DrawRectangle(Border, btnX, btnY, btnW, btnH);
-            SmallTextRenderer.DrawCentered(canvas, "NOWA GRA", btnX, btnY + 5, btnW, TextColor);
+            SmallTextRenderer.DrawCentered(canvas, "NEW GAME", btnX, btnY + 5, btnW, TextColor);
 
             // Board Container
             int boardX = contentX + (contentWidth - BoardSize) / 2;

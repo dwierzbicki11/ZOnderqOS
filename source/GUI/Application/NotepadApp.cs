@@ -308,7 +308,7 @@ namespace ZonderqOS.GUI.Apps
         private void MarkDocumentChanged()
         {
             documentVersion++;
-            status = "Niezapisane zmiany";
+            status = "Unsaved changes";
             if (!dirty)
             {
                 dirty = true;
@@ -630,7 +630,7 @@ namespace ZonderqOS.GUI.Apps
                 if (!global::ZonderqOS.SecurityContext.IsAuthenticated ||
                     !global::ZonderqOS.PermissionManager.CanRead(openDirectory, currentUser))
                 {
-                    status = "Permission denied do odczytu: " + openDirectory;
+                    status = "Read permission denied: " + openDirectory;
                     return;
                 }
 
@@ -662,7 +662,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                status = "Error katalogu: " + ex.Message;
+                status = "Directory error: " + ex.Message;
             }
         }
 
@@ -708,7 +708,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                status = "Error katalogu: " + ex.Message;
+                status = "Directory error: " + ex.Message;
             }
         }
 
@@ -813,7 +813,7 @@ namespace ZonderqOS.GUI.Apps
             string normalized = NormalizePath(path);
             if (string.IsNullOrEmpty(normalized))
             {
-                status = "Nieprawidlowa sciezka pliku";
+                status = "Invalid file path";
                 return false;
             }
 
@@ -823,7 +823,7 @@ namespace ZonderqOS.GUI.Apps
                     !global::ZonderqOS.PermissionManager.CanRead(normalized,
                         global::ZonderqOS.SecurityContext.CurrentUser))
                 {
-                    status = "Permission denied do odczytu: " + normalized;
+                    status = "Read permission denied: " + normalized;
                     return false;
                 }
 
@@ -856,7 +856,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                status = "Error odczytu: " + ex.Message;
+                status = "Read error: " + ex.Message;
                 return false;
             }
         }
@@ -877,7 +877,7 @@ namespace ZonderqOS.GUI.Apps
             string normalized = NormalizePath(path);
             if (string.IsNullOrEmpty(normalized) || normalized == "/")
             {
-                status = "Nieprawidlowa sciezka pliku";
+                status = "Invalid file path";
                 return false;
             }
 
@@ -893,7 +893,7 @@ namespace ZonderqOS.GUI.Apps
                 if (!global::ZonderqOS.SecurityContext.IsAuthenticated ||
                     !global::ZonderqOS.PermissionManager.CanCreate(normalized, currentUser))
                 {
-                    status = "Permission denied do zapisu: " + normalized;
+                    status = "Write permission denied: " + normalized;
                     return false;
                 }
 
@@ -911,7 +911,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                status = "Error zapisu: " + ex.Message;
+                status = "Save error: " + ex.Message;
                 return false;
             }
         }
@@ -1348,7 +1348,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (app.DialogMode == 3)
             {
-                canvas.DrawString("Niezapisane zmiany", font, Color.WhiteSmoke, x + 14, y + 12);
+                canvas.DrawString("Unsaved changes", font, Color.WhiteSmoke, x + 14, y + 12);
                 SmallTextRenderer.DrawClipped(canvas, "ENTER DISCARD   ESC CANCEL", x + 14, y + 65,
                     width - 28, Color.FromArgb(180, 194, 206));
                 return;
@@ -1406,7 +1406,7 @@ namespace ZonderqOS.GUI.Apps
             UiPainter.RoundedPanel(canvas, x, y, width, height, UiMetrics.MenuRadius,
                 UiPalette.SurfaceRaised, Accent);
 
-            canvas.DrawString("Open plik", font, Color.WhiteSmoke, x + 14, y + 10);
+            canvas.DrawString("Open file", font, Color.WhiteSmoke, x + 14, y + 10);
 
             int upX = x + 14;
             int upY = y + 48;
