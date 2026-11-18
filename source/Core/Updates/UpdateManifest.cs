@@ -24,7 +24,7 @@ namespace ZonderqOS.SystemCore.Updates
         public string Architecture { get; set; } = ExpectedArchitecture;
         public string Title { get; set; } = "ZonderqOS System Update";
         public string ReleaseDate { get; set; } = "2026-11-08";
-        public string Severity { get; set; } = "Zalecana";
+        public string Severity { get; set; } = "Recommended";
 
         public string KernelImage { get; set; } = "ZonderqOS.elf";
         public string KernelSha256 { get; set; } = string.Empty;
