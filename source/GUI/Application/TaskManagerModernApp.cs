@@ -2060,7 +2060,7 @@ namespace ZonderqOS.GUI.Apps
             // each telemetry refresh. "Candidate" is unrooted cache memory,
             // NOT physical RAM already reclaimed by OrionGC.
             DrawKey(canvas, x, stats + 140, half, "MEMOPT PROBKI", app.OptimizerSamples, null);
-            DrawKey(canvas, x, stats + 160, half, "MEMOPT ZADANIA", app.OptimizerRequests, null);
+            DrawKey(canvas, x, stats + 160, half, "MEMOPT REQUESTS", app.OptimizerRequests, null);
 
             // Cosmos Heap Allocator & GC Diagnostics
             DrawKeyText(canvas, x + half, stats, half, "HEAP UZYTY", app.MemoryDetailText);
