@@ -1045,7 +1045,7 @@ namespace ZonderqOS.GUI.Apps
             // Header tab
             canvas.DrawFilledRectangle(ToolbarBg, x, y, w, 20);
             canvas.DrawLine(Border, x, y + 20, x + w, y + 20);
-            SmallTextRenderer.Draw(canvas, "KOD BASIC (F5 - RUN)", x + 8, y + 6, TextColor);
+            SmallTextRenderer.Draw(canvas, "BASIC CODE (F5 - RUN)", x + 8, y + 6, TextColor);
 
             int viewY = y + 24;
             int maxRows = (h - 28) / 14;
