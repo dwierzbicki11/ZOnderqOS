@@ -85,7 +85,7 @@ namespace ZonderqOS.GUI.Apps
                 "100 BEEP 523, 120",
                 "110 BEEP 659, 120",
                 "120 BEEP 784, 260",
-                "130 PRINT \"WYKONANO POMYSLNIE!\"",
+                "130 PRINT \"COMPLETED SUCCESSFULLY!\"",
                 "140 END"
             },
             // Sample 1: Zgadnij Liczbe
@@ -98,7 +98,7 @@ namespace ZonderqOS.GUI.Apps
                 "50 TRIES = 0",
                 "60 GUESS = 10",
                 "70 TRIES = TRIES + 1",
-                "80 PRINT \"PROBA \"; TRIES; \": STRZAL \"; GUESS",
+                "80 PRINT \"ATTEMPT \"; TRIES; \": GUESS \"; GUESS",
                 "90 IF GUESS = SECRET THEN GOTO 160",
                 "100 IF GUESS < SECRET THEN PRINT \"-> ZA MALO!\"",
                 "110 IF GUESS > SECRET THEN PRINT \"-> ZA DUZO!\"",
