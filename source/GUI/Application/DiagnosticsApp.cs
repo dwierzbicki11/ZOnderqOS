@@ -31,7 +31,7 @@ namespace ZonderqOS.GUI.Apps
             Window.AddChild(mouseLabel);
             Window.AddChild(graphicsLabel);
 
-            closeButton = new Button(210, 270, 140, 30, "Zamknij", Close);
+            closeButton = new Button(210, 270, 140, 30, "Close", Close);
             closeButton.BackgroundColor = Color.DarkSlateBlue;
             closeButton.TextColor = Color.White;
             Window.AddChild(closeButton);

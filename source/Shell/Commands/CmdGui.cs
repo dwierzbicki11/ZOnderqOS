@@ -12,7 +12,7 @@ namespace ZonderqOS.Commands
         {
             try
             {
-                CommandIO.WriteLine("[GUI] Uruchamianie menedżera okien...");
+                CommandIO.WriteLine("[GUI] Starting menedżera okien...");
                 GuiManager manager = new GuiManager();
                 manager.Run();
                 CommandIO.WriteLine("[GUI] Powrót do powłoki tekstowej.");
@@ -20,7 +20,7 @@ namespace ZonderqOS.Commands
             }
             catch (Exception ex)
             {
-                WriteMessage.WriteError($"Błąd uruchamiania GUI: {ex.Message}", "CMD");
+                WriteMessage.WriteError($"Error uruchamiania GUI: {ex.Message}", "CMD");
                 CommandIO.LastCommandSuccess = false;
             }
         }

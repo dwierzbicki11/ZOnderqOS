@@ -34,8 +34,8 @@ namespace ZonderqOS
         // Shell accent: 0 = Cosmos blue, 1 = steel, 2 = emerald.
         public static int AccentTheme { get; private set; }
 
-        // System interface language: pl-PL (default) or en-US
-        public static string LanguageCode { get; private set; } = "pl-PL";
+        // System interface language: en-US (default for Alpha 1) or pl-PL
+        public static string LanguageCode { get; private set; } = "en-US";
 
         // Automatic desktop lock after inactivity. 0 disables the watchdog.
         // Supported presets are 0, 1, 5, 15 and 30 minutes.
@@ -715,7 +715,7 @@ namespace ZonderqOS
             TimeZoneOffsetHours = 2;
             DesktopBackgroundMode = 0;
             AccentTheme = 0;
-            LanguageCode = "pl-PL";
+            LanguageCode = "en-US";
             AutoLockMinutes = 5;
             NetworkUseDhcp = true;
             StaticIpAddress = "10.0.2.15";

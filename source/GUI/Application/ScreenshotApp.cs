@@ -20,7 +20,7 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action<string> openImageCallback;
         private readonly Func<Canvas> canvasProvider;
         private string lastSavedPath;
-        private string status = "Gotowy do wykonania zrzutu";
+        private string status = "Ready do wykonania zrzutu";
         private int hoveredBtn = -1; // 0: Capture, 1: Open
 
         public ScreenshotApp(int x, int y, Func<Canvas> getCanvas, Action<string> onOpenImage, Action onClose)
@@ -45,7 +45,7 @@ namespace ZonderqOS.GUI.Apps
             Canvas canvas = canvasProvider?.Invoke();
             if (canvas == null)
             {
-                status = "Blad: Brak dostepu do ekranu";
+                status = "Error: Brak dostepu do ekranu";
                 return;
             }
 
@@ -54,7 +54,7 @@ namespace ZonderqOS.GUI.Apps
             if (!string.IsNullOrEmpty(path))
             {
                 lastSavedPath = path;
-                status = "Zapisano: " + Path.GetFileName(path);
+                status = "Saved: " + Path.GetFileName(path);
             }
             else
             {

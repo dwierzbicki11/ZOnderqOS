@@ -22,7 +22,7 @@ namespace ZonderqOS.Localization
         private static readonly Dictionary<string, string> StringsPl = new Dictionary<string, string>(StringComparer.Ordinal);
         private static readonly Dictionary<string, string> StringsEn = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        public static Language CurrentLanguage { get; private set; } = Language.Polish;
+        public static Language CurrentLanguage { get; private set; } = Language.English;
 
         public static string CurrentLanguageCode => CurrentLanguage == Language.Polish ? LangPolish : LangEnglish;
 
@@ -38,21 +38,8 @@ namespace ZonderqOS.Localization
 
         public static void Initialize()
         {
-            try
-            {
-                string code = SystemSettings.LanguageCode;
-                if (!string.IsNullOrEmpty(code))
-                {
-                    if (string.Equals(code, LangEnglish, StringComparison.OrdinalIgnoreCase))
-                        CurrentLanguage = Language.English;
-                    else
-                        CurrentLanguage = Language.Polish;
-                }
-            }
-            catch
-            {
-                CurrentLanguage = Language.Polish;
-            }
+            // Alpha 1 enforces English (en-US) UI; saved user settings are preserved for Beta 1.
+            CurrentLanguage = Language.English;
         }
 
         public static bool SetLanguage(Language newLang, bool persist = true)

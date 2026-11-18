@@ -81,7 +81,7 @@ namespace ZonderqOS.GUI
             catch (Exception ex)
             {
                 error = "Unmount exception: " + ex.Message;
-                NotifyFailure("Blad odmontowania woluminu", error);
+                NotifyFailure("Error odmontowania woluminu", error);
                 return false;
             }
         }

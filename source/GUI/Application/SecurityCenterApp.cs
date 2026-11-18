@@ -32,7 +32,7 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action closeCallback;
 
         // Status
-        private string statusMessage = "Gotowy do monitorowania bezpieczenstwa.";
+        private string statusMessage = "Ready do monitorowania bezpieczenstwa.";
 
         // Cached data
         private List<FileIntegrityRecord> cachedRecords = new List<FileIntegrityRecord>();
@@ -59,7 +59,7 @@ namespace ZonderqOS.GUI.Apps
         private string cachedFwCountsText = string.Empty;
 
         private string cachedStatusSource;
-        private string cachedStatusLine = "Status: Gotowy do monitorowania bezpieczenstwa.";
+        private string cachedStatusLine = "Status: Ready do monitorowania bezpieczenstwa.";
         private string cachedLastLogSource;
         private string cachedLastLogShort = "Brak wpisow w dzienniku";
 
@@ -236,7 +236,7 @@ namespace ZonderqOS.GUI.Apps
                         statusMessage = "Zmieniono tryb zapory na: " + ModeLabel(next);
                         return;
                     }
-                    // [ Odśwież Logi ]
+                    // [ Refresh Logi ]
                     if (Hit(mouseX, mouseY, wx + 376, btnY, 150, 30))
                     {
                         RefreshAllData();
@@ -253,7 +253,7 @@ namespace ZonderqOS.GUI.Apps
                     {
                         IntegrityGuard.ScanAll();
                         RefreshAllData();
-                        statusMessage = "Zakonczono skanowanie integralnosci.";
+                        statusMessage = "Completed skanowanie integralnosci.";
                         return;
                     }
                     // [ Zaktualizuj Bazę (Re-baseline) ]
@@ -557,7 +557,7 @@ namespace ZonderqOS.GUI.Apps
             int btnY = cy + 280;
             DrawButton(canvas, "🔍 Szybki Skan", wx + 16, btnY, 170, 30, PanelHover);
             DrawButton(canvas, "🧱 Przepnij Zaporę", wx + 196, btnY, 170, 30, isFirewallActive ? PanelHover : AccentColor);
-            DrawButton(canvas, "↺ Odśwież Dane", wx + 376, btnY, 150, 30, PanelHover);
+            DrawButton(canvas, "↺ Refresh Dane", wx + 376, btnY, 150, 30, PanelHover);
 
             // Status message
             SmallTextRenderer.Draw(canvas, GetStatusLine(), wx + 20, btnY + 42, MutedColor);
@@ -753,7 +753,7 @@ namespace ZonderqOS.GUI.Apps
             }
 
             int btnY = cy + 280;
-            DrawButton(canvas, "↺ Odśwież Logi", wx + 16, btnY, 150, 30, AccentColor);
+            DrawButton(canvas, "↺ Refresh Logi", wx + 16, btnY, 150, 30, AccentColor);
             SmallTextRenderer.Draw(canvas, GetStatusLine(), wx + 20, btnY + 42, MutedColor);
         }
 

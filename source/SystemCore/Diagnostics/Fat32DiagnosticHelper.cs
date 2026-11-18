@@ -70,20 +70,20 @@ namespace ZonderqOS.SystemCore.Diagnostics
                 }
 
                 if (totalRead != size)
-                    return (false, $"Odczytano {totalRead}/{size} B", $"bytes={totalRead}");
+                    return (false, $"Read {totalRead}/{size} B", $"bytes={totalRead}");
 
                 uint actualSum = 0;
                 for (int i = 0; i < size; i++)
                     actualSum += readBuf[i];
 
                 if (actualSum != expectedSum)
-                    return (false, "Niezgodna suma kontrolna FAT32", $"exp={expectedSum},act={actualSum}");
+                    return (false, "FAT32 checksum mismatch", $"exp={expectedSum},act={actualSum}");
 
-                return (true, "Zapis, odczyt i suma kontrolna 4KB OK", $"4096B,sum={actualSum}");
+                return (true, "4KB write, read & checksum OK", $"4096B,sum={actualSum}");
             }
             catch (Exception ex)
             {
-                return (false, "Wyjatek FAT32: " + ex.Message, "error");
+                return (false, "FAT32 exception: " + ex.Message, "error");
             }
             finally
             {

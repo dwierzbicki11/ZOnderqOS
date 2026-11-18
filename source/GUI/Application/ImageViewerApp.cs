@@ -56,7 +56,7 @@ namespace ZonderqOS.GUI.Apps
 
         private string currentPath = string.Empty;
         private string displayName = "BRAK OBRAZU";
-        private string status = "Otworz plik PNG lub BMP z File Managera";
+        private string status = "Open plik PNG lub BMP z File Managera";
         private readonly string[] siblingImages = new string[MaxSiblingImages];
         private int siblingCount;
         private int siblingIndex = -1;
@@ -316,7 +316,7 @@ namespace ZonderqOS.GUI.Apps
                         x + (width - 56) / 2, y + height / 2 - 72, 56, 56);
                     SmallTextRenderer.DrawCentered(canvas, "BRAK OTWARTEGO OBRAZU", x + 8,
                         y + height / 2 + 4, width - 16, Text);
-                    SmallTextRenderer.DrawCentered(canvas, "Otworz PNG/BMP dwuklikiem w File Managerze", x + 8,
+                    SmallTextRenderer.DrawCentered(canvas, "Open PNG/BMP dwuklikiem w File Managerze", x + 8,
                         y + height / 2 + 24, width - 16, Muted);
                 }
                 else if (width >= 40 && height >= 20)
@@ -459,7 +459,7 @@ namespace ZonderqOS.GUI.Apps
             path = (path ?? string.Empty).Trim().Replace('\\', '/');
             if (string.IsNullOrEmpty(path))
             {
-                status = "Nie znaleziono pliku obrazu";
+                status = "File not found obrazu";
                 return;
             }
 
@@ -470,7 +470,7 @@ namespace ZonderqOS.GUI.Apps
                 // reload; a cached directory listing is not authorization.
                 if (!CanReadImageInSession(path))
                 {
-                    status = "Brak uprawnien do obrazu";
+                    status = "Permission denied do obrazu";
                     return;
                 }
 
@@ -478,7 +478,7 @@ namespace ZonderqOS.GUI.Apps
                 // Keep the previously decoded image when opening a bad sibling.
                 if (!File.Exists(path))
                 {
-                    status = "Nie znaleziono pliku obrazu";
+                    status = "File not found obrazu";
                     return;
                 }
 
@@ -561,7 +561,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 // The current image remains usable after a corrupt file,
                 // permission error or transient FAT32 read failure.
-                status = "Blad obrazu: " + ex.Message;
+                status = "Error obrazu: " + ex.Message;
             }
         }
 

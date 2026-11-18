@@ -48,7 +48,7 @@ namespace ZonderqOS.GUI.Apps
 
         private byte selectedColor = 15; // White by default
         private int currentTool = 0; // 0 = Pencil, 1 = Eraser, 2 = Bucket Fill
-        private string statusMessage = "Gotowy do rysowania. Kliknij siatke aby dodac piksel.";
+        private string statusMessage = "Ready do rysowania. Kliknij siatke aby dodac piksel.";
         private readonly Action closeCallback;
 
         // Flood fill queue
@@ -330,7 +330,7 @@ namespace ZonderqOS.GUI.Apps
             fullPath = dir + "/" + fileName;
             if (!global::ZonderqOS.PermissionManager.CanCreate(fullPath, user))
             {
-                statusMessage = "Brak uprawnien do zapisu: " + fullPath;
+                statusMessage = "Permission denied do zapisu: " + fullPath;
                 return false;
             }
 
@@ -364,11 +364,11 @@ namespace ZonderqOS.GUI.Apps
                 }
                 if (!existed)
                     global::ZonderqOS.PermissionManager.SetPermission(path, global::ZonderqOS.SecurityContext.CurrentUser, 644);
-                statusMessage = "Zapisano tablice C# w: " + path;
+                statusMessage = "Saved tablice C# w: " + path;
             }
             catch (Exception ex)
             {
-                statusMessage = "Blad zapisu C#: " + ex.Message;
+                statusMessage = "Error zapisu C#: " + ex.Message;
             }
         }
 
@@ -399,11 +399,11 @@ namespace ZonderqOS.GUI.Apps
                 }
                 if (!existed)
                     global::ZonderqOS.PermissionManager.SetPermission(path, global::ZonderqOS.SecurityContext.CurrentUser, 644);
-                statusMessage = "Zapisano kod BASIC DATA w: " + path;
+                statusMessage = "Saved kod BASIC DATA w: " + path;
             }
             catch (Exception ex)
             {
-                statusMessage = "Blad zapisu BASIC: " + ex.Message;
+                statusMessage = "Error zapisu BASIC: " + ex.Message;
             }
         }
 
@@ -428,11 +428,11 @@ namespace ZonderqOS.GUI.Apps
                 File.WriteAllBytes(path, raw);
                 if (!existed)
                     global::ZonderqOS.PermissionManager.SetPermission(path, global::ZonderqOS.SecurityContext.CurrentUser, 644);
-                statusMessage = "Zapisano plik binarny: " + path + " (256 bajtow)";
+                statusMessage = "Saved plik binarny: " + path + " (256 bajtow)";
             }
             catch (Exception ex)
             {
-                statusMessage = "Blad zapisu .spr: " + ex.Message;
+                statusMessage = "Error zapisu .spr: " + ex.Message;
             }
         }
 
@@ -449,7 +449,7 @@ namespace ZonderqOS.GUI.Apps
                 string path = GetUserDataDirectory() + "/icon.spr";
                 if (!global::ZonderqOS.PermissionManager.CanRead(path, global::ZonderqOS.SecurityContext.CurrentUser))
                 {
-                    statusMessage = "Brak uprawnien do odczytu: " + path;
+                    statusMessage = "Permission denied do odczytu: " + path;
                     return;
                 }
 
@@ -474,7 +474,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                statusMessage = "Blad odczytu: " + ex.Message;
+                statusMessage = "Error odczytu: " + ex.Message;
             }
         }
 

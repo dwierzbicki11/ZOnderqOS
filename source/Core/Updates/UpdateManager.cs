@@ -62,7 +62,7 @@ namespace ZonderqOS.SystemCore.Updates
     public sealed class StorageEnvironmentInfo
     {
         public string PartitionLabel { get; set; } = "ZONDERQDATA";
-        public string DeviceType { get; set; } = "Dysk USB / Dedykowany";
+        public string DeviceType { get; set; } = "Disk USB / Dedykowany";
         public bool HasUpdatesDir { get; set; } = false;
         public bool HasManifest { get; set; } = false;
         public bool HasPayload { get; set; } = false;
@@ -429,7 +429,7 @@ namespace ZonderqOS.SystemCore.Updates
             {
                 Status = UpdateStatus.Error;
                 package = null;
-                message = "Blad podczas sprawdzania aktualizacji: " + ex.Message;
+                message = "Error podczas sprawdzania aktualizacji: " + ex.Message;
                 return false;
             }
         }
@@ -509,7 +509,7 @@ namespace ZonderqOS.SystemCore.Updates
                     global::ZonderqOS.NotificationKind.Info,
                     "AKTUALIZACJE USB",
                     "Wykryto nowa wersje: " + notifyVersion,
-                    "Wykryto pakiet aktualizacji w /updates (" + notifyTitle + "). Otworz Centrum Aktualizacji.");
+                    "Wykryto pakiet aktualizacji w /updates (" + notifyTitle + "). Open Centrum Aktualizacji.");
             }
         }
 
@@ -708,7 +708,7 @@ namespace ZonderqOS.SystemCore.Updates
                 string kernelSrc = FindKernelSource(pkg);
                 if (string.IsNullOrEmpty(kernelSrc) || !File.Exists(kernelSrc))
                 {
-                    error = "Nie znaleziono pliku binarnego kernela (ZonderqOS.elf) w pakiecie.";
+                    error = "File not found binarnego kernela (ZonderqOS.elf) w pakiecie.";
                     return false;
                 }
 
@@ -779,7 +779,7 @@ namespace ZonderqOS.SystemCore.Updates
                         string actualFHash = BootSlotManager.ComputeFileSha256(fullPath);
                         if (!Crypto.FixedTimeEquals(actualFHash.ToLowerInvariant(), fileEntry.ExpectedSha256.ToLowerInvariant()))
                         {
-                            error = $"Blad sumy SHA-256 dla {fileEntry.RelativePath}! Oczekiwano: {fileEntry.ExpectedSha256}, otrzymano: {actualFHash}";
+                            error = $"Error sumy SHA-256 dla {fileEntry.RelativePath}! Oczekiwano: {fileEntry.ExpectedSha256}, otrzymano: {actualFHash}";
                             return false;
                         }
                     }
@@ -1272,7 +1272,7 @@ namespace ZonderqOS.SystemCore.Updates
                 sb.AppendLine("============================================================");
                 sb.AppendLine("         ZONDERQOS - RAPORT AKTUALIZACJI SYSTEMU");
                 sb.AppendLine("============================================================");
-                sb.AppendLine("Wersja zainstalowana: " + pkg.Version + " (Build " + pkg.BuildNumber + ")");
+                sb.AppendLine("Version zainstalowana: " + pkg.Version + " (Build " + pkg.BuildNumber + ")");
                 sb.AppendLine("Tytul wydania:        " + pkg.Title);
                 sb.AppendLine("Data instalacji:      " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                 sb.AppendLine("Aktywny slot boot:    Slot " + BootSlotManager.ActiveSlot);
@@ -1391,7 +1391,7 @@ namespace ZonderqOS.SystemCore.Updates
                     if (!Crypto.FixedTimeEquals(
                         BootSlotManager.ComputeFileSha256(temp).ToLowerInvariant(),
                         entry.ExpectedSha256.ToLowerInvariant()))
-                        throw new IOException("Blad weryfikacji kopii: " + entry.RelativePath);
+                        throw new IOException("Error weryfikacji kopii: " + entry.RelativePath);
                     if (File.Exists(dest)) File.Delete(dest);
                     File.Move(temp, dest);
                 }
@@ -1766,7 +1766,7 @@ namespace ZonderqOS.SystemCore.Updates
                 catch (Exception ex)
                 {
                     Status = UpdateStatus.Error;
-                    error = "Blad podczas rollbacku: " + ex.Message;
+                    error = "Error podczas rollbacku: " + ex.Message;
                     return false;
                 }
             }

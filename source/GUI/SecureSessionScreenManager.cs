@@ -34,9 +34,9 @@ namespace ZonderqOS.GUI
         private static readonly string[] Descriptions =
         {
             "Zachowaj otwarte aplikacje i zabezpiecz pulpit haslem",
-            "Zamknij aplikacje sesji i wroc do ekranu logowania",
+            "Close aplikacje sesji i wroc do ekranu logowania",
             "Wroc do aktualnej sesji bez zmian",
-            "Uruchom ponownie ZOnderqOS",
+            "Reboot ZOnderqOS",
             "Wylacz komputer"
         };
 

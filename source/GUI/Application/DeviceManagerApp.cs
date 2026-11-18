@@ -16,7 +16,7 @@ namespace ZonderqOS.GUI.Apps
         private int selectedIndex;
 
         public DeviceManagerApp(int x, int y)
-            : base("Menedzer urzadzen", "Urządzenia systemowe - ZOnderqOS", x, y, 940, 620)
+            : base("Device Manager", "Urządzenia systemowe - ZOnderqOS", x, y, 940, 620)
         {
             RefreshData();
         }

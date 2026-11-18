@@ -126,13 +126,13 @@ namespace ZonderqOS.GUI.Apps
                     if (relX >= col1Left && relX <= col1Right) { launchAppCallback?.Invoke(AppIds.Battleship); Close(); }
                     else if (relX >= col2Left && relX <= col2Right) { launchAppCallback?.Invoke(AppIds.Chiptune); Close(); }
                 }
-                // Row 2: Aktualizacje & Ustawienia
+                // Row 2: Aktualizacje & Settings
                 else if (relY >= 234 && relY <= 280)
                 {
                     if (relX >= col1Left && relX <= col1Right) { launchAppCallback?.Invoke(AppIds.SystemUpdater); Close(); }
                     else if (relX >= col2Left && relX <= col2Right) { launchAppCallback?.Invoke(AppIds.Settings); Close(); }
                 }
-                // Row 3: Menedżer plików & Terminal
+                // Row 3: File Manager & Terminal
                 else if (relY >= 288 && relY <= 334)
                 {
                     if (relX >= col1Left && relX <= col1Right) { launchAppCallback?.Invoke(AppIds.FileManager); Close(); }
@@ -242,7 +242,7 @@ namespace ZonderqOS.GUI.Apps
 
             // Row 2
             DrawActionCard(canvas, col1, y + 158, cardW, cardH, "🔄 Centrum Aktualizacji", "Pobieranie poprawek OTA i instalacja z USB", GoldColor);
-            DrawActionCard(canvas, col2, y + 158, cardW, cardH, "🎨 Ustawienia i Motywy", "Personalizacja pulpitu, kolorow i opcji sieci", TextColor);
+            DrawActionCard(canvas, col2, y + 158, cardW, cardH, "🎨 Settings i Motywy", "Personalizacja pulpitu, kolorow i opcji sieci", TextColor);
 
             // Row 3
             DrawActionCard(canvas, col1, y + 212, cardW, cardH, "📁 Menedzer Plikow", "Przegladaj dane na partycji ZONDERQDATA", TextColor);
@@ -282,7 +282,7 @@ namespace ZonderqOS.GUI.Apps
                 "Podreczne zolte karteczki na pulpicie z automatycznym zapisem do bezpiecznego profilu uzytkownika.");
             itemY += stride;
 
-            DrawFeatureItem(canvas, x + 16, itemY, "5. Bezpieczenstwo i Trwalosc FAT32 ZONDERQDATA",
+            DrawFeatureItem(canvas, x + 16, itemY, "5. Security i Trwalosc FAT32 ZONDERQDATA",
                 "Ochrona integralnosci IntegrityGuard, PassVault z kodem PIN, bezpieczny menedzer pamieci masowej.");
         }
 

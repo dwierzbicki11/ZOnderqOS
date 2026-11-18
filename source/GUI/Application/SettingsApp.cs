@@ -58,7 +58,7 @@ namespace ZonderqOS.GUI.Apps
             "Tapeta, motyw, pulpit oraz elementy paska zadan",
             "Framebuffer, strefa czasu i czestotliwosc renderowania",
             "DHCP, statyczne IPv4, DNS i interfejsy sieciowe",
-            "Pamiec fizyczna, OrionGC, dyski, partycje i VFS",
+            "Memory fizyczna, OrionGC, dyski, partycje i VFS",
             "Sesja, konta lokalne, audyt oraz dzienniki systemowe",
             "Profil pracy oraz kontrola restartu i wylaczenia",
             "Wersje, procesor, scheduler i zaawansowany panel kernela"
@@ -132,11 +132,11 @@ namespace ZonderqOS.GUI.Apps
         }
 
         public SettingsApp(int x, int y, ApplicationManager manager, Action onClose)
-            : base("Ustawienia")
+            : base("Settings")
         {
             closeCallback = onClose;
             applicationManager = manager;
-            Window = new Window(x, y, 1080, 720, "Ustawienia systemowe - ZOnderqOS");
+            Window = new Window(x, y, 1080, 720, "Settings systemowe - ZOnderqOS");
             Window.CloseAction = Close;
 
             global::ZonderqOS.SystemSettings.Load();
@@ -387,7 +387,7 @@ namespace ZonderqOS.GUI.Apps
             DrawNumericRow(canvas, contentX, contentWidth, 2, IconType.Settings,
                 "STERTA KERNELA", "Zakres sterty przydzielony dla PageAllocator", PagesToMb(totalPages), " MB");
             DrawNumericRow(canvas, contentX, contentWidth, 3, IconType.Settings,
-                "GC COMMITTED", "Pamiec zatwierdzona dla zarzadzanej sterty",
+                "GC COMMITTED", "Memory zatwierdzona dla zarzadzanej sterty",
                 gcCommittedBytes / 1024UL / 1024UL, " MB");
             DrawRow(canvas, contentX, contentWidth, 4, IconType.Folder,
                 "DYSKI / PARTYCJE / VFS", "Szczegoly urzadzen blokowych, partycji i punktow montowania",
@@ -453,7 +453,7 @@ namespace ZonderqOS.GUI.Apps
             DrawRow(canvas, contentX, contentWidth, 0, IconType.Start,
                 "SYSTEM", "Nazwa i generacja srodowiska", "ZONDERQOS GEN3", Accent);
             DrawRow(canvas, contentX, contentWidth, 1, IconType.About,
-                "COSMOS SDK", "Wersja pakietow kernel i kernel.system", "3.0.95", Good);
+                "COSMOS SDK", "Version pakietow kernel i kernel.system", "3.0.95", Good);
             DrawRow(canvas, contentX, contentWidth, 2, IconType.Settings,
                 "ARCHITEKTURA", "Architektura wykryta przez CPUID", cpuInfo.Architecture, Text);
             DrawRow(canvas, contentX, contentWidth, 3, IconType.Settings,

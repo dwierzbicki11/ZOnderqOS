@@ -648,7 +648,7 @@ namespace ZonderqOS.GUI
             catch (Exception ex)
             {
                 Failed = true;
-                WriteMessage.WriteError($"Błąd w pętli GUI: {ex.Message}", "GUI");
+                WriteMessage.WriteError($"Error w pętli GUI: {ex.Message}", "GUI");
             }
             finally
             {
@@ -837,14 +837,14 @@ namespace ZonderqOS.GUI
                 StartMenuPlacement.Tool, 1, 9, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.NetworkCenter, "Centrum sieci", "Siec", "Siec",
+                AppIds.NetworkCenter, "Centrum sieci", "Network", "Network",
                 "Interfejsy, DHCP, IPv4, DNS i test polaczenia",
                 AppCategory.System, IconType.Network, () => LaunchNetworkCenter(150, 84),
                 StartMenuPlacement.Tool, 5, 6, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.DiskManager, "Menedzer dyskow", "Dyski", "Dyski",
-                "Dyski, partycje i punkty montowania VFS",
+                AppIds.DiskManager, "Menedzer dyskow", "Diski", "Diski",
+                "Diski, partycje i punkty montowania VFS",
                 AppCategory.System, IconType.DiskManager, () => LaunchDiskManager(135, 78),
                 StartMenuPlacement.Tool, 4, 7, true));
 
@@ -855,7 +855,7 @@ namespace ZonderqOS.GUI
                 StartMenuPlacement.Pinned, 3, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.Settings, "Ustawienia", "Ustawienia", "Ustawienia",
+                AppIds.Settings, "Settings", "Settings", "Settings",
                 "Konfiguracja systemu, GUI, sieci i kont",
                 AppCategory.System, IconType.Settings, () => LaunchSettings(125, 82),
                 StartMenuPlacement.Pinned, 4, 3, true));
@@ -993,7 +993,7 @@ namespace ZonderqOS.GUI
                 StartMenuPlacement.Tool, 23, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.SecurityCenter, "Centrum Bezpieczenstwa", "Centrum Bezpieczenstwa", "Bezpieczenstwo",
+                AppIds.SecurityCenter, "Centrum Bezpieczenstwa", "Centrum Bezpieczenstwa", "Security",
                 "Ochrona anty-tamper, integralnosc plikow, zapora sieciowa i audyt",
                 AppCategory.System, IconType.Settings, () => LaunchSecurityCenter(135, 50),
                 StartMenuPlacement.Tool, 24, -1, true));
@@ -1812,7 +1812,7 @@ namespace ZonderqOS.GUI
                 {
                     if (stream == null)
                     {
-                        Console.WriteLine("[GUI] Nie znaleziono zasobu tapety PNG.");
+                        Console.WriteLine("[GUI] Not found zasobu tapety PNG.");
                         return;
                     }
 
@@ -1879,7 +1879,7 @@ namespace ZonderqOS.GUI
                 string curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion;
                 string curBuild = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentBuild;
                 cachedWatermarkBuild = "ZOnderqOS 1.0 Alpha • Build " + curBuild + " [ALFA 1]";
-                cachedWatermarkVersion = "Wersja " + curVer + " • Cosmos 3.0.95 x64 Native";
+                cachedWatermarkVersion = "Version " + curVer + " • Cosmos 3.0.95 x64 Native";
             }
 
             SmallTextRenderer.Draw(canvas, cachedWatermarkBuild, deskW - 275, deskH - 34, Color.FromArgb(70, 225, 120));

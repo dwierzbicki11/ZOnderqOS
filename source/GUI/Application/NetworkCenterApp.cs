@@ -14,10 +14,10 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action closeCallback;
 
         public NetworkCenterApp(int x, int y, ApplicationManager manager, Action onClose)
-            : base("Siec niedostepna")
+            : base("Network niedostepna")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 640, 280, "Siec - funkcja usunieta");
+            Window = new Window(x, y, 640, 280, "Network - funkcja usunieta");
             Window.CloseAction = Close;
         }
 
