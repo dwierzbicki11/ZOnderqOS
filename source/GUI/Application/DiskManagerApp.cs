@@ -189,7 +189,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     selection = index;
                     KeepSelectionVisible();
-                    SetStatus("WYBRANO ELEMENT", Good);
+                    SetStatus("ITEM SELECTED", Good);
                 }
                 return;
             }
@@ -378,7 +378,7 @@ namespace ZonderqOS.GUI.Apps
             int index = selection;
             DrawDetailLine(canvas, x, y + 58, width, "NAME", deviceNames[index], Text);
             DrawDetailLine(canvas, x, y + 88, width, "INDEKS", deviceIndexText[index], Text);
-            DrawDetailLine(canvas, x, y + 118, width, "ROZMIAR", deviceSizeText[index], Text);
+            DrawDetailLine(canvas, x, y + 118, width, "SIZE", deviceSizeText[index], Text);
             DrawDetailLine(canvas, x, y + 148, width, "PARAMETRY", deviceDetails[index], Muted);
             DrawInfoBox(canvas, x + 14, y + 205, width - 28,
                 "R reloads the selected disk's partition table. This does not format the device.", Warning);
@@ -391,7 +391,7 @@ namespace ZonderqOS.GUI.Apps
             string mount = partitionMounts[index];
             DrawDetailLine(canvas, x, y + 58, width, "PARTYCJA", partitionNames[index], Text);
             DrawDetailLine(canvas, x, y + 88, width, "INDEKS", partitionIndexText[index], Text);
-            DrawDetailLine(canvas, x, y + 118, width, "ROZMIAR", partitionSizeText[index], Text);
+            DrawDetailLine(canvas, x, y + 118, width, "SIZE", partitionSizeText[index], Text);
             DrawDetailLine(canvas, x, y + 148, width, "MOUNT", string.IsNullOrEmpty(mount) ? "NIEZAMONTOWANA" : mount,
                 string.IsNullOrEmpty(mount) ? Muted : Good);
             DrawInfoBox(canvas, x + 14, y + 205, width - 28,
