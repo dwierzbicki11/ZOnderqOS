@@ -24,8 +24,8 @@ namespace ZonderqOS.GUI.Apps
 
         private static readonly string[] MonthNames =
         {
-            "STYCZEN", "LUTY", "MARZEC", "KWIECIEN", "MAJ", "CZERWIEC",
-            "LIPIEC", "SIERPIEN", "WRZESIEN", "PAZDZIERNIK", "LISTOPAD", "GRUDZIEN"
+            "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
+            "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"
         };
 
         private static readonly string[] DayNames =
@@ -58,10 +58,10 @@ namespace ZonderqOS.GUI.Apps
         private int lastMouseY = -1;
         private string statusMessage = "READY";
 
-        public CalendarApp(int x, int y, Action onClose) : base("Kalendarz")
+        public CalendarApp(int x, int y, Action onClose) : base("Calendar")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 900, 680, "Kalendarz - ZOnderqOS");
+            Window = new Window(x, y, 900, 680, "Calendar - ZOnderqOS");
             Window.CloseAction = Close;
             GoToday();
         }
@@ -176,7 +176,7 @@ namespace ZonderqOS.GUI.Apps
                 Header, Border);
             canvas.DrawFilledRectangle(SystemTheme.Accent, x + 12, y + 2, width - 24, 2);
             IconManager.DrawScaled(canvas, IconType.Calendar, x + 15, y + 17, 28, 28);
-            SmallTextRenderer.Draw(canvas, "KALENDARZ", x + 55, y + 16, Text);
+            SmallTextRenderer.Draw(canvas, "CALENDAR", x + 55, y + 16, Text);
             SmallTextRenderer.Draw(canvas, "ARROWS MONTH  |  T TODAY  |  F5 REFRESH", x + 55, y + 37, Muted);
 
             DrawControl(canvas, 0, x + width - 254, y + 13, 54, 36, "<");
@@ -255,7 +255,7 @@ namespace ZonderqOS.GUI.Apps
             int height = 462;
             canvas.DrawFilledRectangle(Panel, x, y, width, height);
             canvas.DrawRectangle(Border, x, y, width, height);
-            SmallTextRenderer.Draw(canvas, "WYBRANA DATA", x + 16, y + 18, Text);
+            SmallTextRenderer.Draw(canvas, "SELECTED DATE", x + 16, y + 18, Text);
             canvas.DrawLine(Border, x + 16, y + 40, x + width - 16, y + 40);
 
             DrawInfoLine(canvas, x, y + 63, width, "DAY", selectedDay);
