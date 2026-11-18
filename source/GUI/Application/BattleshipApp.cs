@@ -241,7 +241,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 else
                 {
-                    statusMessage = "TRAFIENIE! Trafiles wrogi okret! Masz dodatkowy strzal.";
+                    statusMessage = "HIT! You struck an enemy ship! Take another shot.";
                     statusColor = RedColor;
                 }
             }
@@ -316,7 +316,7 @@ namespace ZonderqOS.GUI.Apps
                     if (enemyHits >= TotalShipCells)
                     {
                         phase = GamePhase.GameOver;
-                        statusMessage = "PORAZKA! Wrog zatopil Twoja flote. Sprobuj ponownie!";
+                        statusMessage = "DEFEAT! The enemy sank your fleet. Try again!";
                         statusColor = RedColor;
                     }
                     else
