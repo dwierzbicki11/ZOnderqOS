@@ -319,15 +319,15 @@ namespace ZonderqOS.SystemCore
                     Console.Clear();
                     Console.WriteLine();
                     Console.WriteLine("============================================================");
-                    Console.WriteLine("              SYSTEM ZONDERQOS ZOSTAL WYLACZONY            ");
+                    Console.WriteLine("              ZONDERQOS HAS SHUT DOWN            ");
                     Console.WriteLine("============================================================");
                     Console.WriteLine();
                     Console.WriteLine("  All data has been safely synchronized to USB.");
-                    Console.WriteLine("  Twoj komputer moze byc teraz bezpiecznie wylaczony.");
+                    Console.WriteLine("  You can now safely power off your computer.");
                     Console.WriteLine();
                     Console.WriteLine("  * Press and hold the laptop POWER button");
-                    Console.WriteLine("    lub");
-                    Console.WriteLine("  * Nacisnij klawisz [ R ] aby zrestartowac komputer.");
+                    Console.WriteLine("    or");
+                    Console.WriteLine("  * Press [ R ] to restart the computer.");
                     Console.WriteLine();
                     Console.WriteLine("============================================================");
                 }
