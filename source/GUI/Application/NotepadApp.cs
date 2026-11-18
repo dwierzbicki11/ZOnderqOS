@@ -883,7 +883,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (VirtualFs.IsReadOnlyPath(normalized))
             {
-                status = "System plikow tylko do odczytu: " + normalized;
+                status = "Read-only file system: " + normalized;
                 return false;
             }
 
@@ -918,9 +918,9 @@ namespace ZonderqOS.GUI.Apps
 
         private void UpdateWindowTitle()
         {
-            string name = string.IsNullOrEmpty(filePath) ? "Bez nazwy" : Path.GetFileName(filePath);
+            string name = string.IsNullOrEmpty(filePath) ? "Untitled" : Path.GetFileName(filePath);
             if (string.IsNullOrEmpty(name))
-                name = filePath ?? "Bez nazwy";
+                name = filePath ?? "Untitled";
             Window.Title = "Notatnik - " + name + (dirty ? " *" : "");
         }
 

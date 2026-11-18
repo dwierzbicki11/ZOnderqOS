@@ -149,18 +149,18 @@ namespace ZonderqOS.GUI
 
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Security,
-                    "SESJA",
-                    "Witaj, " + SecurityContext.CurrentUser,
-                    "Bezpieczna sesja ZOnderqOS zostala uruchomiona.");
+                    "SESSION",
+                    "Welcome, " + SecurityContext.CurrentUser,
+                    "A secure ZOnderqOS session has started.");
 
                 string curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion;
                 if (curVer != "2026.11.0" && curVer != "3")
                 {
                     global::ZonderqOS.NotificationService.Post(
                         global::ZonderqOS.NotificationKind.Success,
-                        "AKTUALIZACJA",
+                        "UPDATE",
                         "ZOnderqOS " + curVer,
-                        "System jest zaktualizowany! Sprawdz nowe aplikacje i raport zmian.");
+                        "System updated! Check out the new applications and release notes.");
                 }
 
                 // Show Welcome App on desktop startup
@@ -1904,19 +1904,19 @@ namespace ZonderqOS.GUI
                     UiPainter.RoundedPanel(canvas, boxX, boxY, boxW, boxH, 8,
                         Color.FromArgb(20, 26, 36), Color.FromArgb(45, 145, 235));
 
-                    SmallTextRenderer.DrawCentered(canvas, "SYSTEM ZONDERQOS ZOSTAL WYLACZONY",
+                    SmallTextRenderer.DrawCentered(canvas, "ZONDERQOS HAS SHUT DOWN",
                         boxX, boxY + 28, boxW, Color.WhiteSmoke);
 
                     SmallTextRenderer.DrawCentered(canvas, "All data has been safely saved to the USB drive.",
                         boxX, boxY + 68, boxW, Color.FromArgb(135, 150, 168));
 
-                    SmallTextRenderer.DrawCentered(canvas, "Twoj komputer moze byc teraz bezpiecznie wylaczony.",
+                    SmallTextRenderer.DrawCentered(canvas, "You can now safely power off your computer.",
                         boxX, boxY + 92, boxW, Color.FromArgb(135, 150, 168));
 
-                    SmallTextRenderer.DrawCentered(canvas, "Przytrzymaj przycisk ZASILANIA na laptopie, aby odciac prad.",
+                    SmallTextRenderer.DrawCentered(canvas, "Hold down the laptop POWER button to turn off the power.",
                         boxX, boxY + 122, boxW, Color.FromArgb(55, 215, 105));
 
-                    SmallTextRenderer.DrawCentered(canvas, "[ R ]  Nacisnij klawisz R, aby zrestartowac komputer",
+                    SmallTextRenderer.DrawCentered(canvas, "[ R ]  Press R to restart the computer",
                         boxX, boxY + 160, boxW, Color.FromArgb(245, 195, 45));
 
                     canvas.Display();

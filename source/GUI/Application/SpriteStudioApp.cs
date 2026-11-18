@@ -166,7 +166,7 @@ namespace ZonderqOS.GUI.Apps
                     if (Hit(mouseX, mouseY, px, py, 22, 20))
                     {
                         selectedColor = (byte)i;
-                        statusMessage = "Wybrano kolor: #" + i;
+                        statusMessage = "Color selected: #" + i;
                         return;
                     }
                 }

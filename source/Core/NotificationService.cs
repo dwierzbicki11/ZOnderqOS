@@ -105,7 +105,7 @@ namespace ZonderqOS
             lock (Sync)
             {
                 source = Normalize(source, "SYSTEM", MaxSourceLength);
-                title = Normalize(title, "Powiadomienie", MaxTitleLength);
+                title = Normalize(title, "Notification", MaxTitleLength);
                 message = Normalize(message, string.Empty, MaxMessageLength);
 
                 if (count == Capacity)

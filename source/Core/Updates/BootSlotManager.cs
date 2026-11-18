@@ -317,7 +317,7 @@ namespace ZonderqOS.SystemCore.Updates
                 else
                     BootAttempts++;
                 SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT",
-                    $"Proba uruchomienia slotu {PendingSlot}: {BootAttempts}/{MaxBootAttempts}");
+                    $"Boot attempt for slot {PendingSlot}: {BootAttempts}/{MaxBootAttempts}");
 
                 // A malformed pending ELF is rejected immediately by EFI.
                 // In that case BOOTGUARD_FALLBACK=1 can be durable even when
@@ -590,7 +590,7 @@ namespace ZonderqOS.SystemCore.Updates
                     copyBuffer.Dispose();
                 }
                 if (copiedBytes != totalBytes)
-                    throw new IOException("Rozmiar pliku zmienil sie podczas kopiowania.");
+                    throw new IOException("File size changed during copying.");
 
                 if (!HasValidElfHeaderFile(tempPath))
                     throw new IOException("Image is not a valid ELF64 file with a program header table.");
@@ -671,7 +671,7 @@ namespace ZonderqOS.SystemCore.Updates
                 }
                 catch (Exception restoreEx)
                 {
-                    error += " ODTWORZENIE NIEUDANE: " + restoreEx.Message;
+                    error += " RESTORE FAILED: " + restoreEx.Message;
                 }
                 SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT", error);
                 return false;

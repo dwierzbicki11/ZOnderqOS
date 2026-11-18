@@ -1033,7 +1033,7 @@ namespace ZonderqOS.GUI.Apps
             if (usedBarW > 0) canvas.DrawFilledRectangle(GreenColor, sx, sy, usedBarW, 10);
 
             sy += lineH + 6;
-            SmallTextRenderer.Draw(canvas, "WIDEO I SYSTEM PLIKOW:", sx, sy, GreenColor);
+            SmallTextRenderer.Draw(canvas, "VIDEO AND FILE SYSTEM:", sx, sy, GreenColor);
             sy += lineH;
             SmallTextRenderer.Draw(canvas, "  Ekran:        " + canvas.Width + "x" + canvas.Height + " (VESA 32-bit Direct Color Framebuffer)", sx, sy, TextColor);
             sy += lineH;

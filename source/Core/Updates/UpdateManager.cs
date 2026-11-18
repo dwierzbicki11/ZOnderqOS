@@ -702,7 +702,7 @@ namespace ZonderqOS.SystemCore.Updates
                     return false;
                 }
 
-                progress?.Invoke(10, "Sprawdzanie obecnosci plikow pakietu...");
+                progress?.Invoke(10, "Checking package files...");
 
                 // 1. Verify kernel binary
                 string kernelSrc = FindKernelSource(pkg);
@@ -773,7 +773,7 @@ namespace ZonderqOS.SystemCore.Updates
                         long actualSize = new FileInfo(fullPath).Length;
                         if (fileEntry.SizeBytes > 0 && actualSize != fileEntry.SizeBytes)
                         {
-                            error = "Niezgodny rozmiar pliku payload: " + fileEntry.RelativePath;
+                            error = "Payload file size mismatch: " + fileEntry.RelativePath;
                             return false;
                         }
                         string actualFHash = BootSlotManager.ComputeFileSha256(fullPath);
@@ -889,13 +889,13 @@ namespace ZonderqOS.SystemCore.Updates
                 FileInfo manifestInfo = new FileInfo(manifestPath);
                 if (!manifestInfo.Exists || manifestInfo.Length <= 0 || manifestInfo.Length > 1024 * 1024)
                 {
-                    error = "Niepoprawny rozmiar podpisanego manifestu.";
+                    error = "Invalid signed manifest size.";
                     return false;
                 }
                 byte[] bytes = ReadBoundedBytes(manifestPath, 1024 * 1024);
                 if (bytes == null || bytes.Length == 0 || bytes.Length > 1024 * 1024)
                 {
-                    error = "Niepoprawny rozmiar podpisanego manifestu.";
+                    error = "Invalid signed manifest size.";
                     return false;
                 }
                 string sigPath = manifestPath + ".sig";
@@ -979,7 +979,7 @@ namespace ZonderqOS.SystemCore.Updates
                             StringComparison.OrdinalIgnoreCase) ||
                         given.SizeBytes != signed.SizeBytes)
                     {
-                        error = "Zmieniono liste plikow po weryfikacji podpisu.";
+                        error = "File list changed after signature verification.";
                         return false;
                     }
                 }
@@ -1322,7 +1322,7 @@ namespace ZonderqOS.SystemCore.Updates
                     throw new IOException("Missing payload file: " + entry.RelativePath);
                 long sourceSize = new FileInfo(source).Length;
                 if (entry.SizeBytes > 0 && sourceSize != entry.SizeBytes)
-                    throw new IOException("Niepoprawny rozmiar payload: " + entry.RelativePath);
+                    throw new IOException("Invalid payload size: " + entry.RelativePath);
                 if (!Crypto.FixedTimeEquals(
                     BootSlotManager.ComputeFileSha256(source).ToLowerInvariant(),
                     entry.ExpectedSha256.ToLowerInvariant()))
@@ -1590,7 +1590,7 @@ namespace ZonderqOS.SystemCore.Updates
                     string oldIssue = Path.Combine(BackupDir, "issue.snapshot");
                     if ((osExisted && !File.Exists(oldRelease)) ||
                         (configExisted && !File.Exists(oldConfig)))
-                        throw new IOException("Brak wymaganej kopii pierwotnego pliku w snapshot.");
+                        throw new IOException("Required original file backup is missing from the snapshot.");
                     if (osExisted) File.Copy(oldRelease, OsReleasePath, true);
                     else if (File.Exists(OsReleasePath)) File.Delete(OsReleasePath);
                     if (configExisted) File.Copy(oldConfig, ConfigPath, true);
@@ -1618,7 +1618,7 @@ namespace ZonderqOS.SystemCore.Updates
                 }
                 catch (Exception ex)
                 {
-                    error = "Rollback plikow po nieudanym boot: " + ex.Message;
+                    error = "File rollback after failed boot: " + ex.Message;
                     return false;
                 }
             }
@@ -1648,7 +1648,7 @@ namespace ZonderqOS.SystemCore.Updates
 
                 if (!HasRollbackSnapshot())
                 {
-                    error = "Brak dostepnej migawki do przywrocenia (brak punktu rollback).";
+                    error = "No snapshot is available to restore (rollback point missing).";
                     return false;
                 }
 
@@ -1667,14 +1667,14 @@ namespace ZonderqOS.SystemCore.Updates
                             }
                             if (targetFallback == BootSlotManager.ActiveSlot)
                             {
-                                error = "Brak odrebnego slotu przywracania — FallbackSlot jest rowny ActiveSlot.";
+                                error = "No separate recovery slot: FallbackSlot equals ActiveSlot.";
                                 Status = UpdateStatus.Error;
                                 return false;
                             }
                             string fallbackKernel = BootSlotManager.GetSlotKernelPath(targetFallback);
                             if (!File.Exists(fallbackKernel) || !BootSlotManager.HasValidElfHeaderFile(fallbackKernel))
                             {
-                                error = $"Brak poprawnego obrazu kernela w slocie przywracania {targetFallback}.";
+                                error = $"Valid kernel image is missing from recovery slot {targetFallback}.";
                                 Status = UpdateStatus.Error;
                                 return false;
                             }
@@ -1684,7 +1684,7 @@ namespace ZonderqOS.SystemCore.Updates
                         case 1:
                             // Restore shared /system, /usr, and /etc payload BEFORE switching boot slot
                             // so the previous kernel never boots against incompatible newer files.
-                            progress?.Invoke(50, "Przywracanie wspolnych plikow /system i konfiguracji /etc...");
+                            progress?.Invoke(50, "Restoring shared /system files and /etc configuration...");
                             CleanupStaleUpdateTempFiles();
                             if (!RestoreSharedFilesAfterBootFailure(BootSlotManager.FallbackSlot,
                                     out error))
@@ -1707,7 +1707,7 @@ namespace ZonderqOS.SystemCore.Updates
                             return true;
 
                         case 3:
-                            progress?.Invoke(100, "Przywracanie zakonczone pomyslnie! Wymagany restart.");
+                            progress?.Invoke(100, "Restore completed successfully! Restart required.");
                             string metaFile = Path.Combine(BackupDir, "snapshot.meta");
                             string prevVersion = KernelBuildInfo.KernelVersion;
                             string prevBuild = KernelBuildInfo.KernelBuild.ToString();

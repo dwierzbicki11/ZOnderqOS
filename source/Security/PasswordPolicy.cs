@@ -17,7 +17,7 @@ namespace ZonderqOS
         {
             if (password == null)
             {
-                reason = "HASLO JEST WYMAGANE";
+                reason = "PASSWORD IS REQUIRED";
                 return false;
             }
 

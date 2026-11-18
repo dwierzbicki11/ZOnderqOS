@@ -49,7 +49,7 @@ namespace ZonderqOS.Hardware
             get { EnsureDetected(); return memoryMapAvailable; }
         }
 
-        public static string InstalledSourceText => "nieznany (brak SMBIOS w Cosmos 3.0.95)";
+        public static string InstalledSourceText => "unknown (SMBIOS unavailable in Cosmos 3.0.95)";
 
         public static ulong HeapPoolBytes
         {

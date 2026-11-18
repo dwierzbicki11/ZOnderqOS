@@ -438,7 +438,7 @@ namespace ZonderqOS.GUI
                     layout.HeaderIconX, layout.HeaderIconY, layout.HeaderIconSize, layout.HeaderIconSize);
                 canvas.DrawString("Sesja zablokowana", PCScreenFont.DefaultFont, Text,
                     layout.HeaderTitleX, layout.HeaderTitleY);
-                SmallTextRenderer.DrawClipped(canvas, "OTWARTE APLIKACJE POZOSTAJA W PAMIECI",
+                SmallTextRenderer.DrawClipped(canvas, "OPEN APPLICATIONS REMAIN IN MEMORY",
                     layout.HeaderSubX, layout.HeaderSubY,
                     layout.CardX + layout.CardWidth - 20 - layout.HeaderSubX, Muted);
 

@@ -390,7 +390,7 @@ namespace ZonderqOS.GUI.Apps
             cachedDashAnomaliesText = "Detected " + anomalies + " system file issues. Check the Integrity tab.";
             cachedDashSafeText = "All " + total + " monitored /etc files are authentic. The firewall is active.";
             cachedIntCardStatus = anomalies == 0
-                ? "✓ " + passed + "/" + total + " plikow poprawnych (SHA-256)"
+                ? "✓ " + passed + "/" + total + " files verified (SHA-256)"
                 : "⚠ " + anomalies + " anomalii wykrytych!";
         }
 
@@ -508,11 +508,11 @@ namespace ZonderqOS.GUI.Apps
             {
                 SmallTextRenderer.Draw(canvas, "THREAT OR INTEGRITY VIOLATION DETECTED!", textX, cy + 22, RedColor);
                 SmallTextRenderer.Draw(canvas, cachedDashAnomaliesText, textX, cy + 44, TextColor);
-                SmallTextRenderer.Draw(canvas, "Zalecana natychmiastowa inspekcja sum SHA-256 oraz uprawnien plikow.", textX, cy + 64, MutedColor);
+                SmallTextRenderer.Draw(canvas, "Immediate inspection of SHA-256 checksums and file permissions is recommended.", textX, cy + 64, MutedColor);
             }
             else if (!isFirewallActive)
             {
-                SmallTextRenderer.Draw(canvas, "ZAPORA SIECIOWA JEST WYLACZONA - RUCH NIEFILTROWANY", textX, cy + 22, GoldColor);
+                SmallTextRenderer.Draw(canvas, "FIREWALL IS DISABLED - TRAFFIC IS UNFILTERED", textX, cy + 22, GoldColor);
                 SmallTextRenderer.Draw(canvas, "System files match the baseline, but the computer is not protected against network attacks.", textX, cy + 44, TextColor);
                 SmallTextRenderer.Draw(canvas, "Enable the firewall below or in the Firewall tab.", textX, cy + 64, MutedColor);
             }
@@ -590,7 +590,7 @@ namespace ZonderqOS.GUI.Apps
             int panelH = 265;
             UiPainter.RoundedPanel(canvas, wx + 16, cy + 2, panelW, panelH, 6, Panel, Border);
 
-            SmallTextRenderer.Draw(canvas, "BAZA INTEGRALNOSCI I ANTY-TAMPER PLIKOW SYSTEMOWYCH (/etc/integrity.db):", wx + 26, cy + 12, GoldColor);
+            SmallTextRenderer.Draw(canvas, "SYSTEM FILE INTEGRITY AND TAMPER-PROTECTION DATABASE (/etc/integrity.db):", wx + 26, cy + 12, GoldColor);
 
             int startY = cy + 34;
             // Table Header

@@ -84,7 +84,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (key.Key == ConsoleKeyEx.Escape || key.Key == ConsoleKeyEx.F5)
                 {
-                    statusMessage = "Trwa operacja aktualizacji - poczekaj na zakonczenie.";
+                    statusMessage = "Update in progress - please wait for completion.";
                     statusColor = GoldColor;
                 }
                 return;
@@ -131,7 +131,7 @@ namespace ZonderqOS.GUI.Apps
 
                 if (isBusy)
                 {
-                    statusMessage = "Trwa operacja aktualizacji - poczekaj na zakonczenie.";
+                    statusMessage = "Update in progress - please wait for completion.";
                     statusColor = GoldColor;
                     return;
                 }
@@ -240,7 +240,7 @@ namespace ZonderqOS.GUI.Apps
             };
 
             UpdateManager.SetSourceMode(next);
-            statusMessage = "Zrodlo aktualizacji: " + next.ToString().ToUpperInvariant();
+            statusMessage = "Update source: " + next.ToString().ToUpperInvariant();
             statusColor = AccentColor;
         }
 
@@ -400,7 +400,7 @@ namespace ZonderqOS.GUI.Apps
             currentOpStep = 0;
             currentProgress = 10;
             currentStepText = "Inicjalizacja wycofywania zmian (Rollback)...";
-            statusMessage = "Trwa przywracanie migawki systemu...";
+            statusMessage = "Restoring system snapshot...";
             statusColor = GoldColor;
         }
 
@@ -537,7 +537,7 @@ namespace ZonderqOS.GUI.Apps
                 UiPainter.RoundedPanel(canvas, x, y, w, h, 4, Panel, AccentColor);
                 string signText = pkg.IsSigned ? (pkg.IsSignatureValid ? " [PODPIS OK]" : " [ZLY PODPIS]") : "";
                 SmallTextRenderer.Draw(canvas, "Pakiet USB: " + pkg.Version + " - " + pkg.Title + signText, x + 12, y + 11, TextColor);
-                DrawButton(canvas, "ZAINSTALUJ TERAZ", x + w - 158, y + 4, 150, 28, AccentColor, AccentColor, TextColor);
+                DrawButton(canvas, "INSTALL NOW", x + w - 158, y + 4, 150, 28, AccentColor, AccentColor, TextColor);
             }
             else if (UpdateManager.IsRebootRequired)
             {

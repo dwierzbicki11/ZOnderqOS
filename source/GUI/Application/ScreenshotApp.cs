@@ -49,7 +49,7 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            status = "Trwa zapisywanie zrzutu...";
+            status = "Saving screenshot...";
             string path = ScreenshotService.CaptureAndSave(canvas);
             if (!string.IsNullOrEmpty(path))
             {
@@ -151,7 +151,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Border, btnX, btn1Y + btnH - 1, btnW, 1);
             canvas.DrawFilledRectangle(Border, btnX, btn1Y, 1, btnH);
             canvas.DrawFilledRectangle(Border, btnX + btnW - 1, btn1Y, 1, btnH);
-            SmallTextRenderer.DrawCentered(canvas, "PRZECHWYC CALY EKRAN", btnX, btn1Y + 13, btnW, AccentColor);
+            SmallTextRenderer.DrawCentered(canvas, "CAPTURE FULL SCREEN", btnX, btn1Y + 13, btnW, AccentColor);
 
             // Secondary Button: Open in Viewer (enabled if screenshot taken)
             if (!string.IsNullOrEmpty(lastSavedPath))

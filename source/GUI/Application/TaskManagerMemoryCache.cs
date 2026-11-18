@@ -209,7 +209,7 @@ namespace ZonderqOS.GUI.Apps
                 lastSnapUsableBytes = physicalUsableBytes;
                 lastSnapTotalPages = totalPages;
 
-                InstalledRamText = physicalInstalledBytes > 0 ? FormatBytesSmart(physicalInstalledBytes) : "nieznany (brak SMBIOS)";
+                InstalledRamText = physicalInstalledBytes > 0 ? FormatBytesSmart(physicalInstalledBytes) : "unknown (SMBIOS unavailable)";
                 UsableRamText = FormatBytesSmart(physicalUsableBytes);
                 HeapPoolText = FormatBytesSmart(totalPages * PageSize);
                 MemoryPagesText = totalPages + " (" + PageSize + " B/strona)";

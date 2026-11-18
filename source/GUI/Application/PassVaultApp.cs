@@ -595,10 +595,10 @@ namespace ZonderqOS.GUI.Apps
         private void LoadDefaultEntries()
         {
             entries.Clear();
-            entries.Add(new VaultEntry { Title = "Konto Lokalne ZOnderq", Username = "zonderq", Password = "password123", Category = "System", Notes = "Konto administratora systemu" });
-            entries.Add(new VaultEntry { Title = "Router Domowy Wi-Fi", Username = "admin", Password = "WPA3-SecureKey#2026", Category = "Network", Notes = "Adres IP: 192.168.1.1" });
-            entries.Add(new VaultEntry { Title = "Serwer SSH Backup", Username = "root", Password = "Zonderq-SuperSsh!99", Category = "Serwer", Notes = "Port: 2222, klucz ed25519" });
-            entries.Add(new VaultEntry { Title = "Portfel Crypto / Baza", Username = "dwierzbicki", Password = "vault-k7m9-p2x4-w8q1", Category = "Finanse", Notes = "Klucz zapasowy offline" });
+            entries.Add(new VaultEntry { Title = "ZOnderq Local Account", Username = "zonderq", Password = "password123", Category = "System", Notes = "System administrator account" });
+            entries.Add(new VaultEntry { Title = "Home Wi-Fi Router", Username = "admin", Password = "WPA3-SecureKey#2026", Category = "Network", Notes = "IP address: 192.168.1.1" });
+            entries.Add(new VaultEntry { Title = "Backup SSH Server", Username = "root", Password = "Zonderq-SuperSsh!99", Category = "Server", Notes = "Port: 2222, ed25519 key" });
+            entries.Add(new VaultEntry { Title = "Crypto Wallet / Database", Username = "dwierzbicki", Password = "vault-k7m9-p2x4-w8q1", Category = "Finance", Notes = "Offline backup key" });
             selectedIndex = 0;
         }
 
@@ -866,7 +866,7 @@ namespace ZonderqOS.GUI.Apps
         private void AddNewEntry()
         {
             VaultEntry newEntry;
-            newEntry.Title = "Nowe Konto #" + (entries.Count + 1);
+            newEntry.Title = "New Account #" + (entries.Count + 1);
             newEntry.Username = "user";
             newEntry.Password = GenerateRandomPassword(16);
             newEntry.Category = "System";

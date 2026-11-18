@@ -19,7 +19,7 @@ namespace ZonderqOS.GUI.Apps
         private bool accessDenied;
 
         public SystemLogApp(int x, int y)
-            : base("Dzienniki systemowe", "Logi i audyt - ZOnderqOS", x, y, 980, 660)
+            : base("System Logs", "Logs and audit - ZOnderqOS", x, y, 980, 660)
         {
             RefreshData();
         }
@@ -53,7 +53,7 @@ namespace ZonderqOS.GUI.Apps
             DrawRow(canvas, 0, IconType.File,
                 "LOG SOURCE", "Click to switch auth / system / guardian", CurrentName, Accent);
             DrawNumericRow(canvas, 1, IconType.File,
-                "ROZMIAR PLIKU", CurrentPath, fileBytes > 0 ? (ulong)fileBytes / 1024UL : 0UL, " KB");
+                "FILE SIZE", CurrentPath, fileBytes > 0 ? (ulong)fileBytes / 1024UL : 0UL, " KB");
 
             int x = Window.X + 22;
             int y = RowY(2);

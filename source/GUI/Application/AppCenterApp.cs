@@ -180,7 +180,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     selectedVisibleIndex = visibleIndex;
                     KeepSelectionVisible();
-                    SetStatus("WYBRANO APLIKACJE", Good);
+                    SetStatus("APPLICATION SELECTED", Good);
                 }
                 return;
             }
@@ -267,7 +267,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (string.IsNullOrEmpty(searchText))
             {
-                SmallTextRenderer.Draw(canvas, "ZACZNIJ PISAC, ABY FILTROWAC APLIKACJE", x + 105, y + 17, Muted);
+                SmallTextRenderer.Draw(canvas, "TYPE TO FILTER APPLICATIONS", x + 105, y + 17, Muted);
             }
             else
             {
@@ -552,7 +552,7 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            SetStatus("URUCHOMIONO: " + app.Name, Good);
+            SetStatus("LAUNCHED: " + app.Name, Good);
         }
 
         private void ResetFilter()

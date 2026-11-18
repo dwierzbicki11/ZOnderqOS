@@ -418,7 +418,7 @@ namespace ZonderqOS.GUI
                 IconManager.DrawScaled(canvas, IconType.About, X + 18, Y + 19, 28, 28);
             if (Width >= 170 && Height >= 54)
                 SmallTextRenderer.Draw(canvas, Width < 260 ? "INFO" :
-                    Width < 380 ? "POWIADOMIENIA" : "CENTRUM POWIADOMIEN",
+                    Width < 380 ? "NOTIFICATIONS" : "NOTIFICATION CENTER",
                     X + 58, Y + 20, Text);
             if (Width >= 380 && Height >= 54)
                 SmallTextRenderer.Draw(canvas, "CTRL+ALT+N  |  D DND  |  R PRZECZYTANE",
