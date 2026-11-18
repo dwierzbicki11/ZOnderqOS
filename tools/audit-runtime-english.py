@@ -53,6 +53,20 @@ POLISH_STEMS = (
     "zamkn", "zapis", "zaszyfr", "zastosowan", "zatrzym", "zaufan",
     "zawier", "zaznacz", "zidentyfik", "zmienion", "zostala",
     "zostalo", "zostal", "zweryfikowan", "zwyciestw",
+    "aktywnego", "automatyczn", "awaryjn", "bazow", "bez", "calosci",
+    "centrum", "ciagu", "cyfrow", "dodatkow", "domysln", "dokon",
+    "dotycz", "drukow", "dzisiaj", "ekranu", "formatowan", "glowne",
+    "hasla", "hasle", "istnieje", "jednost", "jest", "jezyk",
+    "jadra", "koniecznos", "krotk", "miejsc", "minimaln", "mozemy",
+    "najnowsz", "nas", "natychmiast", "nazwa", "nazwe", "nowosci",
+    "obcego", "obcych", "obsluga", "obslugi", "obslug", "odmonto",
+    "odpowied", "oraz", "pamieci", "pelni", "ponizej", "ponad",
+    "poprawnie", "pozostal", "przed", "przyczyn", "przykla",
+    "reczn", "rozruchow", "sprobuj", "startow", "strzalk",
+    "szczegol", "tylko", "udostep", "uwzgledn", "wybor",
+    "wydania", "wygenerow", "wykrywa", "wyswietlan", "zachowan",
+    "zalecan", "zamontowan", "zapisano", "zapora", "zbyt",
+    "zezwolen", "zuzycia", "zwrac", "zwykla", "zainstalowan",
 )
 ACCENTS = re.compile(r"[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]")
 POLISH_WORD = re.compile(r"(?<![a-zA-Z])(?:" + "|".join(POLISH_STEMS) + r")[a-zA-Z]*\b|\bmusi\b", re.I)
