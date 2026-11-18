@@ -73,35 +73,35 @@ namespace ZonderqOS.GUI.Apps
             // Sample 0: PC Speaker Melodia & Chiptune
             new string[]
             {
-                "10 REM --- MELODIA PC SPEAKER ---",
+                "10 REM --- PC SPEAKER MELODY ---",
                 "20 CLS",
                 "30 PRINT \"ZONDERQ CHIPTUNE DEMO\"",
                 "40 PRINT \"---------------------\"",
                 "50 FOR F = 250 TO 650 STEP 80",
-                "60 PRINT \"TON: \"; F; \" HZ\"",
+                "60 PRINT \"TONE: \"; F; \" HZ\"",
                 "70 BEEP F, 70",
                 "80 NEXT F",
-                "90 PRINT \"FANFARA KONCOWA!\"",
+                "90 PRINT \"FINAL FANFARE!\"",
                 "100 BEEP 523, 120",
                 "110 BEEP 659, 120",
                 "120 BEEP 784, 260",
                 "130 PRINT \"COMPLETED SUCCESSFULLY!\"",
                 "140 END"
             },
-            // Sample 1: Zgadnij Liczbe
+            // Sample 1: Guess the Number
             new string[]
             {
-                "10 REM --- ZGADNIJ LICZBE 1-50 ---",
+                "10 REM --- GUESS THE NUMBER 1-50 ---",
                 "20 CLS",
-                "30 PRINT \"LOSOWANIE UKRYTEJ LICZBY...\"",
+                "30 PRINT \"GENERATING A SECRET NUMBER...\"",
                 "40 SECRET = 32",
                 "50 TRIES = 0",
                 "60 GUESS = 10",
                 "70 TRIES = TRIES + 1",
                 "80 PRINT \"ATTEMPT \"; TRIES; \": GUESS \"; GUESS",
                 "90 IF GUESS = SECRET THEN GOTO 160",
-                "100 IF GUESS < SECRET THEN PRINT \"-> ZA MALO!\"",
-                "110 IF GUESS > SECRET THEN PRINT \"-> ZA DUZO!\"",
+                "100 IF GUESS < SECRET THEN PRINT \"-> TOO LOW!\"",
+                "110 IF GUESS > SECRET THEN PRINT \"-> TOO HIGH!\"",
                 "120 BEEP 320, 50",
                 "130 GUESS = GUESS + 11",
                 "140 IF GUESS > 50 THEN GUESS = GUESS - 45",
