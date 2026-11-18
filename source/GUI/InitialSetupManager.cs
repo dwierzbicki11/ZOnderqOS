@@ -461,7 +461,7 @@ namespace ZonderqOS.GUI
                     layout.InnerWidth, layout.AccountBoxHeight,
                     UiMetrics.ButtonRadius, CardAlt, Border);
                 int accountTextY = layout.AccountBoxY + (layout.AccountBoxHeight - 7) / 2;
-                SmallTextRenderer.Draw(canvas, "KONTO", layout.AccountLabelX, accountTextY, Muted);
+                SmallTextRenderer.Draw(canvas, "ACCOUNT", layout.AccountLabelX, accountTextY, Muted);
                 SmallTextRenderer.Draw(canvas, "root", layout.AccountUserX, accountTextY, Text);
                 SmallTextRenderer.DrawClipped(canvas, PasswordPolicy.Summary,
                     layout.AccountPolicyX, accountTextY,
