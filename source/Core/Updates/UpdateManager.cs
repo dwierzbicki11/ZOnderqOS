@@ -62,7 +62,7 @@ namespace ZonderqOS.SystemCore.Updates
     public sealed class StorageEnvironmentInfo
     {
         public string PartitionLabel { get; set; } = "ZONDERQDATA";
-        public string DeviceType { get; set; } = "Disk USB / Dedykowany";
+        public string DeviceType { get; set; } = "USB Disk / Dedicated";
         public bool HasUpdatesDir { get; set; } = false;
         public bool HasManifest { get; set; } = false;
         public bool HasPayload { get; set; } = false;
@@ -1766,7 +1766,7 @@ namespace ZonderqOS.SystemCore.Updates
                 catch (Exception ex)
                 {
                     Status = UpdateStatus.Error;
-                    error = "Error podczas rollbacku: " + ex.Message;
+                    error = "Rollback error: " + ex.Message;
                     return false;
                 }
             }
