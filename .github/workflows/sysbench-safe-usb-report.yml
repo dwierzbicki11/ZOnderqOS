@@ -1,0 +1,40 @@
+name: Sysbench real-code host smoke and USB safety contracts
+
+on:
+  pull_request:
+    paths:
+      - 'source/Storage/Disk.cs'
+      - 'source/SystemCore/Diagnostics/**'
+      - 'source/Shell/Commands/CmdSysbench.cs'
+      - 'source/GUI/Application/SysBenchmarkApp.cs'
+      - 'tests/SysbenchSafeSmoke/**'
+      - 'tests/test_sysbench_*.py'
+      - '.github/workflows/sysbench-safe-usb-report.yml'
+  push:
+    branches:
+      - 'fix/sysbench-baremetal-safe-report-3097'
+
+permissions:
+  contents: read
+
+jobs:
+  host-sysbench:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Python static release contracts
+        run: |
+          python -m pip install --quiet pytest
+          python -m pytest -q tests/test_sysbench_diagnostics.py tests/test_sysbench_safety.py
+      - name: Compile REAL C# diagnostic sources and execute quick-mode smoke
+        run: |
+          dotnet run --project tests/SysbenchSafeSmoke/SysbenchSafeSmoke.csproj -c Release
