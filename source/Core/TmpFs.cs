@@ -130,19 +130,29 @@ namespace ZonderqOS.SystemCore
                     return false;
                 }
 
-                string newContent = append && existing != null
-                    ? (existing.Content ?? string.Empty) + value
-                    : value;
-
-                if (newContent.Length > MaxFileChars)
+                int oldChars = existing == null || existing.Content == null ? 0 : existing.Content.Length;
+                int newLength;
+                if (append && existing != null)
                 {
-                    error = "file exceeds temporary filesystem limit";
-                    return false;
+                    if (value.Length > MaxFileChars - oldChars)
+                    {
+                        error = "file exceeds temporary filesystem limit";
+                        return false;
+                    }
+                    newLength = oldChars + value.Length;
+                }
+                else
+                {
+                    if (value.Length > MaxFileChars)
+                    {
+                        error = "file exceeds temporary filesystem limit";
+                        return false;
+                    }
+                    newLength = value.Length;
                 }
 
-                int oldChars = existing == null || existing.Content == null ? 0 : existing.Content.Length;
-                int projected = totalChars - oldChars + newContent.Length;
-                if (projected > MaxTotalChars)
+                int delta = newLength - oldChars;
+                if (delta > MaxTotalChars - totalChars)
                 {
                     error = "temporary filesystem memory limit reached";
                     return false;
@@ -160,8 +170,11 @@ namespace ZonderqOS.SystemCore
                     Entries.Add(existing);
                 }
 
+                string newContent = append && oldChars > 0
+                    ? (existing.Content ?? string.Empty) + value
+                    : value;
                 existing.Content = newContent;
-                totalChars = projected;
+                totalChars = Math.Max(0, totalChars + delta);
                 return true;
             }
         }
@@ -210,6 +223,12 @@ namespace ZonderqOS.SystemCore
             string destination = Normalize(destinationPath);
             error = null;
 
+            if (!IsValidFilePath(source, out error))
+                return false;
+
+            if (!IsValidFilePath(destination, out error))
+                return false;
+
             lock (Sync)
             {
                 EnsureInitialized();
@@ -239,7 +258,13 @@ namespace ZonderqOS.SystemCore
                 }
 
                 string value = sourceEntry.Content ?? string.Empty;
-                if (totalChars + value.Length > MaxTotalChars)
+                if (value.Length > MaxFileChars)
+                {
+                    error = "file exceeds temporary filesystem limit";
+                    return false;
+                }
+
+                if (value.Length > MaxTotalChars - totalChars)
                 {
                     error = "temporary filesystem memory limit reached";
                     return false;
@@ -256,6 +281,12 @@ namespace ZonderqOS.SystemCore
             string source = Normalize(sourcePath);
             string destination = Normalize(destinationPath);
             error = null;
+
+            if (!IsValidFilePath(source, out error))
+                return false;
+
+            if (!IsValidFilePath(destination, out error))
+                return false;
 
             lock (Sync)
             {
@@ -289,6 +320,9 @@ namespace ZonderqOS.SystemCore
             string normalized = Normalize(path);
             error = null;
 
+            if (!IsValidFilePath(normalized, out error))
+                return false;
+
             lock (Sync)
             {
                 EnsureInitialized();
@@ -299,7 +333,8 @@ namespace ZonderqOS.SystemCore
                     return false;
                 }
 
-                totalChars -= entry.Content == null ? 0 : entry.Content.Length;
+                int removedChars = entry.Content == null ? 0 : entry.Content.Length;
+                totalChars = Math.Max(0, totalChars - removedChars);
                 Entries.Remove(entry);
                 return true;
             }
@@ -315,6 +350,9 @@ namespace ZonderqOS.SystemCore
                 error = "cannot remove temporary filesystem root";
                 return false;
             }
+
+            if (!IsValidPath(normalized, out error))
+                return false;
 
             lock (Sync)
             {
@@ -349,7 +387,7 @@ namespace ZonderqOS.SystemCore
                     if (current.Path == normalized || current.Path.StartsWith(prefix, StringComparison.Ordinal))
                     {
                         if (!current.Directory && current.Content != null)
-                            totalChars -= current.Content.Length;
+                            totalChars = Math.Max(0, totalChars - current.Content.Length);
                         Entries.RemoveAt(i);
                     }
                 }
@@ -410,13 +448,42 @@ namespace ZonderqOS.SystemCore
                 error = "path too long";
                 return false;
             }
-            if (path.IndexOf("/../", StringComparison.Ordinal) >= 0 ||
-                path.EndsWith("/..", StringComparison.Ordinal) ||
-                path.IndexOf("/./", StringComparison.Ordinal) >= 0 ||
-                path.EndsWith("/.", StringComparison.Ordinal))
+            for (int i = 0; i < path.Length; i++)
             {
-                error = "relative path components are not allowed";
-                return false;
+                char c = path[i];
+                if (c < 0x20 || c == 0x7F)
+                {
+                    error = "control characters are not allowed in path";
+                    return false;
+                }
+            }
+
+            int start = 1;
+            while (start <= path.Length)
+            {
+                int slash = path.IndexOf('/', start);
+                int length = (slash < 0 ? path.Length : slash) - start;
+                if (length <= 0)
+                {
+                    error = "invalid path segment";
+                    return false;
+                }
+
+                string segment = path.Substring(start, length);
+                if (segment == "." || segment == "..")
+                {
+                    error = "relative path components are not allowed";
+                    return false;
+                }
+                if (string.IsNullOrWhiteSpace(segment))
+                {
+                    error = "invalid path segment";
+                    return false;
+                }
+
+                if (slash < 0)
+                    break;
+                start = slash + 1;
             }
             return true;
         }

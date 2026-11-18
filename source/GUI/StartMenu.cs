@@ -633,8 +633,18 @@ namespace ZonderqOS.GUI
             {
                 int controlsX = X + Width - Padding - 58;
                 SmallTextRenderer.Draw(canvas, "▲", controlsX, Y + ToolsLabelY, toolScrollRow > 0 ? SystemTheme.Accent : Muted);
-                string pageInfo = (toolScrollRow + 1) + "/" + toolTotalRows;
-                SmallTextRenderer.DrawCentered(canvas, pageInfo, controlsX + 12, Y + ToolsLabelY, 32, Muted);
+                ulong curPage = (ulong)(toolScrollRow + 1);
+                ulong totalPages = (ulong)toolTotalRows;
+                int curWidth = SmallTextRenderer.WidthUInt(curPage);
+                int totalWidth = SmallTextRenderer.WidthUInt(totalPages);
+                int pageInfoWidth = curWidth + 7 + totalWidth;
+                int pageInfoX = controlsX + 12 + (pageInfoWidth <= 32 ? Math.Max(0, (32 - pageInfoWidth) / 2) : 0);
+                int pageInfoY = Y + ToolsLabelY;
+                SmallTextRenderer.DrawUInt(canvas, curPage, pageInfoX, pageInfoY, Muted);
+                if (curWidth + 6 <= 32)
+                    SmallTextRenderer.Draw(canvas, "/", pageInfoX + curWidth + 1, pageInfoY, Muted);
+                if (pageInfoWidth <= 32)
+                    SmallTextRenderer.DrawUInt(canvas, totalPages, pageInfoX + curWidth + 7, pageInfoY, Muted);
                 SmallTextRenderer.Draw(canvas, "▼", controlsX + 46, Y + ToolsLabelY, toolScrollRow < toolTotalRows - toolVisibleRows ? SystemTheme.Accent : Muted);
 
                 // Vertical scrollbar track and thumb on right edge

@@ -5,28 +5,52 @@ namespace ZonderqOS
 {
     public static class UserManager
     {
+        private struct CachedShadowEntry
+        {
+            public string Username;
+            public int Iterations;
+            public string Salt;
+            public string Hash;
+            public bool IsV2;
+            public string LegacyRaw;
+            public bool Active;
+        }
+
+        private const int MaxCachedCredentials = 32;
+        private static readonly object DatabaseSync = new object();
+        private static readonly object CredentialCacheSync = new object();
+        private static readonly CachedShadowEntry[] CredentialCache = new CachedShadowEntry[MaxCachedCredentials];
+        private static int cachedCredentialCount;
+        private static bool credentialCacheLoaded;
+        private static bool credentialCacheTruncated;
+
         private const string CredentialVersion = "v2";
         private static readonly string PasswdPath = @"/etc/passwd";
         private static readonly string ShadowPath = @"/etc/shadow";
 
         public static void Initialize()
         {
-            try
+            lock (DatabaseSync)
             {
-                if (!Directory.Exists("/etc"))
-                    Directory.CreateDirectory("/etc");
+                try
+                {
+                    if (!Directory.Exists("/etc"))
+                        Directory.CreateDirectory("/etc");
 
-                // Never overwrite an existing account database just because its companion
-                // file is missing. Each database is initialized independently.
-                if (!File.Exists(PasswdPath))
-                    File.WriteAllText(PasswdPath, "root:x:0:/root\n");
+                    // Never overwrite an existing account database just because its companion
+                    // file is missing. Each database is initialized independently.
+                    if (!File.Exists(PasswdPath))
+                        File.WriteAllText(PasswdPath, "root:x:0:/root\n");
 
-                if (!File.Exists(ShadowPath))
-                    File.WriteAllText(ShadowPath, "root:" + BuildCredential("root") + "\n");
-            }
-            catch (Exception ex)
-            {
-                WriteMessage.WriteError("UserManager init failed: " + ex.Message, "AUTH");
+                    if (!File.Exists(ShadowPath))
+                        File.WriteAllText(ShadowPath, "root:" + BuildCredential("root") + "\n");
+
+                    InvalidateCredentialCache();
+                }
+                catch (Exception ex)
+                {
+                    WriteMessage.WriteError("UserManager init failed: " + ex.Message, "AUTH");
+                }
             }
         }
 
@@ -52,11 +76,14 @@ namespace ZonderqOS
             if (!PasswordPolicy.Validate(newPassword, out reason))
                 return false;
 
-            if (!RequiresInitialRootPasswordSetup())
-                return false;
+            lock (DatabaseSync)
+            {
+                if (!RequiresInitialRootPasswordSetup())
+                    return false;
 
-            if (!RewritePasswordEntry("root", newPassword))
-                return false;
+                if (!RewritePasswordEntry("root", newPassword))
+                    return false;
+            }
 
             AuthenticationGuard.Reset("root");
             SecurityLogger.LogEvent("INFO", "Initial root credential was replaced during secure setup.");
@@ -88,23 +115,26 @@ namespace ZonderqOS
             if (!IsValidUsername(username))
                 return false;
 
-            try
+            lock (DatabaseSync)
             {
-                if (!File.Exists(PasswdPath))
-                    return false;
-
-                string[] lines = File.ReadAllLines(PasswdPath);
-                for (int i = 0; i < lines.Length; i++)
+                try
                 {
-                    string line = lines[i];
-                    int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
-                    if (separator > 0 && line.Substring(0, separator) == username)
-                        return true;
+                    if (!File.Exists(PasswdPath))
+                        return false;
+
+                    string[] lines = File.ReadAllLines(PasswdPath);
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        string line = lines[i];
+                        int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
+                        if (separator > 0 && line.Substring(0, separator) == username)
+                            return true;
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                SecurityLogger.LogEvent("ERR", "Passwd file read error: " + ex.Message);
+                catch (Exception ex)
+                {
+                    SecurityLogger.LogEvent("ERR", "Passwd file read error: " + ex.Message);
+                }
             }
 
             return false;
@@ -115,39 +145,216 @@ namespace ZonderqOS
             if (!IsValidUsername(username) || password == null)
                 return false;
 
-            try
+            lock (DatabaseSync)
             {
-                if (!File.Exists(ShadowPath))
-                    return false;
-
-                string[] lines = File.ReadAllLines(ShadowPath);
-                for (int i = 0; i < lines.Length; i++)
+                try
                 {
-                    string line = lines[i];
-                    int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
-                    if (separator <= 0 || line.Substring(0, separator) != username)
-                        continue;
+                    CachedShadowEntry cached;
+                    bool overflowed;
+                    if (TryGetCachedShadowEntry(username, out cached, out overflowed))
+                    {
+                        if (cached.IsV2)
+                        {
+                            string computed = Crypto.HashPasswordV2(password, cached.Salt, cached.Iterations);
+                            bool ok = Crypto.FixedTimeHexEquals(cached.Hash, computed);
+                            computed = null;
+                            return ok;
+                        }
 
-                    string credential = line.Substring(separator + 1);
-                    bool legacy;
-                    bool valid = VerifyCredential(password, credential, out legacy);
-                    if (!valid)
+                        bool legacyMatch;
+                        bool validCached = VerifyCredential(password, cached.LegacyRaw, out legacyMatch);
+                        if (!validCached)
+                            return false;
+                        if (legacyMatch)
+                            TryUpgradeLegacyCredential(username, password);
+                        return true;
+                    }
+
+                    if (!overflowed)
                         return false;
 
-                    // Existing installations used salt$FNV. A successful authentication is
-                    // the only moment we know the original password, so transparently replace
-                    // that legacy entry with the versioned PBKDF2-HMAC-SHA256 representation.
-                    if (legacy)
-                        TryUpgradeLegacyCredential(username, password);
-                    return true;
+                    if (!File.Exists(ShadowPath))
+                        return false;
+
+                    string[] lines = File.ReadAllLines(ShadowPath);
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        string line = lines[i];
+                        int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
+                        if (separator <= 0 || line.Substring(0, separator) != username)
+                            continue;
+
+                        string credential = line.Substring(separator + 1);
+                        bool legacy;
+                        bool valid = VerifyCredential(password, credential, out legacy);
+                        if (!valid)
+                            return false;
+
+                        // Existing installations used salt$FNV. A successful authentication is
+                        // the only moment we know the original password, so transparently replace
+                        // that legacy entry with the versioned PBKDF2-HMAC-SHA256 representation.
+                        if (legacy)
+                            TryUpgradeLegacyCredential(username, password);
+                        return true;
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                SecurityLogger.LogEvent("ERR", "Shadow file read error: " + ex.Message);
+                catch (Exception ex)
+                {
+                    SecurityLogger.LogEvent("ERR", "Shadow file read error: " + ex.Message);
+                }
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Zero-allocation credential verification used by LockScreen unlock paths.
+        /// Validates directly from cached struct credentials and a caller char[] buffer.
+        /// </summary>
+        internal static bool ValidateCredentialsChars(string username, char[] passwordChars, int passwordLength)
+        {
+            if (!IsValidUsername(username) || passwordChars == null ||
+                passwordLength < 0 || passwordLength > passwordChars.Length)
+                return false;
+
+            lock (DatabaseSync)
+            {
+                try
+                {
+                    CachedShadowEntry cached;
+                    bool overflowed;
+                    if (TryGetCachedShadowEntry(username, out cached, out overflowed))
+                    {
+                        if (cached.IsV2)
+                        {
+                            return Crypto.VerifyPasswordV2(
+                                passwordChars, passwordLength,
+                                cached.Salt, cached.Iterations, cached.Hash);
+                        }
+
+                        string fallbackPass = new string(passwordChars, 0, passwordLength);
+                        bool legacyMatch;
+                        bool validCached = VerifyCredential(fallbackPass, cached.LegacyRaw, out legacyMatch);
+                        if (validCached && legacyMatch)
+                            TryUpgradeLegacyCredential(username, fallbackPass);
+                        fallbackPass = null;
+                        return validCached;
+                    }
+
+                    if (!overflowed)
+                        return false;
+
+                    string overflowPass = new string(passwordChars, 0, passwordLength);
+                    bool fallbackOk = ValidateCredentials(username, overflowPass);
+                    overflowPass = null;
+                    return fallbackOk;
+                }
+                catch (Exception ex)
+                {
+                    SecurityLogger.LogEvent("ERR", "Shadow verification error: " + ex.Message);
+                    return false;
+                }
+            }
+        }
+
+        private static void InvalidateCredentialCache()
+        {
+            lock (CredentialCacheSync)
+            {
+                for (int i = 0; i < CredentialCache.Length; i++)
+                    CredentialCache[i] = default(CachedShadowEntry);
+                cachedCredentialCount = 0;
+                credentialCacheLoaded = false;
+                credentialCacheTruncated = false;
+            }
+        }
+
+        private static bool TryGetCachedShadowEntry(string username, out CachedShadowEntry entry, out bool overflowed)
+        {
+            entry = default(CachedShadowEntry);
+            lock (CredentialCacheSync)
+            {
+                if (!credentialCacheLoaded)
+                    LoadCredentialCacheLocked();
+
+                for (int i = 0; i < cachedCredentialCount; i++)
+                {
+                    if (CredentialCache[i].Active &&
+                        string.Equals(CredentialCache[i].Username, username, StringComparison.Ordinal))
+                    {
+                        entry = CredentialCache[i];
+                        overflowed = false;
+                        return true;
+                    }
+                }
+
+                overflowed = credentialCacheTruncated;
+                return false;
+            }
+        }
+
+        private static void LoadCredentialCacheLocked()
+        {
+            for (int i = 0; i < CredentialCache.Length; i++)
+                CredentialCache[i] = default(CachedShadowEntry);
+            cachedCredentialCount = 0;
+            credentialCacheTruncated = false;
+
+            if (!File.Exists(ShadowPath))
+            {
+                credentialCacheLoaded = true;
+                return;
+            }
+
+            string[] lines = File.ReadAllLines(ShadowPath);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i];
+                int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
+                if (separator <= 0 || separator >= line.Length - 1)
+                    continue;
+
+                if (cachedCredentialCount >= MaxCachedCredentials)
+                {
+                    credentialCacheTruncated = true;
+                    break;
+                }
+
+                string user = line.Substring(0, separator);
+                string credential = line.Substring(separator + 1);
+                CachedShadowEntry item = new CachedShadowEntry
+                {
+                    Username = user,
+                    Active = true
+                };
+
+                if (credential.StartsWith(CredentialVersion + "$", StringComparison.Ordinal))
+                {
+                    string[] parts = credential.Split('$');
+                    int iterations;
+                    if (parts.Length == 4 && parts[0] == CredentialVersion &&
+                        !string.IsNullOrEmpty(parts[2]) && !string.IsNullOrEmpty(parts[3]) &&
+                        Int32.TryParse(parts[1], out iterations) && iterations >= 1 && iterations <= 1000000)
+                    {
+                        item.IsV2 = true;
+                        item.Iterations = iterations;
+                        item.Salt = parts[2];
+                        item.Hash = parts[3];
+                    }
+                    else
+                    {
+                        item.LegacyRaw = credential;
+                    }
+                }
+                else
+                {
+                    item.LegacyRaw = credential;
+                }
+
+                CredentialCache[cachedCredentialCount++] = item;
+            }
+
+            credentialCacheLoaded = true;
         }
 
         public static bool TryStartSession(string username, string password)
@@ -206,6 +413,8 @@ namespace ZonderqOS
             if (SecurityContext.IsAuthenticated)
                 SecurityLogger.LogEvent("INFO", "User '" + user + "' logged out.");
 
+            SecurityLogger.Flush();
+            SystemLogger.Flush();
             PrepareLogin();
         }
 
@@ -216,30 +425,33 @@ namespace ZonderqOS
             if (!IsValidUsername(username))
                 return false;
 
-            try
+            lock (DatabaseSync)
             {
-                if (!File.Exists(PasswdPath))
-                    return false;
-
-                string[] lines = File.ReadAllLines(PasswdPath);
-                for (int i = 0; i < lines.Length; i++)
+                try
                 {
-                    string[] parts = lines[i].Split(':');
-                    if (parts.Length < 4 || parts[0] != username)
-                        continue;
-
-                    int parsedUid;
-                    if (!Int32.TryParse(parts[2], out parsedUid))
+                    if (!File.Exists(PasswdPath))
                         return false;
 
-                    uid = parsedUid;
-                    home = string.IsNullOrEmpty(parts[3]) ? "/" : parts[3];
-                    return true;
+                    string[] lines = File.ReadAllLines(PasswdPath);
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        string[] parts = lines[i].Split(':');
+                        if (parts.Length < 4 || parts[0] != username)
+                            continue;
+
+                        int parsedUid;
+                        if (!Int32.TryParse(parts[2], out parsedUid))
+                            return false;
+
+                        uid = parsedUid;
+                        home = string.IsNullOrEmpty(parts[3]) ? "/" : parts[3];
+                        return true;
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                SecurityLogger.LogEvent("ERR", "User info lookup failed: " + ex.Message);
+                catch (Exception ex)
+                {
+                    SecurityLogger.LogEvent("ERR", "User info lookup failed: " + ex.Message);
+                }
             }
 
             return false;
@@ -256,36 +468,41 @@ namespace ZonderqOS
 
             try
             {
-                if (UserExists(username))
-                    return false;
-
-                int uid = FindNextUid();
-                if (uid < 1000)
-                    return false;
-
                 string homeDir = "/home/" + username;
-                string credential = BuildCredential(password);
-                if (string.IsNullOrEmpty(credential))
-                    return false;
-
-                string oldPasswd = File.Exists(PasswdPath) ? File.ReadAllText(PasswdPath) : string.Empty;
-                string oldShadow = File.Exists(ShadowPath) ? File.ReadAllText(ShadowPath) : string.Empty;
-                string passwdEntry = username + ":x:" + uid + ":" + homeDir + "\n";
-                string shadowEntry = username + ":" + credential + "\n";
-
-                try
+                lock (DatabaseSync)
                 {
-                    File.WriteAllText(PasswdPath, AppendLine(oldPasswd, passwdEntry));
-                    File.WriteAllText(ShadowPath, AppendLine(oldShadow, shadowEntry));
-                }
-                catch
-                {
-                    // Best-effort rollback keeps the two account databases synchronized if
-                    // the second write fails. A sudden power loss still cannot be made fully
-                    // atomic on FAT, but normal IO failures no longer leave a half-account.
-                    try { File.WriteAllText(PasswdPath, oldPasswd); } catch { }
-                    try { File.WriteAllText(ShadowPath, oldShadow); } catch { }
-                    throw;
+                    if (UserExists(username))
+                        return false;
+
+                    int uid = FindNextUid();
+                    if (uid < 1000)
+                        return false;
+
+                    string credential = BuildCredential(password);
+                    if (string.IsNullOrEmpty(credential))
+                        return false;
+
+                    string oldPasswd = File.Exists(PasswdPath) ? File.ReadAllText(PasswdPath) : string.Empty;
+                    string oldShadow = File.Exists(ShadowPath) ? File.ReadAllText(ShadowPath) : string.Empty;
+                    string passwdEntry = username + ":x:" + uid + ":" + homeDir + "\n";
+                    string shadowEntry = username + ":" + credential + "\n";
+
+                    try
+                    {
+                        File.WriteAllText(PasswdPath, AppendLine(oldPasswd, passwdEntry));
+                        File.WriteAllText(ShadowPath, AppendLine(oldShadow, shadowEntry));
+                        InvalidateCredentialCache();
+                    }
+                    catch
+                    {
+                        // Best-effort rollback keeps the two account databases synchronized if
+                        // the second write fails. A sudden power loss still cannot be made fully
+                        // atomic on FAT, but normal IO failures no longer leave a half-account.
+                        try { File.WriteAllText(PasswdPath, oldPasswd); } catch { }
+                        try { File.WriteAllText(ShadowPath, oldShadow); } catch { }
+                        InvalidateCredentialCache();
+                        throw;
+                    }
                 }
 
                 if (!Directory.Exists(homeDir))
@@ -329,14 +546,17 @@ namespace ZonderqOS
                 return false;
             }
 
-            if (!ValidateCredentials(actor, authorizationPassword))
+            lock (DatabaseSync)
             {
-                SecurityLogger.LogEvent("WARN", "Password change authorization failed for '" + actor + "'.");
-                return false;
-            }
+                if (!ValidateCredentials(actor, authorizationPassword))
+                {
+                    SecurityLogger.LogEvent("WARN", "Password change authorization failed for '" + actor + "'.");
+                    return false;
+                }
 
-            if (!RewritePasswordEntry(username, newPassword))
-                return false;
+                if (!RewritePasswordEntry(username, newPassword))
+                    return false;
+            }
 
             AuthenticationGuard.Reset(username);
             SecurityLogger.LogEvent("INFO", "Password changed for '" + username + "' by '" + actor + "'.");
@@ -370,7 +590,7 @@ namespace ZonderqOS
                     return false;
 
                 string computed = Crypto.HashPasswordV2(password, parts[2], iterations);
-                bool ok = Crypto.FixedTimeEquals(parts[3], computed);
+                bool ok = Crypto.FixedTimeHexEquals(parts[3], computed);
                 computed = null;
                 return ok;
             }
@@ -385,7 +605,7 @@ namespace ZonderqOS
             string salt = credential.Substring(0, saltSeparator);
             string storedHash = credential.Substring(saltSeparator + 1);
             string legacyHash = Crypto.HashPassword(password, salt);
-            bool valid = Crypto.FixedTimeEquals(storedHash, legacyHash);
+            bool valid = Crypto.FixedTimeHexEquals(storedHash, legacyHash);
             legacyHash = null;
             legacy = valid;
             return valid;
@@ -435,31 +655,35 @@ namespace ZonderqOS
 
         private static bool ReplaceShadowCredential(string username, string credential)
         {
-            if (!File.Exists(ShadowPath))
-                return false;
-
-            string[] lines = File.ReadAllLines(ShadowPath);
-            int entryIndex = -1;
-            for (int i = 0; i < lines.Length; i++)
+            lock (DatabaseSync)
             {
-                string line = lines[i];
-                int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
-                if (separator <= 0)
-                    continue;
+                if (!File.Exists(ShadowPath))
+                    return false;
 
-                if (line.Substring(0, separator) == username)
+                string[] lines = File.ReadAllLines(ShadowPath);
+                int entryIndex = -1;
+                for (int i = 0; i < lines.Length; i++)
                 {
-                    entryIndex = i;
-                    break;
+                    string line = lines[i];
+                    int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
+                    if (separator <= 0)
+                        continue;
+
+                    if (line.Substring(0, separator) == username)
+                    {
+                        entryIndex = i;
+                        break;
+                    }
                 }
+
+                if (entryIndex < 0)
+                    return false;
+
+                lines[entryIndex] = username + ":" + credential;
+                File.WriteAllLines(ShadowPath, lines);
+                InvalidateCredentialCache();
+                return true;
             }
-
-            if (entryIndex < 0)
-                return false;
-
-            lines[entryIndex] = username + ":" + credential;
-            File.WriteAllLines(ShadowPath, lines);
-            return true;
         }
 
         private static string AppendLine(string existing, string entry)
@@ -474,33 +698,36 @@ namespace ZonderqOS
         private static int FindNextUid()
         {
             int nextUid = 1000;
-            try
+            lock (DatabaseSync)
             {
-                if (!File.Exists(PasswdPath))
-                    return nextUid;
-
-                string[] lines = File.ReadAllLines(PasswdPath);
-                for (int i = 0; i < lines.Length; i++)
+                try
                 {
-                    string[] parts = lines[i].Split(':');
-                    if (parts.Length < 3)
-                        continue;
+                    if (!File.Exists(PasswdPath))
+                        return nextUid;
 
-                    int uid;
-                    if (!Int32.TryParse(parts[2], out uid) || uid < 1000)
-                        continue;
-
-                    if (uid >= nextUid)
+                    string[] lines = File.ReadAllLines(PasswdPath);
+                    for (int i = 0; i < lines.Length; i++)
                     {
-                        if (uid == Int32.MaxValue)
-                            return -1;
-                        nextUid = uid + 1;
+                        string[] parts = lines[i].Split(':');
+                        if (parts.Length < 3)
+                            continue;
+
+                        int uid;
+                        if (!Int32.TryParse(parts[2], out uid) || uid < 1000)
+                            continue;
+
+                        if (uid >= nextUid)
+                        {
+                            if (uid == Int32.MaxValue)
+                                return -1;
+                            nextUid = uid + 1;
+                        }
                     }
                 }
-            }
-            catch
-            {
-                return -1;
+                catch
+                {
+                    return -1;
+                }
             }
 
             return nextUid;

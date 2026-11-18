@@ -400,6 +400,16 @@ namespace ZonderqOS.GUI
             UpdateScrollBar();
         }
 
+        internal void ClearForClose()
+        {
+            OutputLines.Clear();
+            ClearRenderClips();
+            ClearMonitorClips();
+            Text = string.Empty;
+            promptRenderClip = default;
+            inputRenderClip = default;
+        }
+
         #if ZONDERQ_PERF_HOST_TEST
         internal bool DisableMonitorClipCacheForBenchmark;
         #endif

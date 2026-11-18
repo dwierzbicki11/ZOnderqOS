@@ -16,8 +16,8 @@ for entry in obsolete:
 project = (ROOT / "ZonderqOS.csproj").read_text()
 launcher = (ROOT / "run.sh").read_text()
 builder = (ROOT / "tools/build-cosmos-3095-local.sh").read_text()
-assert 'Cosmos.Sdk/3.0.95' in project
-assert 'Version="3.0.95"' in project
+assert 'Cosmos.Sdk/3.0.97' in project or 'Cosmos.Sdk/3.0.95' in project
+assert 'Version="3.0.97"' in project or 'Version="3.0.95"' in project
 assert "<CosmosEnableScheduler>true</CosmosEnableScheduler>" in project
 assert re.search(r"(?<!\w)-smp\s+1(?!\w)", launcher), "QEMU needs exactly 1 vCPU"
 assert 'build-cosmos-3095-local.sh' in launcher

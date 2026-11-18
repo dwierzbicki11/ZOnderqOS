@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 
 namespace ZonderqOS
 {
@@ -31,6 +32,10 @@ namespace ZonderqOS
 
         private static readonly object Sync = new object();
         private static readonly SystemLogEntry[] Entries = new SystemLogEntry[Capacity];
+        private static readonly SystemLogEntry[] PendingDiskEntries = new SystemLogEntry[32];
+        private static readonly StringBuilder PendingFlushBuilder = new StringBuilder(1024);
+        private static int pendingDiskHead;
+        private static int pendingDiskCount;
         private static int writeIndex;
         private static int count;
         private static long nextSequence = 1;
@@ -83,12 +88,26 @@ namespace ZonderqOS
                         writesSinceStat = 0;
                     }
 
-                    int start = count == Capacity ? writeIndex : 0;
-                    for (int i = 0; i < count; i++)
+                    PendingFlushBuilder.Clear();
+                    try
                     {
-                        int index = (start + i) % Capacity;
-                        string line = Format(Entries[index]);
-                        AppendPersistentLocked(line);
+                        int start = count == Capacity ? writeIndex : 0;
+                        for (int i = 0; i < count; i++)
+                        {
+                            int index = (start + i) % Capacity;
+                            AppendFormattedToBuilder(PendingFlushBuilder, Entries[index]);
+                            PendingFlushBuilder.Append('\n');
+                        }
+
+                        if (PendingFlushBuilder.Length > 0)
+                        {
+                            RotateIfNeededLocked(PendingFlushBuilder.Length);
+                            AppendPersistentBatchLocked(PendingFlushBuilder.ToString());
+                        }
+                    }
+                    finally
+                    {
+                        PendingFlushBuilder.Clear();
                     }
 
                     initialized = true;
@@ -109,6 +128,33 @@ namespace ZonderqOS
         }
 
         public static void Log(SystemLogLevel level, string source, string message)
+        {
+            LogCore(level, source, message, flushToDisk: true);
+        }
+
+        /// <summary>
+        /// Records a routine diagnostic/session entry in the RAM ring buffer and queues
+        /// persistence until Flush() or the next persistent log event, avoiding 32 KiB
+        /// FAT32 cluster buffer allocations during repetitive Lock/Unlock cycles.
+        /// </summary>
+        public static void LogBuffered(SystemLogLevel level, string source, string message)
+        {
+            LogCore(level, source, message, flushToDisk: level >= SystemLogLevel.Error);
+        }
+
+        public static void Flush()
+        {
+            lock (Sync)
+            {
+                if (!initialized || pendingDiskCount == 0)
+                    return;
+                FlushPendingLocked();
+            }
+        }
+
+        internal static string GetTimestampCached() => GetTimestamp();
+
+        private static void LogCore(SystemLogLevel level, string source, string message, bool flushToDisk)
         {
             try
             {
@@ -134,9 +180,14 @@ namespace ZonderqOS
 
                     if (initialized)
                     {
-                        string formatted = Format(entry);
-                        RotateIfNeededLocked(formatted.Length + 1);
-                        AppendPersistentLocked(formatted);
+                        if (flushToDisk)
+                        {
+                            FlushPendingBatchLocked(hasExtra: true, extraEntry: entry);
+                        }
+                        else
+                        {
+                            EnqueuePendingLocked(entry);
+                        }
                     }
                 }
             }
@@ -144,6 +195,76 @@ namespace ZonderqOS
             {
                 // Logging is diagnostic infrastructure; failures must stay contained.
             }
+        }
+
+        private static void EnqueuePendingLocked(SystemLogEntry entry)
+        {
+            int cap = PendingDiskEntries.Length;
+            if (pendingDiskCount == cap)
+            {
+                PendingDiskEntries[pendingDiskHead] = entry;
+                pendingDiskHead = (pendingDiskHead + 1) % cap;
+            }
+            else
+            {
+                int tail = (pendingDiskHead + pendingDiskCount) % cap;
+                PendingDiskEntries[tail] = entry;
+                pendingDiskCount++;
+            }
+        }
+
+        private static void FlushPendingLocked()
+        {
+            FlushPendingBatchLocked(hasExtra: false, extraEntry: default(SystemLogEntry));
+        }
+
+        private static void FlushPendingBatchLocked(bool hasExtra, SystemLogEntry extraEntry)
+        {
+            int cap = PendingDiskEntries.Length;
+            if (pendingDiskCount == 0 && !hasExtra)
+                return;
+
+            PendingFlushBuilder.Clear();
+            try
+            {
+                for (int i = 0; i < pendingDiskCount; i++)
+                {
+                    int index = (pendingDiskHead + i) % cap;
+                    AppendFormattedToBuilder(PendingFlushBuilder, PendingDiskEntries[index]);
+                    PendingFlushBuilder.Append('\n');
+                    PendingDiskEntries[index] = default(SystemLogEntry);
+                }
+                pendingDiskHead = 0;
+                pendingDiskCount = 0;
+
+                if (hasExtra)
+                {
+                    AppendFormattedToBuilder(PendingFlushBuilder, extraEntry);
+                    PendingFlushBuilder.Append('\n');
+                }
+
+                if (PendingFlushBuilder.Length == 0)
+                    return;
+
+                RotateIfNeededLocked(PendingFlushBuilder.Length);
+                AppendPersistentBatchLocked(PendingFlushBuilder.ToString());
+            }
+            finally
+            {
+                PendingFlushBuilder.Clear();
+            }
+        }
+
+        private static void AppendFormattedToBuilder(StringBuilder sb, SystemLogEntry entry)
+        {
+            sb.Append('[');
+            sb.Append(entry.TimeText ?? "TIME_ERROR");
+            sb.Append("] [");
+            sb.Append(LevelName(entry.Level));
+            sb.Append("] [");
+            sb.Append(entry.Source ?? "SYS");
+            sb.Append("] ");
+            sb.Append(entry.Message ?? string.Empty);
         }
 
         public static bool TryGetRecent(int newestOffset, out SystemLogEntry entry)
@@ -180,6 +301,10 @@ namespace ZonderqOS
 
                 writeIndex = 0;
                 count = 0;
+                pendingDiskHead = 0;
+                pendingDiskCount = 0;
+                for (int i = 0; i < PendingDiskEntries.Length; i++)
+                    PendingDiskEntries[i] = default(SystemLogEntry);
 
                 if (initialized)
                 {
@@ -242,24 +367,50 @@ namespace ZonderqOS
             writesSinceStat = 0;
         }
 
-        private static void AppendPersistentLocked(string formattedLine)
+        private static void AppendPersistentBatchLocked(string batchText)
         {
             try
             {
-                string line = formattedLine + "\n";
-                File.AppendAllText(LogPath, line);
+                if (string.IsNullOrEmpty(batchText))
+                    return;
+                File.AppendAllText(LogPath, batchText);
                 if (approxLogBytes < 0)
                     approxLogBytes = 0;
-                approxLogBytes += line.Length;
+                approxLogBytes += batchText.Length;
                 writesSinceStat++;
             }
             catch { }
         }
 
+        private static readonly char[] TimestampChars = new char[19];
+        private static int lastTimestampYear = -1;
+        private static int lastTimestampMonth = -1;
+        private static int lastTimestampDay = -1;
+        private static int lastTimestampHour = -1;
+        private static int lastTimestampMinute = -1;
+        private static int lastTimestampSecond = -1;
+        private static string cachedTimestamp = "1970-01-01 00:00:00";
+
         private static string NormalizeSource(string source)
         {
             if (string.IsNullOrWhiteSpace(source))
                 return "SYS";
+
+            bool alreadyClean = source.Length <= 16 && source[0] > ' ' && source[source.Length - 1] > ' ';
+            if (alreadyClean)
+            {
+                for (int i = 0; i < source.Length; i++)
+                {
+                    char c = source[i];
+                    if (c >= 'a' && c <= 'z')
+                    {
+                        alreadyClean = false;
+                        break;
+                    }
+                }
+                if (alreadyClean)
+                    return source;
+            }
 
             source = source.Trim().ToUpperInvariant();
             return source.Length <= 16 ? source : source.Substring(0, 16);
@@ -269,6 +420,9 @@ namespace ZonderqOS
         {
             if (string.IsNullOrEmpty(message))
                 return string.Empty;
+
+            if (message.IndexOf('\r') < 0 && message.IndexOf('\n') < 0)
+                return message;
 
             return message.Replace('\r', ' ').Replace('\n', ' ');
         }
@@ -285,14 +439,58 @@ namespace ZonderqOS
             }
         }
 
+        private static void WriteTwoDigits(char[] buf, int offset, int value)
+        {
+            buf[offset] = (char)('0' + (value / 10) % 10);
+            buf[offset + 1] = (char)('0' + (value % 10));
+        }
+
         private static string GetTimestamp()
         {
             try
             {
                 DateTime now = DateTime.Now;
-                return now.Year.ToString("D4") + "-" + now.Month.ToString("D2") + "-" +
-                       now.Day.ToString("D2") + " " + now.Hour.ToString("D2") + ":" +
-                       now.Minute.ToString("D2") + ":" + now.Second.ToString("D2");
+                int year = now.Year;
+                int month = now.Month;
+                int day = now.Day;
+                int hour = now.Hour;
+                int minute = now.Minute;
+                int second = now.Second;
+
+                if (year == lastTimestampYear &&
+                    month == lastTimestampMonth &&
+                    day == lastTimestampDay &&
+                    hour == lastTimestampHour &&
+                    minute == lastTimestampMinute &&
+                    second == lastTimestampSecond)
+                {
+                    return cachedTimestamp;
+                }
+
+                lastTimestampYear = year;
+                lastTimestampMonth = month;
+                lastTimestampDay = day;
+                lastTimestampHour = hour;
+                lastTimestampMinute = minute;
+                lastTimestampSecond = second;
+
+                TimestampChars[0] = (char)('0' + (year / 1000) % 10);
+                TimestampChars[1] = (char)('0' + (year / 100) % 10);
+                TimestampChars[2] = (char)('0' + (year / 10) % 10);
+                TimestampChars[3] = (char)('0' + (year % 10));
+                TimestampChars[4] = '-';
+                WriteTwoDigits(TimestampChars, 5, month);
+                TimestampChars[7] = '-';
+                WriteTwoDigits(TimestampChars, 8, day);
+                TimestampChars[10] = ' ';
+                WriteTwoDigits(TimestampChars, 11, hour);
+                TimestampChars[13] = ':';
+                WriteTwoDigits(TimestampChars, 14, minute);
+                TimestampChars[16] = ':';
+                WriteTwoDigits(TimestampChars, 17, second);
+
+                cachedTimestamp = new string(TimestampChars);
+                return cachedTimestamp;
             }
             catch
             {

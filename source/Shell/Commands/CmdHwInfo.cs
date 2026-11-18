@@ -67,9 +67,10 @@ namespace ZonderqOS.Commands
         private static void PrintMemory(HardwareSnapshot info)
         {
             CommandIO.WriteLine("[MEMORY]");
-            if (info.InstalledMemoryBytes > 0 && info.InstalledMemoryBytes != info.TotalMemoryBytes)
-                CommandIO.WriteLine("  Installed:        " + FormatBytes(info.InstalledMemoryBytes));
-            CommandIO.WriteLine("  Total:            " + FormatBytes(info.TotalMemoryBytes));
+            CommandIO.WriteLine("  Installed:        " + (info.InstalledMemoryBytes > 0
+                ? FormatBytes(info.InstalledMemoryBytes) + " (SMBIOS)"
+                : "unknown (no SMBIOS)"));
+            CommandIO.WriteLine("  Firmware-visible: " + FormatBytes(info.TotalMemoryBytes) + " (Limine memmap)");
             if (info.HeapMemoryBytes > 0 && info.HeapMemoryBytes != info.TotalMemoryBytes)
                 CommandIO.WriteLine("  Heap Pool:        " + FormatBytes(info.HeapMemoryBytes));
             CommandIO.WriteLine("  Used:             " + FormatBytes(info.UsedMemoryBytes));

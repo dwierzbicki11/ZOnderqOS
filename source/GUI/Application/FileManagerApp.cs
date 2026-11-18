@@ -2745,9 +2745,16 @@ namespace ZonderqOS.GUI.Apps
                     x + 12, fieldY, width - 24, fieldHeight);
                 canvas.DrawRectangle(Color.FromArgb(83, 96, 110),
                     x + 12, fieldY, width - 24, fieldHeight);
-                SmallTextRenderer.DrawClipped(canvas, app.DialogName + "_",
-                    x + 18, fieldY + Math.Min(12, fieldHeight - 9),
-                    width - 36, Color.FromArgb(226, 232, 238));
+                string dialogName = app.DialogName ?? string.Empty;
+                int textX = x + 18;
+                int textY = fieldY + Math.Min(12, fieldHeight - 9);
+                int maxTextWidth = width - 36;
+                Color textColor = Color.FromArgb(226, 232, 238);
+                SmallTextRenderer.DrawClipped(canvas, dialogName,
+                    textX, textY, maxTextWidth, textColor);
+                int caretX = textX + (dialogName.Length > 0 ? SmallTextRenderer.Width(dialogName) + 1 : 0);
+                if (caretX + 5 <= textX + maxTextWidth)
+                    SmallTextRenderer.Draw(canvas, "_", caretX, textY, textColor);
             }
 
             if (height >= 108 && width >= 200)

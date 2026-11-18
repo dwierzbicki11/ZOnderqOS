@@ -30,20 +30,62 @@ namespace ZonderqOS.GUI.Apps
 
         private const int HistoryLength = 120;
         private const int LogicalPerPage = 16;
-        private const int InitialRowPool = 32;
+        private const int InitialRowPool = 12;
+        private const int MaxRecycledRows = 64;
+
+        private sealed class ReusableScratch
+        {
+            private const int PreallocatedLogicalCpus = 16;
+            private const int PreallocatedThreadSlots = 128;
+
+            public readonly int[] CpuHistory = new int[HistoryLength];
+            public readonly int[] MemoryHistory = new int[HistoryLength];
+            public readonly List<ModernTaskRow> RecycledRows = new List<ModernTaskRow>(InitialRowPool);
+            public readonly TaskManagerMemoryCache MemoryCache = new TaskManagerMemoryCache();
+            public int[][] LogicalHistory = CreateLogicalHistory(PreallocatedLogicalCpus);
+            public int[] LogicalHistoryCount = new int[PreallocatedLogicalCpus];
+            public int[] LogicalHistoryWrite = new int[PreallocatedLogicalCpus];
+            public int[] LogicalUsage = new int[PreallocatedLogicalCpus];
+            public ulong[] LogicalBusyDelta = new ulong[PreallocatedLogicalCpus];
+            public int LogicalCapacity = PreallocatedLogicalCpus;
+            public uint[] PreviousThreadIds = new uint[PreallocatedThreadSlots];
+            public ulong[] PreviousThreadRuntime = new ulong[PreallocatedThreadSlots];
+            public bool[] PreviousThreadValid = new bool[PreallocatedThreadSlots];
+            public int ThreadSlotCapacity = PreallocatedThreadSlots;
+
+            private static int[][] CreateLogicalHistory(int count)
+            {
+                int[][] arrays = new int[count][];
+                for (int i = 0; i < count; i++)
+                    arrays[i] = new int[HistoryLength];
+                return arrays;
+            }
+        }
+
+        private static ReusableScratch sharedScratch;
+        private static bool sharedScratchInUse;
+        private static CpuHardwareInfo cachedCpuStringsFor;
+        private static string cachedStaticBaseSpeedText;
+        private static string cachedStaticMaxSpeedText;
+        private static string cachedStaticBaseMaxSpeedText;
+        private static string cachedStaticTopologyText;
+        private static string cachedStaticCacheText;
+        private static string cachedStaticSignatureText;
 
         private readonly ApplicationManager applicationManager;
         private readonly Action closeCallback;
         private readonly TaskManagerModernView view;
         private readonly CpuHardwareInfo cpuInfo;
+        private readonly bool ownsSharedScratch;
+        private bool releasedSharedScratch;
 
         private readonly List<KernelProcess> processSnapshot = new List<KernelProcess>(16);
         private readonly List<ModernTaskRow> rowPool = new List<ModernTaskRow>(InitialRowPool);
         private readonly List<ModernTaskRow> allRows = new List<ModernTaskRow>(InitialRowPool);
         private readonly List<ModernTaskRow> visibleRows = new List<ModernTaskRow>(InitialRowPool);
 
-        private readonly int[] cpuHistory = new int[HistoryLength];
-        private readonly int[] memoryHistory = new int[HistoryLength];
+        private readonly int[] cpuHistory;
+        private readonly int[] memoryHistory;
         private int cpuHistoryCount;
         private int cpuHistoryWrite;
         private int memoryHistoryCount;
@@ -60,6 +102,7 @@ namespace ZonderqOS.GUI.Apps
         private ulong[] previousThreadRuntime = new ulong[0];
         private bool[] previousThreadValid = new bool[0];
         private int threadSlotCapacity;
+        private bool hadThreadSlotScan;
 
         private int activePage = PageProcesses;
         private int performanceResource = PerfCpu;
@@ -118,7 +161,17 @@ namespace ZonderqOS.GUI.Apps
         private string clockText = "--:--:--";
         private string dateText = "--.--.----";
 
-        private readonly TaskManagerMemoryCache memoryCache = new TaskManagerMemoryCache();
+        private ulong rawGcHeapPages;
+        private ulong rawRatHeapPages;
+        private ulong rawSysPages;
+        private ulong rawGfxBufferBytes;
+        private long rawDeltaPages;
+        private ulong rawGcFragmentedBytes;
+        private int rawGcCollectionIndex;
+        private int rawGcObjectsFreed;
+        private bool rawGcEnabled;
+
+        private readonly TaskManagerMemoryCache memoryCache;
         private MemoryOptimizerSnapshot optimizerSnapshot;
         private readonly string baseMaxSpeedText;
 
@@ -136,16 +189,78 @@ namespace ZonderqOS.GUI.Apps
             cpuInfo = CpuHardwareInfo.Detect();
             managerOpenedAt = Stopwatch.GetTimestamp();
 
-            baseSpeedText = FormatSpeed(cpuInfo.BaseMHz);
-            maxSpeedText = FormatSpeed(cpuInfo.MaxMHz);
-            baseMaxSpeedText = baseSpeedText + " / " + maxSpeedText;
-            topologyText = Math.Max(1, cpuInfo.PhysicalCores) + " / " +
-                           Math.Max(1, cpuInfo.LogicalProcessors) + " / " +
-                           Math.Max(1, cpuInfo.ThreadsPerCore);
-            cacheText = FormatBytes(cpuInfo.L1Bytes) + " / " + FormatBytes(cpuInfo.L2Bytes) + " / " + FormatBytes(cpuInfo.L3Bytes);
-            signatureText = cpuInfo.Family + " / " + cpuInfo.Model + " / " + cpuInfo.Stepping;
+            if (!sharedScratchInUse)
+            {
+                if (sharedScratch == null)
+                    sharedScratch = new ReusableScratch();
+                sharedScratchInUse = true;
+                ownsSharedScratch = true;
+                cpuHistory = sharedScratch.CpuHistory;
+                memoryHistory = sharedScratch.MemoryHistory;
+                Array.Clear(cpuHistory, 0, cpuHistory.Length);
+                Array.Clear(memoryHistory, 0, memoryHistory.Length);
+                logicalHistory = sharedScratch.LogicalHistory;
+                logicalHistoryCount = sharedScratch.LogicalHistoryCount;
+                logicalHistoryWrite = sharedScratch.LogicalHistoryWrite;
+                logicalUsage = sharedScratch.LogicalUsage;
+                logicalBusyDelta = sharedScratch.LogicalBusyDelta;
+                logicalCapacity = sharedScratch.LogicalCapacity;
+                Array.Clear(logicalHistoryCount, 0, logicalHistoryCount.Length);
+                Array.Clear(logicalHistoryWrite, 0, logicalHistoryWrite.Length);
+                Array.Clear(logicalUsage, 0, logicalUsage.Length);
+                previousThreadIds = sharedScratch.PreviousThreadIds;
+                previousThreadRuntime = sharedScratch.PreviousThreadRuntime;
+                previousThreadValid = sharedScratch.PreviousThreadValid;
+                threadSlotCapacity = sharedScratch.ThreadSlotCapacity;
+                Array.Clear(previousThreadValid, 0, previousThreadValid.Length);
+                memoryCache = sharedScratch.MemoryCache;
+            }
+            else
+            {
+                cpuHistory = new int[HistoryLength];
+                memoryHistory = new int[HistoryLength];
+                memoryCache = new TaskManagerMemoryCache();
+            }
 
-            for (int i = 0; i < InitialRowPool; i++)
+            if (object.ReferenceEquals(cpuInfo, cachedCpuStringsFor))
+            {
+                baseSpeedText = cachedStaticBaseSpeedText;
+                maxSpeedText = cachedStaticMaxSpeedText;
+                baseMaxSpeedText = cachedStaticBaseMaxSpeedText;
+                topologyText = cachedStaticTopologyText;
+                cacheText = cachedStaticCacheText;
+                signatureText = cachedStaticSignatureText;
+            }
+            else
+            {
+                baseSpeedText = FormatSpeed(cpuInfo.BaseMHz);
+                maxSpeedText = FormatSpeed(cpuInfo.MaxMHz);
+                baseMaxSpeedText = baseSpeedText + " / " + maxSpeedText;
+                topologyText = Math.Max(1, cpuInfo.PhysicalCores) + " / " +
+                               Math.Max(1, cpuInfo.LogicalProcessors) + " / " +
+                               Math.Max(1, cpuInfo.ThreadsPerCore);
+                cacheText = FormatBytes(cpuInfo.L1Bytes) + " / " + FormatBytes(cpuInfo.L2Bytes) + " / " + FormatBytes(cpuInfo.L3Bytes);
+                signatureText = cpuInfo.Family + " / " + cpuInfo.Model + " / " + cpuInfo.Stepping;
+
+                cachedCpuStringsFor = cpuInfo;
+                cachedStaticBaseSpeedText = baseSpeedText;
+                cachedStaticMaxSpeedText = maxSpeedText;
+                cachedStaticBaseMaxSpeedText = baseMaxSpeedText;
+                cachedStaticTopologyText = topologyText;
+                cachedStaticCacheText = cacheText;
+                cachedStaticSignatureText = signatureText;
+            }
+
+            if (ownsSharedScratch && sharedScratch.RecycledRows.Count > 0)
+            {
+                while (sharedScratch.RecycledRows.Count > 0)
+                {
+                    int last = sharedScratch.RecycledRows.Count - 1;
+                    rowPool.Add(sharedScratch.RecycledRows[last]);
+                    sharedScratch.RecycledRows.RemoveAt(last);
+                }
+            }
+            while (rowPool.Count < InitialRowPool)
                 rowPool.Add(new ModernTaskRow());
 
             EnsureLogicalCapacity(Math.Max(1, cpuInfo.LogicalProcessors));
@@ -157,7 +272,7 @@ namespace ZonderqOS.GUI.Apps
             Window.AddChild(view);
 
             UpdateLayout();
-            RefreshSnapshot();
+            RefreshSnapshot(forceFullMemory: true);
         }
 
         public override void Update()
@@ -320,7 +435,11 @@ namespace ZonderqOS.GUI.Apps
                 int resource = view.PerformanceResourceAt(x, y);
                 if (resource >= 0)
                 {
-                    performanceResource = resource;
+                    if (performanceResource != resource)
+                    {
+                        performanceResource = resource;
+                        OnTelemetrySelectionChanged();
+                    }
                     return;
                 }
 
@@ -329,7 +448,11 @@ namespace ZonderqOS.GUI.Apps
                     int graph = view.CpuGraphModeAt(x, y);
                     if (graph >= 0)
                     {
-                        cpuGraphMode = graph;
+                        if (cpuGraphMode != graph)
+                        {
+                            cpuGraphMode = graph;
+                            OnTelemetrySelectionChanged();
+                        }
                         status = graph == CpuGraphTotal ? "CPU: lacznie" : "CPU: logiczne procesory";
                         return;
                     }
@@ -398,8 +521,13 @@ namespace ZonderqOS.GUI.Apps
 
                 if (key.Key == ConsoleKeyEx.UpArrow || key.Key == ConsoleKeyEx.DownArrow)
                 {
-                    performanceResource = TaskManagerPerformanceNavigation.StepResource(
+                    int nextResource = TaskManagerPerformanceNavigation.StepResource(
                         performanceResource, key.Key == ConsoleKeyEx.UpArrow ? -1 : 1);
+                    if (nextResource != performanceResource)
+                    {
+                        performanceResource = nextResource;
+                        OnTelemetrySelectionChanged();
+                    }
                     status = performanceResource == PerfCpu ? "CPU" :
                         performanceResource == PerfMemory ? "Pamiec" : "System";
                     return;
@@ -413,6 +541,7 @@ namespace ZonderqOS.GUI.Apps
                 if (key.KeyChar == 'g' || key.KeyChar == 'G')
                 {
                     cpuGraphMode = cpuGraphMode == CpuGraphTotal ? CpuGraphLogical : CpuGraphTotal;
+                    OnTelemetrySelectionChanged();
                     status = cpuGraphMode == CpuGraphTotal ? "CPU: lacznie" : "CPU: logiczne procesory";
                     return;
                 }
@@ -453,7 +582,21 @@ namespace ZonderqOS.GUI.Apps
                 BuildRows();
             }
             RebuildVisibleRows(null, -1, false);
+            OnTelemetrySelectionChanged();
             status = page == PageProcesses ? "Procesy" : page == PagePerformance ? "Wydajnosc" : page == PageDetails ? "Szczegoly" : "Uslugi";
+        }
+
+        private void OnTelemetrySelectionChanged()
+        {
+            if (activePage != PagePerformance)
+                return;
+            UpdateMemorySnapshot(performanceResource == PerfMemory);
+            if (performanceResource == PerfMemory)
+                optimizerSnapshot = MemoryOptimizer.GetSnapshot();
+            if (performanceResource == PerfSystem || (performanceResource == PerfCpu && cpuGraphMode == CpuGraphLogical))
+                UpdateCpuSnapshot();
+            if (performanceResource == PerfSystem)
+                UpdateSystemSnapshot();
         }
 
         private void Select(int delta)
@@ -527,6 +670,11 @@ namespace ZonderqOS.GUI.Apps
 
         private void RefreshSnapshot()
         {
+            RefreshSnapshot(false);
+        }
+
+        private void RefreshSnapshot(bool forceFullMemory)
+        {
             if (activePage != PagePerformance)
             {
                 // A user may scroll away from the selected task while the 500ms
@@ -548,10 +696,12 @@ namespace ZonderqOS.GUI.Apps
                 RebuildVisibleRows(selectedApp, selectedPid, selectedWasVisible);
             }
 
-            UpdateMemorySnapshot();
+            UpdateMemorySnapshot(forceFullMemory);
             UpdateCpuSnapshot();
-            UpdateSystemSnapshot();
-            optimizerSnapshot = MemoryOptimizer.GetSnapshot();
+            if (activePage == PagePerformance && performanceResource == PerfSystem)
+                UpdateSystemSnapshot();
+            if (forceFullMemory || (activePage == PagePerformance && performanceResource == PerfMemory))
+                optimizerSnapshot = MemoryOptimizer.GetSnapshot();
             // Start the interval after expensive sampling completes, including
             // F5 and toolbar refreshes, rather than immediately sampling again.
             lastRefreshTicks = Stopwatch.GetTimestamp();
@@ -560,7 +710,18 @@ namespace ZonderqOS.GUI.Apps
         private ModernTaskRow AcquireRow(int index)
         {
             while (index >= rowPool.Count)
-                rowPool.Add(new ModernTaskRow());
+            {
+                if (ownsSharedScratch && sharedScratch != null && sharedScratch.RecycledRows.Count > 0)
+                {
+                    int last = sharedScratch.RecycledRows.Count - 1;
+                    rowPool.Add(sharedScratch.RecycledRows[last]);
+                    sharedScratch.RecycledRows.RemoveAt(last);
+                }
+                else
+                {
+                    rowPool.Add(new ModernTaskRow());
+                }
+            }
             return rowPool[index];
         }
 
@@ -631,6 +792,14 @@ namespace ZonderqOS.GUI.Apps
 
         private void UpdateMemorySnapshot()
         {
+            UpdateMemorySnapshot(false);
+        }
+
+        private void UpdateMemorySnapshot(bool forceFullMemory)
+        {
+            bool includeDetail = forceFullMemory || activePage == PagePerformance;
+            bool includeFullPoolLabels = forceFullMemory ||
+                (activePage == PagePerformance && performanceResource == PerfMemory);
             try
             {
                 totalPages = PageAllocator.TotalPageCount;
@@ -639,47 +808,56 @@ namespace ZonderqOS.GUI.Apps
                 usedMemoryPercent = totalPages == 0 ? 0 : usedPages * 100UL / totalPages;
                 usedMemoryPercent = Math.Min(100UL, usedMemoryPercent);
 
-                gcHeapBytes = 0;
-                gcCommittedBytes = 0;
-                ulong gcFragmentedBytes = 0;
-                int gcCollectionIndex = 0;
-                int gcObjectsFreed = 0;
-                bool gcEnabled = CosmosGc.IsEnabled;
-                if (gcEnabled)
-                {
-                    gcHeapBytes = CosmosGc.GetHeapSizeBytes();
-                    gcCommittedBytes = CosmosGc.GetTotalCommittedBytes();
-                    gcFragmentedBytes = CosmosGc.GetFragmentedBytes();
-                    gcCollectionIndex = CosmosGc.GetCollectionIndex();
-                    gcObjectsFreed = CosmosGc.GetTotalObjectsFreed();
-                }
-
-                ulong pEmpty = 0, pGcHeap = 0, pSmall = 0, pMed = 0, pLarge = 0;
-                ulong pUnmanaged = 0, pPageDir = 0, pPageAlloc = 0, pSmt = 0, pExt = 0, pUnknown = 0;
-                try
-                {
-                    PageAllocator.GetPageCountsByType(
-                        out pEmpty, out pGcHeap, out pSmall, out pMed, out pLarge,
-                        out pUnmanaged, out pPageDir, out pPageAlloc, out pSmt, out pExt, out pUnknown);
-                }
-                catch { }
-                ulong ratHeapPages = pSmall + pMed + pLarge;
-                ulong sysPages = pUnmanaged + pPageDir + pPageAlloc + pSmt + pExt + pUnknown;
-
-                ulong gfxBufferBytes = GuiManager.Instance != null ? GuiManager.Instance.EstimatedGraphicsBufferBytes : 0;
                 long deltaPages = hasPreviousMemorySnapshot ? (long)usedPages - (long)previousUsedPagesSnapshot : 0;
                 previousUsedPagesSnapshot = usedPages;
                 hasPreviousMemorySnapshot = true;
+                rawDeltaPages = deltaPages;
 
-                physicalInstalledBytes = PhysicalMemoryDetector.InstalledBytes;
-                physicalUsableBytes = PhysicalMemoryDetector.TotalPhysicalBytes;
+                if (includeFullPoolLabels)
+                {
+                    gcHeapBytes = 0;
+                    gcCommittedBytes = 0;
+                    ulong gcFragmentedBytes = 0;
+                    int gcCollectionIndex = 0;
+                    int gcObjectsFreed = 0;
+                    bool gcEnabled = CosmosGc.IsEnabled;
+                    if (gcEnabled)
+                    {
+                        gcHeapBytes = CosmosGc.GetHeapSizeBytes();
+                        gcCommittedBytes = CosmosGc.GetTotalCommittedBytes();
+                        gcFragmentedBytes = CosmosGc.GetFragmentedBytes();
+                        gcCollectionIndex = CosmosGc.GetCollectionIndex();
+                        gcObjectsFreed = CosmosGc.GetTotalObjectsFreed();
+                    }
+
+                    ulong pEmpty = 0, pGcHeap = 0, pSmall = 0, pMed = 0, pLarge = 0;
+                    ulong pUnmanaged = 0, pPageDir = 0, pPageAlloc = 0, pSmt = 0, pExt = 0, pUnknown = 0;
+                    try
+                    {
+                        PageAllocator.GetPageCountsByType(
+                            out pEmpty, out pGcHeap, out pSmall, out pMed, out pLarge,
+                            out pUnmanaged, out pPageDir, out pPageAlloc, out pSmt, out pExt, out pUnknown);
+                    }
+                    catch { }
+                    rawGcHeapPages = pGcHeap;
+                    rawRatHeapPages = pSmall + pMed + pLarge;
+                    rawSysPages = pUnmanaged + pPageDir + pPageAlloc + pSmt + pExt + pUnknown;
+                    rawGfxBufferBytes = GuiManager.Instance != null ? GuiManager.Instance.EstimatedGraphicsBufferBytes : 0;
+                    rawGcFragmentedBytes = gcFragmentedBytes;
+                    rawGcCollectionIndex = gcCollectionIndex;
+                    rawGcObjectsFreed = gcObjectsFreed;
+                    rawGcEnabled = gcEnabled;
+                }
+
+                if (physicalInstalledBytes == 0)
+                    physicalInstalledBytes = PhysicalMemoryDetector.InstalledBytes;
+                if (physicalUsableBytes == 0)
+                    physicalUsableBytes = PhysicalMemoryDetector.UsableBytes;
 
                 memoryCache.Update(usedPages, freePages, totalPages,
                                    gcHeapBytes, gcCommittedBytes,
-                                   physicalInstalledBytes, physicalUsableBytes);
-                memoryCache.UpdateExtended(pGcHeap, ratHeapPages, sysPages,
-                                           gcFragmentedBytes, gcCollectionIndex, gcObjectsFreed, gcEnabled,
-                                           gfxBufferBytes, deltaPages);
+                                   physicalInstalledBytes, physicalUsableBytes,
+                                   includeDetail, includeFullPoolLabels);
                 cachedMemoryDetailText = memoryCache.MemoryDetailText;
                 cachedGcCommittedText = memoryCache.GcCommittedText;
                 cachedUsableRamText = memoryCache.UsableRamText;
@@ -693,6 +871,15 @@ namespace ZonderqOS.GUI.Apps
                 gcCommittedBytes = 0;
                 physicalInstalledBytes = 0;
                 physicalUsableBytes = 0;
+                rawGcHeapPages = 0;
+                rawRatHeapPages = 0;
+                rawSysPages = 0;
+                rawGfxBufferBytes = 0;
+                rawDeltaPages = 0;
+                rawGcFragmentedBytes = 0;
+                rawGcCollectionIndex = 0;
+                rawGcObjectsFreed = 0;
+                rawGcEnabled = false;
             }
             RecordHistory(memoryHistory, ref memoryHistoryCount, ref memoryHistoryWrite, (int)usedMemoryPercent);
         }
@@ -701,11 +888,13 @@ namespace ZonderqOS.GUI.Apps
         {
             uint cpuCount = 0;
             int slots = 0;
+            int totalThreads = 0;
             ulong busyTotal = 0;
             try
             {
                 cpuCount = SchedulerInfo.CpuCount;
                 slots = SchedulerInfo.ThreadSlotCount;
+                totalThreads = SchedulerInfo.ThreadCount;
                 busyTotal = SchedulerInfo.BusyCpuTimeNs;
                 if (schedulerName == null || schedulerName == "N/A")
                 {
@@ -721,15 +910,11 @@ namespace ZonderqOS.GUI.Apps
             }
 
             onlineCpuCount = cpuCount;
-            EnsureLogicalCapacity(Math.Max(1, Math.Max(cpuInfo.LogicalProcessors, (int)cpuCount)));
-            EnsureThreadSlotCapacity(Math.Max(0, slots));
-
-            schedulerThreadCount = 0;
-            runningThreadCount = 0;
-            readyThreadCount = 0;
-            blockedThreadCount = 0;
-            sleepingThreadCount = 0;
-            Array.Clear(logicalBusyDelta, 0, logicalBusyDelta.Length);
+            bool needThreadSlots = activePage == PagePerformance &&
+                (performanceResource == PerfSystem ||
+                 (performanceResource == PerfCpu && cpuGraphMode == CpuGraphLogical));
+            if (needThreadSlots)
+                EnsureLogicalCapacity(Math.Max(1, Math.Max(cpuInfo.LogicalProcessors, (int)cpuCount)));
 
             long now = Stopwatch.GetTimestamp();
             long elapsedTicks = lastCpuTimestamp == 0 ? 0 : now - lastCpuTimestamp;
@@ -738,45 +923,70 @@ namespace ZonderqOS.GUI.Apps
                 : 0;
             bool validWindow = lastCpuTimestamp != 0 && elapsedNs >= 1_000_000UL;
 
-            for (int slot = 0; slot < slots; slot++)
+            if (needThreadSlots)
             {
-                KernelThreadInfo info;
-                bool present;
-                try { present = SchedulerInfo.TryGetThreadInSlot(slot, out info); }
-                catch { info = default; present = false; }
+                EnsureThreadSlotCapacity(Math.Max(0, slots));
+                schedulerThreadCount = 0;
+                runningThreadCount = 0;
+                readyThreadCount = 0;
+                blockedThreadCount = 0;
+                sleepingThreadCount = 0;
+                Array.Clear(logicalBusyDelta, 0, logicalBusyDelta.Length);
 
-                if (!present)
+                bool threadWindow = validWindow && hadThreadSlotScan;
+                for (int slot = 0; slot < slots; slot++)
                 {
-                    if (slot < previousThreadValid.Length) previousThreadValid[slot] = false;
-                    continue;
+                    KernelThreadInfo info;
+                    bool present;
+                    try { present = SchedulerInfo.TryGetThreadInSlot(slot, out info); }
+                    catch { info = default; present = false; }
+
+                    if (!present)
+                    {
+                        if (slot < previousThreadValid.Length) previousThreadValid[slot] = false;
+                        continue;
+                    }
+
+                    schedulerThreadCount++;
+                    if (info.State == KernelThreadState.Running) runningThreadCount++;
+                    else if (info.State == KernelThreadState.Ready) readyThreadCount++;
+                    else if (info.State == KernelThreadState.Blocked) blockedThreadCount++;
+                    else if (info.State == KernelThreadState.Sleeping) sleepingThreadCount++;
+
+                    ulong delta = 0;
+                    if (threadWindow && previousThreadValid[slot] && previousThreadIds[slot] == info.Id && info.TotalRuntimeNs >= previousThreadRuntime[slot])
+                        delta = info.TotalRuntimeNs - previousThreadRuntime[slot];
+
+                    if (!info.IsIdle && info.CpuId < (uint)logicalBusyDelta.Length)
+                        logicalBusyDelta[info.CpuId] += delta;
+
+                    previousThreadIds[slot] = info.Id;
+                    previousThreadRuntime[slot] = info.TotalRuntimeNs;
+                    previousThreadValid[slot] = true;
                 }
-
-                schedulerThreadCount++;
-                if (info.State == KernelThreadState.Running) runningThreadCount++;
-                else if (info.State == KernelThreadState.Ready) readyThreadCount++;
-                else if (info.State == KernelThreadState.Blocked) blockedThreadCount++;
-                else if (info.State == KernelThreadState.Sleeping) sleepingThreadCount++;
-
-                ulong delta = 0;
-                if (validWindow && previousThreadValid[slot] && previousThreadIds[slot] == info.Id && info.TotalRuntimeNs >= previousThreadRuntime[slot])
-                    delta = info.TotalRuntimeNs - previousThreadRuntime[slot];
-
-                if (!info.IsIdle && info.CpuId < (uint)logicalBusyDelta.Length)
-                    logicalBusyDelta[info.CpuId] += delta;
-
-                previousThreadIds[slot] = info.Id;
-                previousThreadRuntime[slot] = info.TotalRuntimeNs;
-                previousThreadValid[slot] = true;
+                hadThreadSlotScan = true;
+            }
+            else
+            {
+                schedulerThreadCount = totalThreads;
+                if (hadThreadSlotScan)
+                {
+                    Array.Clear(previousThreadValid, 0, previousThreadValid.Length);
+                    hadThreadSlotScan = false;
+                }
             }
 
             if (!validWindow)
             {
                 cpuUsagePercent = 0;
                 RecordHistory(cpuHistory, ref cpuHistoryCount, ref cpuHistoryWrite, 0);
-                for (int cpu = 0; cpu < logicalCapacity; cpu++)
+                if (needThreadSlots)
                 {
-                    logicalUsage[cpu] = 0;
-                    RecordHistory(logicalHistory[cpu], ref logicalHistoryCount[cpu], ref logicalHistoryWrite[cpu], 0);
+                    for (int cpu = 0; cpu < logicalCapacity; cpu++)
+                    {
+                        logicalUsage[cpu] = 0;
+                        RecordHistory(logicalHistory[cpu], ref logicalHistoryCount[cpu], ref logicalHistoryWrite[cpu], 0);
+                    }
                 }
             }
             else
@@ -786,13 +996,16 @@ namespace ZonderqOS.GUI.Apps
                 cpuUsagePercent = capacity == 0 ? 0 : (int)Math.Min(100UL, busyDelta * 100UL / capacity);
                 RecordHistory(cpuHistory, ref cpuHistoryCount, ref cpuHistoryWrite, cpuUsagePercent);
 
-                for (int cpu = 0; cpu < logicalCapacity; cpu++)
+                if (needThreadSlots)
                 {
-                    int usage = (uint)cpu < cpuCount && elapsedNs > 0
-                        ? (int)Math.Min(100UL, logicalBusyDelta[cpu] * 100UL / elapsedNs)
-                        : 0;
-                    logicalUsage[cpu] = usage;
-                    RecordHistory(logicalHistory[cpu], ref logicalHistoryCount[cpu], ref logicalHistoryWrite[cpu], usage);
+                    for (int cpu = 0; cpu < logicalCapacity; cpu++)
+                    {
+                        int usage = (uint)cpu < cpuCount && elapsedNs > 0
+                            ? (int)Math.Min(100UL, logicalBusyDelta[cpu] * 100UL / elapsedNs)
+                            : 0;
+                        logicalUsage[cpu] = usage;
+                        RecordHistory(logicalHistory[cpu], ref logicalHistoryCount[cpu], ref logicalHistoryWrite[cpu], usage);
+                    }
                 }
             }
 
@@ -971,6 +1184,43 @@ namespace ZonderqOS.GUI.Apps
         public override void Close()
         {
             base.Close();
+            if (ownsSharedScratch && !releasedSharedScratch)
+            {
+                releasedSharedScratch = true;
+                sharedScratch.LogicalHistory = logicalHistory;
+                sharedScratch.LogicalHistoryCount = logicalHistoryCount;
+                sharedScratch.LogicalHistoryWrite = logicalHistoryWrite;
+                sharedScratch.LogicalUsage = logicalUsage;
+                sharedScratch.LogicalBusyDelta = logicalBusyDelta;
+                sharedScratch.LogicalCapacity = logicalCapacity;
+                sharedScratch.PreviousThreadIds = previousThreadIds;
+                sharedScratch.PreviousThreadRuntime = previousThreadRuntime;
+                sharedScratch.PreviousThreadValid = previousThreadValid;
+                sharedScratch.ThreadSlotCapacity = threadSlotCapacity;
+
+                for (int i = 0; i < rowPool.Count; i++)
+                {
+                    ModernTaskRow row = rowPool[i];
+                    if (row == null)
+                        continue;
+                    row.Reset();
+                    if (sharedScratch.RecycledRows.Count < MaxRecycledRows)
+                        sharedScratch.RecycledRows.Add(row);
+                }
+
+                Array.Clear(cpuHistory, 0, cpuHistory.Length);
+                Array.Clear(memoryHistory, 0, memoryHistory.Length);
+                Array.Clear(logicalHistoryCount, 0, logicalHistoryCount.Length);
+                Array.Clear(logicalHistoryWrite, 0, logicalHistoryWrite.Length);
+                Array.Clear(logicalUsage, 0, logicalUsage.Length);
+                Array.Clear(previousThreadValid, 0, previousThreadValid.Length);
+                sharedScratchInUse = false;
+            }
+            else
+            {
+                for (int i = 0; i < rowPool.Count; i++)
+                    rowPool[i]?.Reset();
+            }
             rowPool.Clear();
             allRows.Clear();
             visibleRows.Clear();
@@ -1065,6 +1315,15 @@ namespace ZonderqOS.GUI.Apps
         internal int LogicalPageStart => logicalPage * LogicalPerPage;
         internal int LogicalPageIndex => logicalPage;
         internal int LogicalPerPageCount => LogicalPerPage;
+        internal ulong RawGcHeapPages => rawGcHeapPages;
+        internal ulong RawRatHeapPages => rawRatHeapPages;
+        internal ulong RawSysPages => rawSysPages;
+        internal ulong RawGfxBufferBytes => rawGfxBufferBytes;
+        internal long RawDeltaPages => rawDeltaPages;
+        internal ulong RawGcFragmentedBytes => rawGcFragmentedBytes;
+        internal int RawGcCollectionIndex => rawGcCollectionIndex;
+        internal int RawGcObjectsFreed => rawGcObjectsFreed;
+        internal bool RawGcEnabled => rawGcEnabled;
         internal ulong UptimeSeconds => Stopwatch.Frequency > 0 && Stopwatch.GetTimestamp() > 0 ? (ulong)Stopwatch.GetTimestamp() / (ulong)Stopwatch.Frequency : 0;
         internal ulong ManagerOpenSeconds => Stopwatch.Frequency > 0 ? (ulong)Math.Max(0L, Stopwatch.GetTimestamp() - managerOpenedAt) / (ulong)Stopwatch.Frequency : 0;
     }
@@ -1080,6 +1339,19 @@ namespace ZonderqOS.GUI.Apps
         public bool IsKernel;
         public int WindowWidth;
         public int WindowHeight;
+
+        public void Reset()
+        {
+            GuiApplication = null;
+            KernelPid = -1;
+            IsKernel = false;
+            CanEnd = false;
+            Name = "";
+            State = "";
+            Detail = "";
+            WindowWidth = 0;
+            WindowHeight = 0;
+        }
 
         public void SetApplication(Application app, string state, bool canEnd)
         {
@@ -1778,9 +2050,12 @@ namespace ZonderqOS.GUI.Apps
             DrawKeyText(canvas, x, stats + 20, half, "RAM WYKRYTY (FIRMWARE)", app.UsableRamText);
             DrawKeyText(canvas, x, stats + 40, half, "PULA HEAP COSMOS", app.HeapPoolText);
             DrawKeyText(canvas, x, stats + 60, half, "STRONY PAMIECI", app.MemoryPagesText);
-            DrawKeyText(canvas, x, stats + 80, half, "STRONY GC/RAT/SYS", app.PageBreakdownText);
-            DrawKeyText(canvas, x, stats + 100, half, "BUFORY GRAFICZNE", app.GraphicsBuffersText);
-            DrawKeyText(canvas, x, stats + 120, half, "DELTA PAMIECI", app.MemoryDeltaText);
+            int leftValX = DrawKeyLabel(canvas, x, stats + 80, half, "STRONY GC/RAT/SYS");
+            SmallTextRenderer.DrawPageBreakdown(canvas, app.RawGcHeapPages, app.RawRatHeapPages, app.RawSysPages, leftValX, stats + 80, Text);
+            DrawKeyLabel(canvas, x, stats + 100, half, "BUFORY GRAFICZNE");
+            SmallTextRenderer.DrawByteSizeSmart(canvas, app.RawGfxBufferBytes, leftValX, stats + 100, Text);
+            DrawKeyLabel(canvas, x, stats + 120, half, "DELTA PAMIECI");
+            SmallTextRenderer.DrawMemoryDeltaPages(canvas, app.RawDeltaPages, PageAllocator.PageSize, leftValX, stats + 120, Text);
             // Optimizer counters: numeric drawing avoids a fresh string on
             // each telemetry refresh. "Candidate" is unrooted cache memory,
             // NOT physical RAM already reclaimed by OrionGC.
@@ -1792,8 +2067,10 @@ namespace ZonderqOS.GUI.Apps
             DrawKeyText(canvas, x + half, stats + 20, half, "HEAP WOLNY", app.FreeMemoryText);
             DrawKeyText(canvas, x + half, stats + 40, half, "GC ROZMIAR HEAP", app.GcHeapText);
             DrawKeyText(canvas, x + half, stats + 60, half, "GC ZATWIERDZONE", app.GcCommittedText);
-            DrawKeyText(canvas, x + half, stats + 80, half, "GC FRAGMENTACJA", app.GcFragmentationText);
-            DrawKeyText(canvas, x + half, stats + 100, half, "GC KOLEKCJE / ZWOL.", app.GcCollectionsText);
+            int rightValX = DrawKeyLabel(canvas, x + half, stats + 80, half, "GC FRAGMENTACJA");
+            SmallTextRenderer.DrawMiBOrNa(canvas, app.RawGcFragmentedBytes, app.RawGcEnabled, rightValX, stats + 80, Text);
+            DrawKeyLabel(canvas, x + half, stats + 100, half, "GC KOLEKCJE / ZWOL.");
+            SmallTextRenderer.DrawGcCollections(canvas, app.RawGcCollectionIndex, app.RawGcObjectsFreed, app.RawGcEnabled, rightValX, stats + 100, Text);
             DrawKey(canvas, x + half, stats + 120, half, "CACHE SWEEPS", app.OptimizerSweeps, null);
             DrawKey(canvas, x + half, stats + 140, half, "ODPIETE BUFORY", app.OptimizerDetachedBuffers, null);
             DrawKey(canvas, x + half, stats + 160, half, "GC KANDYDAT KiB", app.OptimizerCandidateKiB, null);
@@ -1887,26 +2164,30 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "% UTILIZATION", x + SmallTextRenderer.WidthUInt(bounded) + 8, y, Muted);
         }
 
-        private void DrawKey(Canvas canvas, int x, int y, int width, string key, ulong value, string suffix)
+        private int DrawKeyLabel(Canvas canvas, int x, int y, int width, string key)
         {
             int keyW = Math.Min(142, Math.Max(84, width / 2));
             SmallTextRenderer.DrawClipped(canvas, key, x, y, keyW - 4, Muted);
-            SmallTextRenderer.DrawUInt(canvas, value, x + keyW, y, Text);
-            if (!string.IsNullOrEmpty(suffix)) SmallTextRenderer.Draw(canvas, suffix, x + keyW + SmallTextRenderer.WidthUInt(value) + 6, y, Text);
+            return x + keyW;
+        }
+
+        private void DrawKey(Canvas canvas, int x, int y, int width, string key, ulong value, string suffix)
+        {
+            int valueX = DrawKeyLabel(canvas, x, y, width, key);
+            SmallTextRenderer.DrawUInt(canvas, value, valueX, y, Text);
+            if (!string.IsNullOrEmpty(suffix)) SmallTextRenderer.Draw(canvas, suffix, valueX + SmallTextRenderer.WidthUInt(value) + 6, y, Text);
         }
 
         private void DrawKeyText(Canvas canvas, int x, int y, int width, string key, string value)
         {
-            int keyW = Math.Min(142, Math.Max(84, width / 2));
-            SmallTextRenderer.DrawClipped(canvas, key, x, y, keyW - 4, Muted);
-            SmallTextRenderer.DrawClipped(canvas, value, x + keyW, y, Math.Max(20, width - keyW), Text);
+            int valueX = DrawKeyLabel(canvas, x, y, width, key);
+            SmallTextRenderer.DrawClipped(canvas, value, valueX, y, Math.Max(20, x + width - valueX), Text);
         }
 
         private void DrawKeyClock(Canvas canvas, int x, int y, int width, string key, int hour, int min, int sec)
         {
-            int keyW = Math.Min(142, Math.Max(84, width / 2));
-            SmallTextRenderer.DrawClipped(canvas, key, x, y, keyW - 4, Muted);
-            SmallTextRenderer.DrawTime(canvas, hour, min, sec, x + keyW, y, Text);
+            int valueX = DrawKeyLabel(canvas, x, y, width, key);
+            SmallTextRenderer.DrawTime(canvas, hour, min, sec, valueX, y, Text);
         }
 
         private void RenderFooter(Canvas canvas)

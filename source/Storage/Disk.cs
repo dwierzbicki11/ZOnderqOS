@@ -127,20 +127,34 @@ namespace ZonderqOS
         {
             try
             {
+                if (!PermissionManager.CanRead(path, SecurityContext.CurrentUser))
+                {
+                    WriteMessage.WriteError($"Permission denied: Cannot list {path}", "SEC");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
                 string[] files = Directory.GetFiles(path);
                 foreach (string file in files)
-                    CommandIO.WriteLine($"{indent}--- {Path.GetFileName(file)}");
+                {
+                    if (PermissionManager.CanRead(file, SecurityContext.CurrentUser))
+                        CommandIO.WriteLine($"{indent}--- {Path.GetFileName(file)}");
+                }
 
                 string[] directories = Directory.GetDirectories(path);
                 foreach (string dir in directories)
                 {
+                    if (!PermissionManager.CanRead(dir, SecurityContext.CurrentUser))
+                        continue;
                     CommandIO.WriteLine($"{indent}+-- {Path.GetFileName(dir)}");
                     Tree(dir, indent + "    ");
                 }
+                CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
             {
                 WriteMessage.WriteError($"Error reading structure at {path}: {ex.Message}", "FS");
+                CommandIO.LastCommandSuccess = false;
             }
         }
 
@@ -175,17 +189,18 @@ namespace ZonderqOS
                 return;
             }
 
-            if (File.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
+            if (!PermissionManager.CanCreate(path, SecurityContext.CurrentUser))
             {
-                WriteMessage.WriteError($"Permission denied: Cannot modify {path}", "SEC");
+                WriteMessage.WriteError($"Permission denied: Cannot write {path}", "SEC");
                 SecurityLogger.LogEvent("WARN", $"Unauthorized write attempt on {path} by {SecurityContext.CurrentUser}");
                 return;
             }
 
             try
             {
+                bool existed = File.Exists(path);
                 File.WriteAllText(path, content);
-                if (!PermissionManager.GetPermission(path).Owner.Equals(SecurityContext.CurrentUser))
+                if (!existed || !PermissionManager.GetPermission(path).Owner.Equals(SecurityContext.CurrentUser, StringComparison.Ordinal))
                     PermissionManager.SetPermission(path, SecurityContext.CurrentUser, 644);
                 WriteMessage.WriteOK($"File saved: {path}", "FS");
                 CommandIO.LastCommandSuccess = true;
@@ -215,7 +230,7 @@ namespace ZonderqOS
                 return;
             }
 
-            if (File.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
+            if (!PermissionManager.CanCreate(path, SecurityContext.CurrentUser))
             {
                 WriteMessage.WriteError($"Permission denied: Cannot modify {path}", "SEC");
                 SecurityLogger.LogEvent("WARN", $"Unauthorized append attempt on {path} by {SecurityContext.CurrentUser}");
@@ -224,7 +239,10 @@ namespace ZonderqOS
 
             try
             {
+                bool existed = File.Exists(path);
                 File.AppendAllText(path, content + "\n");
+                if (!existed)
+                    PermissionManager.SetPermission(path, SecurityContext.CurrentUser, 644);
                 WriteMessage.WriteOK($"Appended to file: {path}", "FS");
                 CommandIO.LastCommandSuccess = true;
             }
@@ -254,7 +272,7 @@ namespace ZonderqOS
             }
 
             if (!PermissionManager.CanRead(sourcePath, SecurityContext.CurrentUser) ||
-                (File.Exists(destinationPath) && !PermissionManager.CanWrite(destinationPath, SecurityContext.CurrentUser)))
+                !PermissionManager.CanCreate(destinationPath, SecurityContext.CurrentUser))
             {
                 WriteMessage.WriteError($"Permission denied: Cannot copy {sourcePath} to {destinationPath}", "SEC");
                 SecurityLogger.LogEvent("WARN", $"Unauthorized copy attempt by {SecurityContext.CurrentUser}: {sourcePath} -> {destinationPath}");
@@ -263,7 +281,10 @@ namespace ZonderqOS
 
             try
             {
+                bool destinationExisted = File.Exists(destinationPath);
                 File.Copy(sourcePath, destinationPath, true);
+                if (!destinationExisted)
+                    PermissionManager.SetPermission(destinationPath, SecurityContext.CurrentUser, 644);
                 WriteMessage.WriteOK($"Copied file from {sourcePath} to {destinationPath}", "FS");
                 CommandIO.LastCommandSuccess = true;
             }
@@ -287,7 +308,7 @@ namespace ZonderqOS
             }
 
             if (!PermissionManager.CanWrite(sourcePath, SecurityContext.CurrentUser) ||
-                (File.Exists(destinationPath) && !PermissionManager.CanWrite(destinationPath, SecurityContext.CurrentUser)))
+                !PermissionManager.CanCreate(destinationPath, SecurityContext.CurrentUser))
             {
                 WriteMessage.WriteError($"Permission denied: Cannot move {sourcePath} to {destinationPath}", "SEC");
                 SecurityLogger.LogEvent("WARN", $"Unauthorized move attempt by {SecurityContext.CurrentUser}: {sourcePath} -> {destinationPath}");
@@ -296,7 +317,13 @@ namespace ZonderqOS
 
             try
             {
+                bool destinationExisted = File.Exists(destinationPath);
+                if (destinationExisted)
+                    File.Delete(destinationPath);
                 File.Move(sourcePath, destinationPath);
+                PermissionManager.MovePermissionsUnder(sourcePath, destinationPath);
+                if (!destinationExisted && !PermissionManager.HasExplicitPermission(destinationPath))
+                    PermissionManager.SetPermission(destinationPath, SecurityContext.CurrentUser, 644);
                 WriteMessage.WriteOK($"Moved file from {sourcePath} to {destinationPath}", "FS");
                 CommandIO.LastCommandSuccess = true;
             }
@@ -348,17 +375,21 @@ namespace ZonderqOS
             {
                 WriteMessage.WriteError($"Permission denied: Cannot delete {path}", "SEC");
                 SecurityLogger.LogEvent("WARN", $"Unauthorized delete attempt on {path} by {SecurityContext.CurrentUser}");
+                CommandIO.LastCommandSuccess = false;
                 return;
             }
 
             try
             {
                 File.Delete(path);
+                PermissionManager.RemovePermission(path);
                 WriteMessage.WriteOK($"File deleted: {path}", "FS");
+                CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
             {
                 WriteMessage.WriteError($"Deletion error: {ex.Message}", "FS");
+                CommandIO.LastCommandSuccess = false;
             }
         }
 
@@ -380,9 +411,20 @@ namespace ZonderqOS
             if (RejectVirtualMutation(path, "mkdir"))
                 return;
 
+            if (!PermissionManager.CanCreate(path, SecurityContext.CurrentUser))
+            {
+                WriteMessage.WriteError($"Permission denied: Cannot create directory {path}", "SEC");
+                SecurityLogger.LogEvent("WARN", $"Unauthorized mkdir attempt on {path} by {SecurityContext.CurrentUser}");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             try
             {
+                bool existed = Directory.Exists(path);
                 Directory.CreateDirectory(path);
+                if (!existed)
+                    PermissionManager.SetPermission(path, SecurityContext.CurrentUser, 755);
                 WriteMessage.WriteOK($"Directory created: {path}", "FS");
                 CommandIO.LastCommandSuccess = true;
             }
@@ -411,16 +453,24 @@ namespace ZonderqOS
             if (RejectVirtualMutation(path, "rmdir"))
                 return;
 
-            if (Directory.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
+            bool canRemove = recursive
+                ? PermissionManager.CanDeleteRecursive(path, SecurityContext.CurrentUser)
+                : PermissionManager.CanWrite(path, SecurityContext.CurrentUser);
+            if (Directory.Exists(path) && !canRemove)
             {
                 WriteMessage.WriteError($"Permission denied: Cannot delete directory {path}", "SEC");
                 SecurityLogger.LogEvent("WARN", $"Unauthorized directory delete attempt on {path} by {SecurityContext.CurrentUser}");
+                CommandIO.LastCommandSuccess = false;
                 return;
             }
 
             try
             {
                 Directory.Delete(path, recursive);
+                if (recursive)
+                    PermissionManager.RemovePermissionsUnder(path);
+                else
+                    PermissionManager.RemovePermission(path);
                 WriteMessage.WriteOK($"Directory deleted: {path}", "FS");
                 CommandIO.LastCommandSuccess = true;
             }
@@ -571,26 +621,45 @@ namespace ZonderqOS
             {
                 if (File.Exists(path))
                 {
+                    if (!PermissionManager.CanRead(path, SecurityContext.CurrentUser))
+                    {
+                        WriteMessage.WriteError($"Permission denied: Cannot stat {path}", "SEC");
+                        SecurityLogger.LogEvent("WARN", $"Unauthorized stat attempt on {path} by {SecurityContext.CurrentUser}");
+                        CommandIO.LastCommandSuccess = false;
+                        return;
+                    }
+
                     var fileInfo = new FileInfo(path);
                     CommandIO.WriteLine($"--- File Statistics: {fileInfo.Name} ---");
                     CommandIO.WriteLine($"Absolute Path: {fileInfo.FullName}");
                     CommandIO.WriteLine($"Size:          {fileInfo.Length} bytes");
                     CommandIO.WriteLine($"Attributes:    {fileInfo.Attributes}");
                     CommandIO.WriteLine($"Last Write:    {fileInfo.LastWriteTime}");
+                    CommandIO.LastCommandSuccess = true;
                 }
                 else
                 {
                     WriteMessage.WriteError($"File '{path}' does not exist.", "FS");
+                    CommandIO.LastCommandSuccess = false;
                 }
             }
             catch (Exception ex)
             {
                 WriteMessage.WriteError($"Stat error: {ex.Message}", "FS");
+                CommandIO.LastCommandSuccess = false;
             }
         }
 
         public static void HexDump(int diskId, ulong sector)
         {
+            CommandIO.LastCommandSuccess = false;
+            if (!SecurityContext.IsAuthenticated || SecurityContext.CurrentUid != 0)
+            {
+                WriteMessage.WriteError("Access denied. Root privileges required for raw disk hexdump.", "SEC");
+                SecurityLogger.LogEvent("WARN", "Unauthorized Disk.HexDump attempt by " + (SecurityContext.CurrentUser ?? "?"));
+                return;
+            }
+
             try
             {
                 int deviceCount = Cosmos.Kernel.System.Storage.StorageManager.DeviceCount;
@@ -632,6 +701,7 @@ namespace ZonderqOS
                     hexPart += "|";
                     CommandIO.WriteLine(hexPart);
                 }
+                CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
             {

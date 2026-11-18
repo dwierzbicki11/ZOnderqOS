@@ -95,6 +95,10 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
+            Array.Clear(pixels, 0, pixels.Length);
+            Array.Clear(fillQueueX, 0, fillQueueX.Length);
+            Array.Clear(fillQueueY, 0, fillQueueY.Length);
+            statusMessage = string.Empty;
             base.Close();
             closeCallback?.Invoke();
         }
@@ -297,11 +301,52 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
+        private static string GetUserDataDirectory()
+        {
+            string user = global::ZonderqOS.SecurityContext.CurrentUser;
+            if (string.IsNullOrEmpty(user) || user == "root")
+                return "/root";
+            return "/home/" + user;
+        }
+
+        private bool TryPrepareWritePath(string fileName, out string fullPath)
+        {
+            fullPath = string.Empty;
+            if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
+            {
+                statusMessage = "Brak autoryzacji uzytkownika.";
+                return false;
+            }
+
+            string user = global::ZonderqOS.SecurityContext.CurrentUser;
+            string dir = GetUserDataDirectory();
+            if (!Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+                if (!string.IsNullOrEmpty(user) && user != "root")
+                    global::ZonderqOS.PermissionManager.SetPermission(dir, user, 700);
+            }
+
+            fullPath = dir + "/" + fileName;
+            if (!global::ZonderqOS.PermissionManager.CanCreate(fullPath, user))
+            {
+                statusMessage = "Brak uprawnien do zapisu: " + fullPath;
+                return false;
+            }
+
+            return true;
+        }
+
         private void ExportCSharp()
         {
             try
             {
-                using (var sw = new StreamWriter("/root/sprite.cs", false))
+                string path;
+                if (!TryPrepareWritePath("sprite.cs", out path))
+                    return;
+
+                bool existed = File.Exists(path);
+                using (var sw = new StreamWriter(path, false))
                 {
                     sw.WriteLine("// Wygenerowano przez ZOnderqOS Sprite Studio");
                     sw.WriteLine("public static readonly byte[,] Sprite16x16 = new byte[16, 16] {");
@@ -317,7 +362,9 @@ namespace ZonderqOS.GUI.Apps
                     }
                     sw.WriteLine("};");
                 }
-                statusMessage = "Zapisano tablice C# w: /root/sprite.cs";
+                if (!existed)
+                    global::ZonderqOS.PermissionManager.SetPermission(path, global::ZonderqOS.SecurityContext.CurrentUser, 644);
+                statusMessage = "Zapisano tablice C# w: " + path;
             }
             catch (Exception ex)
             {
@@ -329,7 +376,12 @@ namespace ZonderqOS.GUI.Apps
         {
             try
             {
-                using (var sw = new StreamWriter("/root/sprite.bas", false))
+                string path;
+                if (!TryPrepareWritePath("sprite.bas", out path))
+                    return;
+
+                bool existed = File.Exists(path);
+                using (var sw = new StreamWriter(path, false))
                 {
                     sw.WriteLine("10 REM SPRITE 16X16 DLA BASIC");
                     int lineNum = 20;
@@ -345,7 +397,9 @@ namespace ZonderqOS.GUI.Apps
                         lineNum += 10;
                     }
                 }
-                statusMessage = "Zapisano kod BASIC DATA w: /root/sprite.bas";
+                if (!existed)
+                    global::ZonderqOS.PermissionManager.SetPermission(path, global::ZonderqOS.SecurityContext.CurrentUser, 644);
+                statusMessage = "Zapisano kod BASIC DATA w: " + path;
             }
             catch (Exception ex)
             {
@@ -357,6 +411,11 @@ namespace ZonderqOS.GUI.Apps
         {
             try
             {
+                string path;
+                if (!TryPrepareWritePath("icon.spr", out path))
+                    return;
+
+                bool existed = File.Exists(path);
                 byte[] raw = new byte[GridSize * GridSize];
                 int idx = 0;
                 for (int r = 0; r < GridSize; r++)
@@ -366,8 +425,10 @@ namespace ZonderqOS.GUI.Apps
                         raw[idx++] = pixels[r, c];
                     }
                 }
-                File.WriteAllBytes("/root/icon.spr", raw);
-                statusMessage = "Zapisano plik binarny: /root/icon.spr (256 bajtow)";
+                File.WriteAllBytes(path, raw);
+                if (!existed)
+                    global::ZonderqOS.PermissionManager.SetPermission(path, global::ZonderqOS.SecurityContext.CurrentUser, 644);
+                statusMessage = "Zapisano plik binarny: " + path + " (256 bajtow)";
             }
             catch (Exception ex)
             {
@@ -379,12 +440,25 @@ namespace ZonderqOS.GUI.Apps
         {
             try
             {
-                if (!File.Exists("/root/icon.spr"))
+                if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
                 {
-                    statusMessage = "Brak pliku /root/icon.spr do wczytania.";
+                    statusMessage = "Brak autoryzacji uzytkownika.";
                     return;
                 }
-                byte[] raw = File.ReadAllBytes("/root/icon.spr");
+
+                string path = GetUserDataDirectory() + "/icon.spr";
+                if (!global::ZonderqOS.PermissionManager.CanRead(path, global::ZonderqOS.SecurityContext.CurrentUser))
+                {
+                    statusMessage = "Brak uprawnien do odczytu: " + path;
+                    return;
+                }
+
+                if (!File.Exists(path))
+                {
+                    statusMessage = "Brak pliku " + path + " do wczytania.";
+                    return;
+                }
+                byte[] raw = File.ReadAllBytes(path);
                 if (raw.Length >= GridSize * GridSize)
                 {
                     int idx = 0;
@@ -395,7 +469,7 @@ namespace ZonderqOS.GUI.Apps
                             pixels[r, c] = (byte)(raw[idx++] % 16);
                         }
                     }
-                    statusMessage = "Wczytano pomyslnie: /root/icon.spr";
+                    statusMessage = "Wczytano pomyslnie: " + path;
                 }
             }
             catch (Exception ex)

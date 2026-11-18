@@ -6,17 +6,27 @@ namespace ZonderqOS.SystemCore
 {
     public class KernelProcess
     {
+        private const int StateStarting = 0;
+        private const int StateRunning = 1;
+        private const int StateExited = 2;
+
         public int PID { get; }
         public string Name { get; }
         public Thread ExecutionThread { get; }
         public CancellationTokenSource Cts { get; }
         private uint kernelThreadId = uint.MaxValue;
         private int lastSignalNumber;
+        private int lifecycleState = StateStarting;
         public uint KernelThreadId => Volatile.Read(ref kernelThreadId);
         public int LastSignalNumber => Volatile.Read(ref lastSignalNumber);
         internal void BindKernelThread() => Volatile.Write(ref kernelThreadId, SchedulerTelemetry.CurrentThreadId());
         internal void RecordSignal(ProcessSignal signal) => Volatile.Write(ref lastSignalNumber, (int)signal);
+        internal void MarkRunning() => Interlocked.CompareExchange(ref lifecycleState, StateRunning, StateStarting);
+        internal void MarkExited() => Volatile.Write(ref lifecycleState, StateExited);
+        internal bool IsPendingStart => Volatile.Read(ref lifecycleState) == StateStarting;
         public bool IsRunning => ExecutionThread != null && ExecutionThread.IsAlive;
+        internal bool IsActiveOrStarting =>
+            IsPendingStart || (Volatile.Read(ref lifecycleState) == StateRunning && IsRunning);
 
         public KernelProcess(int pid, string name, Thread thread, CancellationTokenSource cts)
         {
@@ -64,6 +74,7 @@ namespace ZonderqOS.SystemCore
                     try
                     {
                         process.BindKernelThread();
+                        process.MarkRunning();
                         SchedulerTelemetry.EnableCurrentManagedPreemption();
                         startMethod(cts.Token);
                     }
@@ -73,6 +84,7 @@ namespace ZonderqOS.SystemCore
                     }
                     finally
                     {
+                        process.MarkExited();
                         RemoveProcess(pid);
                     }
                 });
@@ -87,9 +99,11 @@ namespace ZonderqOS.SystemCore
             try
             {
                 thread.Start();
+                process.MarkRunning();
             }
             catch
             {
+                process.MarkExited();
                 lock (_registryLock)
                 {
                     if (_processes.Remove(pid))
@@ -129,8 +143,9 @@ namespace ZonderqOS.SystemCore
                 if (!_processes.TryGetValue(pid, out var process))
                     return false;
 
-                if (!process.IsRunning)
+                if (!process.IsActiveOrStarting)
                 {
+                    process.MarkExited();
                     _processes.Remove(pid);
                     process.Cts.Dispose();
                     return false;
@@ -171,7 +186,7 @@ namespace ZonderqOS.SystemCore
                 foreach (var kvp in _processes)
                 {
                     var process = kvp.Value;
-                    if (process != null && process.IsRunning && string.Equals(process.Name, name, StringComparison.OrdinalIgnoreCase))
+                    if (process != null && process.IsActiveOrStarting && string.Equals(process.Name, name, StringComparison.OrdinalIgnoreCase))
                         return true;
                 }
 
@@ -218,7 +233,8 @@ namespace ZonderqOS.SystemCore
                 if (_processes.TryGetValue(pid, out var process))
                 {
                     _processes.Remove(pid);
-                    process.Cts.Dispose();
+                    process?.MarkExited();
+                    process?.Cts.Dispose();
                 }
             }
         }
@@ -229,7 +245,7 @@ namespace ZonderqOS.SystemCore
 
             foreach (var kvp in _processes)
             {
-                if (kvp.Value == null || !kvp.Value.IsRunning)
+                if (kvp.Value == null || !kvp.Value.IsActiveOrStarting)
                     _deadPidScratch.Add(kvp.Key);
             }
 
@@ -239,7 +255,8 @@ namespace ZonderqOS.SystemCore
                 if (_processes.TryGetValue(pid, out var process))
                 {
                     _processes.Remove(pid);
-                    process.Cts.Dispose();
+                    process?.MarkExited();
+                    process?.Cts.Dispose();
                 }
             }
 

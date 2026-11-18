@@ -105,9 +105,15 @@ namespace ZonderqOS
             return matches;
         }
 
+        private const int MaxCompletionPathLength = 512;
+        private const int MaxCompletionParentSegments = 32;
+
         private static List<Candidate> FindPathCandidates(string rawToken, string currentPath)
         {
             var matches = new List<Candidate>();
+            if (!SecurityContext.IsAuthenticated)
+                return matches;
+
             if (rawToken == null)
                 rawToken = string.Empty;
 
@@ -116,13 +122,29 @@ namespace ZonderqOS
             if (quote != '\0' && token.Length > 0 && token[token.Length - 1] == quote)
                 token = token.Substring(0, token.Length - 1);
 
+            if (token.Length > MaxCompletionPathLength)
+                return matches;
+
             token = token.Replace('\\', '/');
             int slash = token.LastIndexOf('/');
             string directoryPrefix = slash >= 0 ? token.Substring(0, slash + 1) : string.Empty;
             string namePrefix = slash >= 0 ? token.Substring(slash + 1) : token;
-            string lookupDirectory = string.IsNullOrEmpty(directoryPrefix)
-                ? currentPath
-                : PathResolver.GetAbsolutePath(currentPath, directoryPrefix);
+            if (namePrefix == "..")
+                return matches;
+
+            string lookupDirectory;
+            if (string.IsNullOrEmpty(directoryPrefix))
+            {
+                lookupDirectory = string.IsNullOrEmpty(currentPath) ? "/" : currentPath;
+            }
+            else if (!TryResolveContainedDirectory(currentPath, directoryPrefix, out lookupDirectory))
+            {
+                return matches;
+            }
+
+            string currentUser = SecurityContext.CurrentUser;
+            if (!PermissionManager.CanRead(lookupDirectory, currentUser))
+                return matches;
 
             try
             {
@@ -133,7 +155,14 @@ namespace ZonderqOS
                 for (int i = 0; i < directories.Length; i++)
                 {
                     string leaf = LeafName(directories[i]);
+                    if (string.IsNullOrEmpty(leaf) || leaf == "." || leaf == ".." || leaf.IndexOf('/') >= 0)
+                        continue;
+
                     if (!leaf.StartsWith(namePrefix, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    string childPath = JoinChildPath(lookupDirectory, leaf);
+                    if (!PermissionManager.CanRead(childPath, currentUser))
                         continue;
 
                     string body = directoryPrefix + leaf + "/";
@@ -145,7 +174,14 @@ namespace ZonderqOS
                 for (int i = 0; i < files.Length; i++)
                 {
                     string leaf = LeafName(files[i]);
+                    if (string.IsNullOrEmpty(leaf) || leaf == "." || leaf == ".." || leaf.IndexOf('/') >= 0)
+                        continue;
+
                     if (!leaf.StartsWith(namePrefix, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    string childPath = JoinChildPath(lookupDirectory, leaf);
+                    if (!PermissionManager.CanRead(childPath, currentUser))
                         continue;
 
                     string body = directoryPrefix + leaf;
@@ -160,6 +196,58 @@ namespace ZonderqOS
             }
 
             return matches;
+        }
+
+        private static bool TryResolveContainedDirectory(string currentPath, string directoryPrefix, out string resolved)
+        {
+            resolved = null;
+            if (string.IsNullOrEmpty(directoryPrefix) || directoryPrefix.Length > MaxCompletionPathLength)
+                return false;
+
+            string normalizedCurrent = string.IsNullOrEmpty(currentPath) ? "/" : currentPath.Replace('\\', '/');
+            string normalizedTarget = directoryPrefix.Replace('\\', '/');
+            bool isAbsolute = normalizedTarget[0] == '/';
+
+            string[] baseParts = isAbsolute
+                ? Array.Empty<string>()
+                : normalizedCurrent.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            string[] targetParts = normalizedTarget.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+            var stack = new List<string>(baseParts.Length + targetParts.Length);
+            for (int i = 0; i < baseParts.Length; i++)
+            {
+                if (baseParts[i] != "." && baseParts[i] != "..")
+                    stack.Add(baseParts[i]);
+            }
+
+            int parentCount = 0;
+            for (int i = 0; i < targetParts.Length; i++)
+            {
+                string part = targetParts[i];
+                if (part == ".")
+                    continue;
+
+                if (part == "..")
+                {
+                    parentCount++;
+                    if (parentCount > MaxCompletionParentSegments || stack.Count == 0)
+                        return false;
+                    stack.RemoveAt(stack.Count - 1);
+                    continue;
+                }
+
+                stack.Add(part);
+            }
+
+            resolved = stack.Count == 0 ? "/" : "/" + string.Join("/", stack);
+            return resolved.Length <= MaxCompletionPathLength;
+        }
+
+        private static string JoinChildPath(string directory, string leaf)
+        {
+            if (string.IsNullOrEmpty(directory) || directory == "/")
+                return "/" + leaf;
+            return directory.TrimEnd('/') + "/" + leaf;
         }
 
         private static string KeepDirectoryOpen(string replacement, string rawToken)

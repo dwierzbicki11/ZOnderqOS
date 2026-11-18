@@ -10,6 +10,14 @@ namespace ZonderqOS.Commands
 
         public void Execute(string[] args, ref string currentPath)
         {
+            if (!SecurityContext.IsAuthenticated || SecurityContext.CurrentUid != 0)
+            {
+                WriteMessage.WriteError("Access denied. Root privileges required.", "SEC");
+                SecurityLogger.LogEvent("WARN", "Unauthorized kill attempt by " + (SecurityContext.CurrentUser ?? "?"));
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             if (args == null || args.Length == 0)
             {
                 Usage();

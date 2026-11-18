@@ -8,6 +8,10 @@ namespace ZonderqOS.GUI.Apps
     public class AboutApp : Application
     {
         private readonly Action closeCallback;
+        private string cachedVersionValue;
+        private string cachedVersionCaption;
+        private string cachedBuildValue;
+        private string cachedBuildCaption;
 
         public AboutApp(int x, int y, Action onClose) : base("O Systemie")
         {
@@ -48,10 +52,15 @@ namespace ZonderqOS.GUI.Apps
             if (width >= 110 && height >= 64)
             {
                 string curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion;
+                if (!string.Equals(cachedVersionValue, curVer, StringComparison.Ordinal))
+                {
+                    cachedVersionValue = curVer;
+                    cachedVersionCaption = "WERSJA " + curVer + "  /  COSMOS SDK 3.0.95 X64";
+                }
                 IconManager.DrawScaled(canvas, IconType.Start, x + 18, y + 18, 42, 42);
                 UiTypography.Heading(canvas, "ZOnderqOS 1.0 Alpha", x + 78, y + 13,
                     System.Math.Max(1, width - 94), UiPalette.Text);
-                UiTypography.Caption(canvas, "WERSJA " + curVer + "  /  COSMOS SDK 3.0.95 X64",
+                UiTypography.Caption(canvas, cachedVersionCaption,
                     x + 78, y + 43, System.Math.Max(1, width - 94));
             }
 
@@ -60,7 +69,12 @@ namespace ZonderqOS.GUI.Apps
             if (height >= 110)
             {
                 string curBuild = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentBuild;
-                UiTypography.Caption(canvas, "KOMPILACJA: BUILD " + curBuild + " (X86_64 SINGLE-VCPU NATIVE AOT)",
+                if (!string.Equals(cachedBuildValue, curBuild, StringComparison.Ordinal))
+                {
+                    cachedBuildValue = curBuild;
+                    cachedBuildCaption = "KOMPILACJA: BUILD " + curBuild + " (X86_64 SINGLE-VCPU NATIVE AOT)";
+                }
+                UiTypography.Caption(canvas, cachedBuildCaption,
                     x + 18, y + 96, System.Math.Max(1, width - 36));
             }
             if (height >= 140)

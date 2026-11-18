@@ -1,4 +1,4 @@
-<Project Sdk="Cosmos.Sdk/3.0.95">
+<Project Sdk="Cosmos.Sdk/3.0.97" TreatAsLocalProperty="DefineConstants">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -69,8 +69,8 @@
   <ItemGroup>
     <!-- Exactly matched stock upstream Cosmos v3.0.95 packages. No custom
          AP bootstrap, OrionGC patches or managed SMP scheduler. -->
-    <PackageReference Include="Cosmos.Kernel" Version="3.0.95" />
-    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.95" />
+    <PackageReference Include="Cosmos.Kernel" Version="3.0.97" />
+    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.97" />
     <!-- Portable managed Ed25519 verification, no platform crypto native calls. -->
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
   </ItemGroup>

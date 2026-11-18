@@ -21,8 +21,8 @@ SETUP = read("source/GUI/InitialSetupManager.cs")
 
 class OverlayAndSecureSession3094(unittest.TestCase):
     def test_runtime_is_pinned_and_uses_shared_renderer(self):
-        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
-        self.assertTrue('Version="3.0.94"' in PROJECT or 'Version="3.0.95"' in PROJECT)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.97"' in PROJECT)
+        self.assertTrue('Version="3.0.94"' in PROJECT or 'Version="3.0.95"' in PROJECT or 'Version="3.0.97"' in PROJECT)
         for source in (NOTIFICATIONS, COMMANDS, CONTEXT, LOGIN, SETUP):
             self.assertIn("UiPainter.RoundedPanel(", source)
             self.assertTrue(
@@ -62,7 +62,7 @@ class OverlayAndSecureSession3094(unittest.TestCase):
         for marker in (
             "SecurityContext.IsAuthenticated", "AuthenticationGuard",
             "screen.ClearSensitiveData()", "MouseManager.SetScreenSize(",
-            "PasswordMask", "TryStartSession("
+            "PasswordMask", "ValidateCredentialsChars(", "ActivateSession("
         ):
             self.assertIn(marker, LOGIN)
         for marker in (

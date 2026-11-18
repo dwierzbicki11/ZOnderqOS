@@ -1,5 +1,7 @@
 using System;
 using System.Diagnostics;
+using System.Text;
+using System.Threading;
 
 namespace ZonderqOS
 {
@@ -31,7 +33,21 @@ namespace ZonderqOS
             0x90BEFFFAU, 0xA4506CEBU, 0xBEF9A3F7U, 0xC67178F2U
         };
 
-        private static ulong saltCounter;
+        private static long saltCounter;
+        private static readonly object PbkdfSync = new object();
+        private static readonly byte[] PbkdfTempKey = new byte[256];
+        private static readonly byte[] PbkdfKeyBlock = new byte[64];
+        private static readonly byte[] PbkdfKeyHash = new byte[32];
+        private static readonly byte[] PbkdfIpad = new byte[64];
+        private static readonly byte[] PbkdfOpad = new byte[64];
+        private static readonly byte[] PbkdfData = new byte[128];
+        private static readonly byte[] PbkdfU = new byte[32];
+        private static readonly byte[] PbkdfNextU = new byte[32];
+        private static readonly byte[] PbkdfResult = new byte[32];
+        private static readonly byte[] PbkdfInnerHash = new byte[32];
+        private static readonly byte[] PbkdfInnerBuffer = new byte[192];
+        private static readonly byte[] PbkdfOuterBuffer = new byte[96];
+        private static readonly uint[] PbkdfSchedule = new uint[64];
 
         public static string GenerateSalt()
         {
@@ -62,9 +78,9 @@ namespace ZonderqOS
                 monotonic = 0UL;
             }
 
-            saltCounter++;
+            long counter = Interlocked.Increment(ref saltCounter);
             ulong mixed = rtcValue ^ RotateLeft64(monotonic, 17) ^
-                          (saltCounter * 0x9E3779B97F4A7C15UL);
+                          ((ulong)counter * 0x9E3779B97F4A7C15UL);
             mixed = Mix64(mixed);
             ulong second = Mix64(mixed ^ monotonic ^ 0xD6E8FEB86659FD93UL);
             return mixed.ToString("X16") + second.ToString("X16");
@@ -98,8 +114,8 @@ namespace ZonderqOS
             if (password == null || salt == null || iterations < 1 || iterations > 1000000)
                 return null;
 
-            byte[] key = ToAscii(password);
-            byte[] saltBytes = ToAscii(salt);
+            byte[] key = ToUtf8Bytes(password);
+            byte[] saltBytes = ToUtf8Bytes(salt);
             byte[] keyBlock = new byte[64];
             byte[] keyHash = new byte[32];
             byte[] ipad = new byte[64];
@@ -170,6 +186,124 @@ namespace ZonderqOS
             return hex;
         }
 
+        /// <summary>
+        /// Zero-allocation PBKDF2-HMAC-SHA256 verification directly from a char[]
+        /// password buffer against an expected uppercase/lowercase 64-char hex digest.
+        /// Keeps plaintext passwords off the managed heap across lock/unlock cycles.
+        /// </summary>
+        public static bool VerifyPasswordV2(char[] passwordChars, int passwordLength,
+            string salt, int iterations, string expectedHex)
+        {
+            if (passwordChars == null || passwordLength < 0 || passwordLength > passwordChars.Length ||
+                salt == null || expectedHex == null || expectedHex.Length != 64 ||
+                iterations < 1 || iterations > 1000000)
+            {
+                return false;
+            }
+
+            if (!IsAscii(passwordChars, passwordLength) || !IsAscii(salt) ||
+                passwordLength > PbkdfTempKey.Length || salt.Length + 4 > PbkdfData.Length)
+            {
+                string computed = HashPasswordV2(new string(passwordChars, 0, passwordLength), salt, iterations);
+                bool fallbackMatch = FixedTimeHexEquals(expectedHex, computed);
+                computed = null;
+                return fallbackMatch;
+            }
+
+            lock (PbkdfSync)
+            {
+                try
+                {
+                    Zero(PbkdfKeyBlock);
+                    Zero(PbkdfKeyHash);
+                    Zero(PbkdfData);
+
+                    for (int i = 0; i < passwordLength; i++)
+                        PbkdfTempKey[i] = (byte)passwordChars[i];
+
+                    if (passwordLength > 64)
+                    {
+                        Sha256Into(PbkdfTempKey, passwordLength, PbkdfKeyHash, PbkdfSchedule);
+                        CopyBytes(PbkdfKeyHash, 0, PbkdfKeyBlock, 0, 32);
+                    }
+                    else
+                    {
+                        CopyBytes(PbkdfTempKey, 0, PbkdfKeyBlock, 0, passwordLength);
+                    }
+
+                    for (int i = 0; i < 64; i++)
+                    {
+                        PbkdfIpad[i] = (byte)(PbkdfKeyBlock[i] ^ 0x36);
+                        PbkdfOpad[i] = (byte)(PbkdfKeyBlock[i] ^ 0x5C);
+                        PbkdfInnerBuffer[i] = PbkdfIpad[i];
+                        PbkdfOuterBuffer[i] = PbkdfOpad[i];
+                    }
+
+                    for (int i = 0; i < salt.Length; i++)
+                        PbkdfData[i] = (byte)salt[i];
+                    int firstLength = salt.Length + 4;
+                    PbkdfData[salt.Length] = 0;
+                    PbkdfData[salt.Length + 1] = 0;
+                    PbkdfData[salt.Length + 2] = 0;
+                    PbkdfData[salt.Length + 3] = 1;
+
+                    HmacSha256Into(PbkdfData, firstLength, PbkdfU, PbkdfInnerHash, PbkdfInnerBuffer, PbkdfOuterBuffer, PbkdfSchedule);
+                    CopyBytes(PbkdfU, 0, PbkdfResult, 0, 32);
+
+                    for (int round = 1; round < iterations; round++)
+                    {
+                        HmacSha256Into(PbkdfU, 32, PbkdfNextU, PbkdfInnerHash, PbkdfInnerBuffer, PbkdfOuterBuffer, PbkdfSchedule);
+                        for (int i = 0; i < 32; i++)
+                        {
+                            PbkdfU[i] = PbkdfNextU[i];
+                            PbkdfResult[i] ^= PbkdfU[i];
+                        }
+                    }
+
+                    int difference = 0;
+                    for (int i = 0; i < 32; i++)
+                    {
+                        int hi = ParseHexNibble(expectedHex[i * 2]);
+                        int lo = ParseHexNibble(expectedHex[i * 2 + 1]);
+                        if (hi < 0 || lo < 0)
+                            difference |= 0x100;
+                        else
+                            difference |= PbkdfResult[i] ^ ((hi << 4) | lo);
+                    }
+
+                    return difference == 0;
+                }
+                finally
+                {
+                    Zero(PbkdfTempKey);
+                    Zero(PbkdfKeyBlock);
+                    Zero(PbkdfKeyHash);
+                    Zero(PbkdfIpad);
+                    Zero(PbkdfOpad);
+                    Zero(PbkdfData);
+                    Zero(PbkdfU);
+                    Zero(PbkdfNextU);
+                    Zero(PbkdfResult);
+                    Zero(PbkdfInnerHash);
+                    Zero(PbkdfInnerBuffer);
+                    Zero(PbkdfOuterBuffer);
+                    for (int i = 0; i < PbkdfSchedule.Length; i++)
+                        PbkdfSchedule[i] = 0;
+                }
+            }
+        }
+
+        private static int ParseHexNibble(char c)
+        {
+            if (c >= '0' && c <= '9')
+                return c - '0';
+            if (c >= 'A' && c <= 'F')
+                return c - 'A' + 10;
+            if (c >= 'a' && c <= 'f')
+                return c - 'a' + 10;
+            return -1;
+        }
+
         public static bool FixedTimeEquals(string left, string right)
         {
             if (left == null || right == null)
@@ -188,6 +322,29 @@ namespace ZonderqOS
             return difference == 0;
         }
 
+        public static bool FixedTimeHexEquals(string left, string right)
+        {
+            if (left == null || right == null)
+                return false;
+
+            int max = System.Math.Max(left.Length, right.Length);
+            int difference = left.Length ^ right.Length;
+
+            for (int i = 0; i < max; i++)
+            {
+                char a = i < left.Length ? NormalizeHexUpper(left[i]) : '\0';
+                char b = i < right.Length ? NormalizeHexUpper(right[i]) : '\0';
+                difference |= a ^ b;
+            }
+
+            return difference == 0;
+        }
+
+        private static char NormalizeHexUpper(char c)
+        {
+            return (c >= 'a' && c <= 'f') ? (char)(c - ('a' - 'A')) : c;
+        }
+
         public static string ComputeSha256(byte[] data)
         {
             if (data == null)
@@ -204,7 +361,7 @@ namespace ZonderqOS
             if (text == null)
                 return string.Empty;
 
-            return ComputeSha256(ToAscii(text));
+            return ComputeSha256(ToUtf8Bytes(text));
         }
 
         public static string ComputeHmacSha256(byte[] key, byte[] data)
@@ -245,7 +402,7 @@ namespace ZonderqOS
             if (keyAscii == null || textAscii == null)
                 return string.Empty;
 
-            return ComputeHmacSha256(ToAscii(keyAscii), ToAscii(textAscii));
+            return ComputeHmacSha256(ToUtf8Bytes(keyAscii), ToUtf8Bytes(textAscii));
         }
 
         private static void HmacSha256Into(byte[] data, int dataLength, byte[] output,
@@ -388,12 +545,29 @@ namespace ZonderqOS
             return (value >> shift) | (value << (32 - shift));
         }
 
-        private static byte[] ToAscii(string value)
+        private static byte[] ToUtf8Bytes(string value)
         {
-            byte[] data = new byte[value.Length];
+            return Encoding.UTF8.GetBytes(value);
+        }
+
+        private static bool IsAscii(string value)
+        {
             for (int i = 0; i < value.Length; i++)
-                data[i] = (byte)value[i];
-            return data;
+            {
+                if (value[i] > 0x7F)
+                    return false;
+            }
+            return true;
+        }
+
+        private static bool IsAscii(char[] value, int length)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                if (value[i] > 0x7F)
+                    return false;
+            }
+            return true;
         }
 
         private static string ToHex(byte[] data)

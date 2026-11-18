@@ -9,6 +9,7 @@ namespace ZonderqOS.SystemCore
 {
     public static class SysFs
     {
+        private static readonly object PciSync = new object();
         private static List<DeviceDescriptor> pciDevices;
         private static bool pciDiscoveryAttempted;
 
@@ -242,6 +243,9 @@ namespace ZonderqOS.SystemCore
                             return false;
 
                         var part = partitions[index];
+                        if (part == null || part.BlockSize < 0)
+                            return false;
+
                         blocks = part.BlockCount;
                         blockSize = (ulong)part.BlockSize;
                     }
@@ -251,6 +255,9 @@ namespace ZonderqOS.SystemCore
                             return false;
 
                         var device = StorageManager.GetDevice(index);
+                        if (device == null || device.BlockSize < 0)
+                            return false;
+
                         blocks = device.BlockCount;
                         blockSize = (ulong)device.BlockSize;
                     }
@@ -276,12 +283,19 @@ namespace ZonderqOS.SystemCore
                     if (!partition && blockLeaf == "name")
                     {
                         var device = StorageManager.GetDevice(index);
-                        content = (device?.Name ?? ("disk" + index)) + "\n";
+                        if (device == null)
+                            return false;
+
+                        content = (device.Name ?? ("disk" + index)) + "\n";
                         return true;
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    global::ZonderqOS.SystemLogger.Log(
+                        global::ZonderqOS.SystemLogLevel.Warning,
+                        "SYSFS",
+                        "Block device read failed for '" + normalized + "': " + ex.Message);
                     return false;
                 }
             }
@@ -422,7 +436,8 @@ namespace ZonderqOS.SystemCore
                         ? 0
                         : Math.Max(0, StorageManager.Partitions.Count);
 
-                    entries = new string[devices + partitions];
+                    int total = checked(devices + partitions);
+                    entries = new string[total];
                     int target = 0;
                     for (int i = 0; i < devices; i++)
                         entries[target++] = "disk" + i;
@@ -430,8 +445,12 @@ namespace ZonderqOS.SystemCore
                         entries[target++] = "part" + i;
                     return true;
                 }
-                catch
+                catch (Exception ex)
                 {
+                    global::ZonderqOS.SystemLogger.Log(
+                        global::ZonderqOS.SystemLogLevel.Warning,
+                        "SYSFS",
+                        "Block device listing failed: " + ex.Message);
                     entries = new string[0];
                     return true;
                 }
@@ -444,10 +463,10 @@ namespace ZonderqOS.SystemCore
                     if (partition)
                     {
                         var partitions = StorageManager.Partitions;
-                        if (partitions == null || index < 0 || index >= partitions.Count)
+                        if (partitions == null || index < 0 || index >= partitions.Count || partitions[index] == null)
                             return false;
                     }
-                    else if (index < 0 || index >= StorageManager.DeviceCount)
+                    else if (index < 0 || index >= StorageManager.DeviceCount || StorageManager.GetDevice(index) == null)
                     {
                         return false;
                     }
@@ -457,8 +476,12 @@ namespace ZonderqOS.SystemCore
                         : new[] { "name", "blocks", "block_size", "size_bytes" };
                     return true;
                 }
-                catch
+                catch (Exception ex)
                 {
+                    global::ZonderqOS.SystemLogger.Log(
+                        global::ZonderqOS.SystemLogLevel.Warning,
+                        "SYSFS",
+                        "Block directory probe failed for '" + normalized + "': " + ex.Message);
                     return false;
                 }
             }
@@ -469,17 +492,20 @@ namespace ZonderqOS.SystemCore
 
         private static List<DeviceDescriptor> GetPciDevices()
         {
-            if (pciDiscoveryAttempted)
+            lock (PciSync)
+            {
+                if (!pciDiscoveryAttempted)
+                {
+                    pciDiscoveryAttempted = true;
+                    List<DeviceDescriptor> discovered;
+                    if (PciSysfsProvider.TryDiscover(out discovered) && discovered != null)
+                        pciDevices = discovered;
+                    else
+                        pciDevices = new List<DeviceDescriptor>();
+                }
+
                 return pciDevices ?? new List<DeviceDescriptor>();
-
-            pciDiscoveryAttempted = true;
-            List<DeviceDescriptor> discovered;
-            if (PciSysfsProvider.TryDiscover(out discovered) && discovered != null)
-                pciDevices = discovered;
-            else
-                pciDevices = new List<DeviceDescriptor>();
-
-            return pciDevices;
+            }
         }
 
         private static DeviceDescriptor FindPciDevice(string address)

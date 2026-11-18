@@ -110,7 +110,8 @@ namespace ZonderqOS.SystemCore
                 ulong installedBytes = ZonderqOS.Hardware.PhysicalMemoryDetector.InstalledBytes;
 
                 snapshot.HeapMemoryBytes = heapBytes;
-                snapshot.InstalledMemoryBytes = installedBytes > 0 ? installedBytes : (physicalBytes > 0 ? physicalBytes : heapBytes);
+                // 0 == unknown (no SMBIOS); never substitute a guess for installed RAM.
+                snapshot.InstalledMemoryBytes = installedBytes;
                 snapshot.TotalMemoryBytes = physicalBytes > 0 ? physicalBytes : heapBytes;
                 snapshot.FreeMemoryBytes = freeBytes;
             }

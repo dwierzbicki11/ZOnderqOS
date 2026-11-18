@@ -30,8 +30,13 @@ namespace ZonderqOS.Platform
         public bool VirtualizationSupported;
         public bool CpuidAvailable;
 
+        private static CpuHardwareInfo cachedInfo;
+
         public static CpuHardwareInfo Detect()
         {
+            if (cachedInfo != null)
+                return cachedInfo;
+
             CpuHardwareInfo info = new CpuHardwareInfo();
             try
             {
@@ -136,6 +141,7 @@ namespace ZonderqOS.Platform
                 if (info.ThreadsPerCore <= 0) info.ThreadsPerCore = 1;
             }
 
+            cachedInfo = info;
             return info;
         }
 

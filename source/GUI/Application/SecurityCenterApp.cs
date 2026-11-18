@@ -7,6 +7,7 @@ using Cosmos.Kernel.System.Graphics;
 using ZonderqOS.GUI;
 using ZonderqOS.GUI.Icons;
 using ZonderqOS.Security;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -37,7 +38,7 @@ namespace ZonderqOS.GUI.Apps
         private List<FileIntegrityRecord> cachedRecords = new List<FileIntegrityRecord>();
         private List<FirewallRule> cachedRules = new List<FirewallRule>();
         private readonly List<string> cachedLogLines = new List<string>(16);
-        private readonly byte[] logTailBuffer = new byte[LogTailMaxBytes];
+        private NativeScratchBuffer<byte> logTailBuffer;
         private readonly string[] logTailRing = new string[LogTailMaxLines];
 
         // Telemetry string caches to eliminate per-frame allocations on idle redraws
@@ -75,6 +76,11 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
+            logTailBuffer.Dispose();
+            cachedRecords.Clear();
+            cachedRules.Clear();
+            cachedLogLines.Clear();
+            Array.Clear(logTailRing, 0, logTailRing.Length);
             base.Close();
             closeCallback?.Invoke();
         }
@@ -89,12 +95,21 @@ namespace ZonderqOS.GUI.Apps
         private void RefreshLogs()
         {
             cachedLogLines.Clear();
+            SecurityLogger.Flush();
             const string logPath = "/var/log/auth.log";
+            if (!PermissionManager.CanRead(logPath, SecurityContext.CurrentUser))
+            {
+                cachedLogLines.Add("Odmowa dostepu: wymagane uprawnienia do odczytu dziennika audytu.");
+                return;
+            }
             if (!File.Exists(logPath))
                 return;
 
             try
             {
+                if (!logTailBuffer.IsAllocated)
+                    logTailBuffer.Allocate(LogTailMaxBytes);
+                Span<byte> bufSpan = logTailBuffer.AsSpan();
                 int totalRead = 0;
                 long offset = 0;
                 using (FileStream fs = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
@@ -109,7 +124,7 @@ namespace ZonderqOS.GUI.Apps
 
                     while (totalRead < LogTailMaxBytes)
                     {
-                        int read = fs.Read(logTailBuffer, totalRead, LogTailMaxBytes - totalRead);
+                        int read = fs.Read(bufSpan.Slice(totalRead, LogTailMaxBytes - totalRead));
                         if (read <= 0)
                             break;
                         totalRead += read;
@@ -119,7 +134,7 @@ namespace ZonderqOS.GUI.Apps
                 if (totalRead <= 0)
                     return;
 
-                string tailText = Encoding.UTF8.GetString(logTailBuffer, 0, totalRead);
+                string tailText = Encoding.UTF8.GetString(bufSpan.Slice(0, totalRead));
                 int pos = 0;
                 if (offset > 0)
                 {
@@ -213,6 +228,8 @@ namespace ZonderqOS.GUI.Apps
                     // [ Przełącz Zaporę ]
                     if (Hit(mouseX, mouseY, wx + 196, btnY, 170, 30))
                     {
+                        if (!RequireRootSession("zmiana trybu zapory"))
+                            return;
                         FirewallMode next = FirewallManager.Mode == FirewallMode.Enabled ? FirewallMode.Strict : (FirewallManager.Mode == FirewallMode.Strict ? FirewallMode.Disabled : FirewallMode.Enabled);
                         FirewallManager.SetMode(next);
                         RefreshAllData();
@@ -242,6 +259,8 @@ namespace ZonderqOS.GUI.Apps
                     // [ Zaktualizuj Bazę (Re-baseline) ]
                     if (Hit(mouseX, mouseY, wx + 196, btnY, 210, 30))
                     {
+                        if (!RequireRootSession("aktualizacja bazy sum SHA-256"))
+                            return;
                         IntegrityGuard.UpdateBaseline();
                         RefreshAllData();
                         statusMessage = "Baza sum kontrolnych SHA-256 zaktualizowana.";
@@ -255,6 +274,8 @@ namespace ZonderqOS.GUI.Apps
                     int modeY = wy + 70;
                     if (Hit(mouseX, mouseY, wx + 26, modeY, 130, 24))
                     {
+                        if (!RequireRootSession("wlaczenie zapory"))
+                            return;
                         FirewallManager.SetMode(FirewallMode.Enabled);
                         RefreshAllData();
                         statusMessage = "Ustawiono tryb: STANDARDOWY.";
@@ -262,6 +283,8 @@ namespace ZonderqOS.GUI.Apps
                     }
                     if (Hit(mouseX, mouseY, wx + 162, modeY, 130, 24))
                     {
+                        if (!RequireRootSession("tryb scisly zapory"))
+                            return;
                         FirewallManager.SetMode(FirewallMode.Strict);
                         RefreshAllData();
                         statusMessage = "Ustawiono tryb: SCISLY (STEALTH).";
@@ -269,6 +292,8 @@ namespace ZonderqOS.GUI.Apps
                     }
                     if (Hit(mouseX, mouseY, wx + 298, modeY, 130, 24))
                     {
+                        if (!RequireRootSession("wylaczenie zapory"))
+                            return;
                         FirewallManager.SetMode(FirewallMode.Disabled);
                         RefreshAllData();
                         statusMessage = "UWAGA: Zapora zostala wylaczona.";
@@ -279,6 +304,8 @@ namespace ZonderqOS.GUI.Apps
                     int btnY = wy + FooterButtonYOffset;
                     if (Hit(mouseX, mouseY, wx + 16, btnY, 200, 30))
                     {
+                        if (!RequireRootSession("reset regul zapory"))
+                            return;
                         FirewallManager.ResetDefaultRules();
                         RefreshAllData();
                         statusMessage = "Przywrocono domyslne reguly zapory.";
@@ -728,6 +755,21 @@ namespace ZonderqOS.GUI.Apps
             int btnY = cy + 280;
             DrawButton(canvas, "↺ Odśwież Logi", wx + 16, btnY, 150, 30, AccentColor);
             SmallTextRenderer.Draw(canvas, GetStatusLine(), wx + 20, btnY + 42, MutedColor);
+        }
+
+        private static bool IsRootSession() =>
+            SecurityContext.IsAuthenticated
+            && SecurityContext.CurrentUid == 0
+            && string.Equals(SecurityContext.CurrentUser, "root", StringComparison.Ordinal);
+
+        private bool RequireRootSession(string action)
+        {
+            if (IsRootSession())
+                return true;
+
+            SecurityLogger.LogEvent("WARN", "Unauthorized SecurityCenter action '" + action + "' by " + (SecurityContext.CurrentUser ?? "?"));
+            statusMessage = "Odmowa dostepu: wymagana sesja root (" + action + ").";
+            return false;
         }
 
         private void DrawButton(Canvas canvas, string text, int x, int y, int w, int h, Color color)

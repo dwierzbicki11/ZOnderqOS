@@ -50,6 +50,9 @@ namespace ZonderqOS.GUI
         private int frameCounter;
         private static string cachedWatermarkBuild;
         private static string cachedWatermarkVersion;
+        private string cachedLockLogUser;
+        private string cachedLockLogMessage;
+        private string cachedUnlockLogMessage;
 
         private const int TaskbarHeight = 44;
         // Bound input dispatch per GUI iteration. An autorepeating key or a
@@ -182,6 +185,10 @@ namespace ZonderqOS.GUI
                 // Only after a successfully rendered authenticated desktop can
                 // this GUI boot confirm the pending A/B slot.
                 global::ZonderqOS.SystemCore.Updates.BootSlotManager.ConfirmSlotHealth();
+                global::ZonderqOS.SystemCore.Updates.UpdateManager.PollBackground();
+                bool initialPendingUpd = global::ZonderqOS.SystemCore.Updates.UpdateManager.Status == global::ZonderqOS.SystemCore.Updates.UpdateStatus.Available;
+                if (startMenu != null) startMenu.HasPendingUpdate = initialPendingUpd;
+                if (taskbar != null) taskbar.HasPendingUpdate = initialPendingUpd;
 
                 while (isRunning)
                 {
@@ -668,6 +675,8 @@ namespace ZonderqOS.GUI
                 }
 
                 isRunning = false;
+                LockScreenManager.ClearSessionResources();
+                IconManager.ClearSessionCache();
                 cursorDamageRenderer = null;
                 wallpaperCanvas = null;
                 canvas = null;
@@ -1172,14 +1181,20 @@ namespace ZonderqOS.GUI
             if (!SecurityContext.IsAuthenticated || canvas == null)
                 return false;
 
-            SecurityLogger.LogEvent("INFO", "Graphical session locked for user " +
-                SecurityContext.CurrentUser + ".");
+            string user = SecurityContext.CurrentUser ?? string.Empty;
+            if (!string.Equals(cachedLockLogUser, user, StringComparison.Ordinal))
+            {
+                cachedLockLogUser = user;
+                cachedLockLogMessage = "Graphical session locked for user " + user + ".";
+                cachedUnlockLogMessage = "Graphical session unlocked for user " + user + ".";
+            }
+
+            SecurityLogger.LogSessionLockEvent(cachedLockLogMessage);
             bool unlocked = LockScreenManager.Run(canvas);
             if (unlocked)
             {
                 SessionManager.MarkUnlock();
-                SecurityLogger.LogEvent("INFO", "Graphical session unlocked for user " +
-                    SecurityContext.CurrentUser + ".");
+                SecurityLogger.LogSessionLockEvent(cachedUnlockLogMessage);
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Security,
                     "BEZPIECZENSTWO",
@@ -1831,6 +1846,11 @@ namespace ZonderqOS.GUI
             int deskH = (int)canvas.Height - TaskbarHeight;
 
             int mode = global::ZonderqOS.SystemSettings.DesktopBackgroundMode;
+            if (mode != 0 && wallpaperCanvas != null)
+            {
+                wallpaperCanvas = null;
+                wallpaperLoadAttempted = false;
+            }
             if (mode == 0 && wallpaperCanvas == null && !wallpaperLoadAttempted)
                 LoadWallpaper(deskW, deskH);
 

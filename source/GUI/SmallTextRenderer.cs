@@ -257,6 +257,151 @@ namespace ZonderqOS.GUI
                 Draw(canvas, suffix, (int)suffixX, y, color);
         }
 
+        private static void DrawCursorUInt(Canvas canvas, ulong value, ref long cursorX, int y, Color color)
+        {
+            if (cursorX >= int.MinValue && cursorX <= int.MaxValue)
+                DrawUInt(canvas, value, (int)cursorX, y, color);
+            cursorX += DigitCount(value) * 6L;
+        }
+
+        private static void DrawCursorUInt2(Canvas canvas, ulong value, ref long cursorX, int y, Color color)
+        {
+            if (cursorX >= int.MinValue && cursorX <= int.MaxValue)
+                DrawUInt2(canvas, value, (int)cursorX, y, color);
+            cursorX += Math.Max(2, DigitCount(value)) * 6L;
+        }
+
+        private static void DrawCursorLiteral(Canvas canvas, string literal, ref long cursorX, int y, Color color)
+        {
+            if (string.IsNullOrEmpty(literal))
+                return;
+            if (cursorX >= int.MinValue && cursorX <= int.MaxValue)
+                Draw(canvas, literal, (int)cursorX, y, color);
+            cursorX += literal.Length * 6L;
+        }
+
+        private static void DrawFixedDecimal2Cursor(Canvas canvas, ulong whole, ulong hundredths, string suffix, ref long cursor, int y, Color color)
+        {
+            DrawCursorUInt(canvas, whole, ref cursor, y, color);
+            DrawCursorLiteral(canvas, ".", ref cursor, y, color);
+            DrawCursorUInt2(canvas, hundredths % 100UL, ref cursor, y, color);
+            DrawCursorLiteral(canvas, suffix, ref cursor, y, color);
+        }
+
+        private static void DrawByteSizeSmartCursor(Canvas canvas, ulong bytes, ref long cursor, int y, Color color)
+        {
+            const ulong KiB = 1024UL;
+            const ulong MiB = 1024UL * 1024UL;
+            const ulong GiB = 1024UL * 1024UL * 1024UL;
+
+            if (bytes == 0)
+            {
+                DrawCursorLiteral(canvas, "0 B", ref cursor, y, color);
+                return;
+            }
+            if (bytes >= GiB)
+            {
+                DrawFixedDecimal2Cursor(canvas, bytes / GiB, (bytes % GiB) * 100UL / GiB, " GB", ref cursor, y, color);
+                return;
+            }
+            if (bytes >= MiB)
+            {
+                DrawFixedDecimal2Cursor(canvas, bytes / MiB, (bytes % MiB) * 100UL / MiB, " MB", ref cursor, y, color);
+                return;
+            }
+            if (bytes >= KiB)
+            {
+                DrawCursorUInt(canvas, bytes / KiB, ref cursor, y, color);
+                DrawCursorLiteral(canvas, ".", ref cursor, y, color);
+                DrawCursorUInt(canvas, (bytes % KiB) * 10UL / KiB, ref cursor, y, color);
+                DrawCursorLiteral(canvas, " KB", ref cursor, y, color);
+                return;
+            }
+
+            DrawCursorUInt(canvas, bytes, ref cursor, y, color);
+            DrawCursorLiteral(canvas, " B", ref cursor, y, color);
+        }
+
+        public static void DrawFixedDecimal2(Canvas canvas, ulong whole, ulong hundredths, string suffix, int x, int y, Color color)
+        {
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height || (long)y + 7 <= 0)
+                return;
+            long cursor = x;
+            DrawFixedDecimal2Cursor(canvas, whole, hundredths, suffix, ref cursor, y, color);
+        }
+
+        public static void DrawMiBOrNa(Canvas canvas, ulong bytes, bool available, int x, int y, Color color)
+        {
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height || (long)y + 7 <= 0)
+                return;
+            if (!available)
+            {
+                Draw(canvas, "N/A", x, y, color);
+                return;
+            }
+            const ulong MiB = 1024UL * 1024UL;
+            DrawFixedDecimal2(canvas, bytes / MiB, (bytes % MiB) * 100UL / MiB, " MB", x, y, color);
+        }
+
+        public static void DrawByteSizeSmart(Canvas canvas, ulong bytes, int x, int y, Color color)
+        {
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height || (long)y + 7 <= 0)
+                return;
+            long cursor = x;
+            DrawByteSizeSmartCursor(canvas, bytes, ref cursor, y, color);
+        }
+
+        public static void DrawPageBreakdown(Canvas canvas, ulong gcPages, ulong ratPages, ulong sysPages, int x, int y, Color color)
+        {
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height || (long)y + 7 <= 0)
+                return;
+            long cursor = x;
+            DrawCursorUInt(canvas, gcPages, ref cursor, y, color);
+            DrawCursorLiteral(canvas, " / ", ref cursor, y, color);
+            DrawCursorUInt(canvas, ratPages, ref cursor, y, color);
+            DrawCursorLiteral(canvas, " / ", ref cursor, y, color);
+            DrawCursorUInt(canvas, sysPages, ref cursor, y, color);
+        }
+
+        public static void DrawMemoryDeltaPages(Canvas canvas, long deltaPages, ulong pageSize, int x, int y, Color color)
+        {
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height || (long)y + 7 <= 0)
+                return;
+            if (deltaPages == 0)
+            {
+                Draw(canvas, "0 B (0 stron)", x, y, color);
+                return;
+            }
+            bool negative = deltaPages < 0;
+            ulong absPages = negative
+                ? (deltaPages == long.MinValue ? (ulong)long.MaxValue + 1UL : (ulong)(-deltaPages))
+                : (ulong)deltaPages;
+            string sign = negative ? "-" : "+";
+            long cursor = x;
+            DrawCursorLiteral(canvas, sign, ref cursor, y, color);
+            DrawByteSizeSmartCursor(canvas, absPages * pageSize, ref cursor, y, color);
+            DrawCursorLiteral(canvas, " (", ref cursor, y, color);
+            DrawCursorLiteral(canvas, sign, ref cursor, y, color);
+            DrawCursorUInt(canvas, absPages, ref cursor, y, color);
+            DrawCursorLiteral(canvas, " p)", ref cursor, y, color);
+        }
+
+        public static void DrawGcCollections(Canvas canvas, int collectionIndex, int objectsFreed, bool enabled, int x, int y, Color color)
+        {
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height || (long)y + 7 <= 0)
+                return;
+            if (!enabled)
+            {
+                Draw(canvas, "N/A", x, y, color);
+                return;
+            }
+            long cursor = x;
+            DrawCursorUInt(canvas, (ulong)Math.Max(0, collectionIndex), ref cursor, y, color);
+            DrawCursorLiteral(canvas, " (", ref cursor, y, color);
+            DrawCursorUInt(canvas, (ulong)Math.Max(0, objectsFreed), ref cursor, y, color);
+            DrawCursorLiteral(canvas, " obj)", ref cursor, y, color);
+        }
+
         public static void DrawClipped(Canvas canvas, string text, int x, int y, int maxWidth, Color color)
         {
             if (string.IsNullOrEmpty(text) || maxWidth < 5)

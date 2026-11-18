@@ -36,28 +36,44 @@ namespace ZonderqOS.Commands
                 for (int i = 0; i < mounts.Count; i++)
                 {
                     VfsMount mount = mounts[i];
-                    ulong totalBytes = ResolveTotalBytes(mount.Source);
+                    string mountPoint = Normalize(mount.MountPoint);
+                    ulong totalBytes = ResolveTotalBytes(mount);
                     ulong usedBytes = CalculateMountUsage(
-                        Normalize(mount.MountPoint),
+                        mountPoint,
                         mounts,
-                        Normalize(mount.MountPoint),
+                        mountPoint,
                         0);
 
                     if (totalBytes > 0 && usedBytes > totalBytes)
                         usedBytes = totalBytes;
 
                     ulong available = totalBytes >= usedBytes ? totalBytes - usedBytes : 0;
-                    string percent = totalBytes == 0
-                        ? "N/A"
-                        : ((int)((double)usedBytes * 100d / totalBytes)).ToString() + "%";
+                    string percent;
+                    if (totalBytes == 0)
+                    {
+                        percent = "N/A";
+                    }
+                    else
+                    {
+                        ulong pct = usedBytes >= totalBytes
+                            ? 100UL
+                            : (usedBytes <= ulong.MaxValue / 100UL
+                                ? (usedBytes * 100UL) / totalBytes
+                                : (ulong)((double)usedBytes * 100d / totalBytes));
+                        percent = pct.ToString() + "%";
+                    }
+
+                    string fsLabel = !string.IsNullOrEmpty(mount.Source)
+                        ? mount.Source
+                        : (!string.IsNullOrEmpty(mount.Name) ? mount.Name : "?");
 
                     CommandIO.WriteLine(
-                        (mount.Source ?? "?").PadRight(12) +
+                        fsLabel.PadRight(12) +
                         Format(totalBytes, human).PadRight(11) +
                         Format(usedBytes, human).PadRight(11) +
                         Format(available, human).PadRight(11) +
                         percent.PadRight(6) +
-                        Normalize(mount.MountPoint));
+                        mountPoint);
                 }
 
                 CommandIO.LastCommandSuccess = true;
@@ -69,20 +85,47 @@ namespace ZonderqOS.Commands
             }
         }
 
-        private static ulong ResolveTotalBytes(string source)
+        private static ulong ResolveTotalBytes(VfsMount mount)
         {
-            if (!int.TryParse(source, out int partitionIndex))
+            if (mount == null)
                 return 0;
+
+            if (mount.Partition != null)
+                return SafeMultiplyBytes(mount.Partition.BlockCount, (ulong)mount.Partition.BlockSize);
 
             var partitions = StorageManager.Partitions;
-            if (partitions == null || partitionIndex < 0 || partitionIndex >= partitions.Count)
+            if (partitions == null || partitions.Count == 0)
                 return 0;
 
-            var partition = partitions[partitionIndex];
-            ulong blockSize = (ulong)partition.BlockSize;
-            ulong blocks = partition.BlockCount;
+            if (int.TryParse(mount.Source, out int partitionIndex) &&
+                partitionIndex >= 0 && partitionIndex < partitions.Count)
+            {
+                var partition = partitions[partitionIndex];
+                return SafeMultiplyBytes(partition.BlockCount, (ulong)partition.BlockSize);
+            }
 
-            if (blockSize != 0 && blocks > ulong.MaxValue / blockSize)
+            string mountPoint = Normalize(mount.MountPoint);
+            if (mountPoint == "/" ||
+                string.Equals(mount.Name, "rootfat", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(mount.Name, "ramfat", StringComparison.OrdinalIgnoreCase))
+            {
+                for (int i = 0; i < partitions.Count; i++)
+                {
+                    var candidate = partitions[i];
+                    if (DataVolumePolicy.IsSelectedDataPartition(candidate))
+                        return SafeMultiplyBytes(candidate.BlockCount, (ulong)candidate.BlockSize);
+                }
+            }
+
+            return 0;
+        }
+
+        private static ulong SafeMultiplyBytes(ulong blocks, ulong blockSize)
+        {
+            if (blocks == 0 || blockSize == 0)
+                return 0;
+
+            if (blocks > ulong.MaxValue / blockSize)
                 return ulong.MaxValue;
 
             return blocks * blockSize;
@@ -104,12 +147,18 @@ namespace ZonderqOS.Commands
                 string[] files = Directory.GetFiles(path);
                 for (int i = 0; i < files.Length; i++)
                 {
-                    long length = new FileInfo(files[i]).Length;
-                    if (length <= 0)
-                        continue;
+                    try
+                    {
+                        long length = new FileInfo(files[i]).Length;
+                        if (length <= 0)
+                            continue;
 
-                    ulong value = (ulong)length;
-                    total = AddSaturated(total, value);
+                        total = AddSaturated(total, (ulong)length);
+                    }
+                    catch
+                    {
+                        // Skip unreadable/special entries without aborting the scan.
+                    }
                 }
 
                 string[] directories = Directory.GetDirectories(path);
@@ -138,9 +187,9 @@ namespace ZonderqOS.Commands
             for (int i = 0; i < mounts.Count; i++)
             {
                 string mountPoint = Normalize(mounts[i].MountPoint);
-                if (mountPoint == rootMountPoint)
+                if (string.Equals(mountPoint, rootMountPoint, StringComparison.OrdinalIgnoreCase))
                     continue;
-                if (mountPoint == path)
+                if (string.Equals(mountPoint, path, StringComparison.OrdinalIgnoreCase))
                     return true;
             }
 

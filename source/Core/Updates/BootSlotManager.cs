@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Text;
+using Org.BouncyCastle.Crypto.Digests;
 using ZonderqOS.Security;
 
 namespace ZonderqOS.SystemCore.Updates
@@ -23,6 +25,8 @@ namespace ZonderqOS.SystemCore.Updates
         public const string SlotB = "B";
 
         public const string BootStatePath = "/boot/boot_state.cfg";
+        private const string BootStateTempPath = BootStatePath + ".tmp";
+        private const string BootStateBackupPath = BootStatePath + ".bak";
         public const string SlotAPath = "/boot/slot_a/ZonderqOS.elf";
         public const string SlotBPath = "/boot/slot_b/ZonderqOS.elf";
         public const string LimineBootConfig = "/boot/limine.conf";
@@ -73,6 +77,17 @@ namespace ZonderqOS.SystemCore.Updates
                     Directory.CreateDirectory("/boot/slot_a");
                 if (!Directory.Exists("/boot/slot_b"))
                     Directory.CreateDirectory("/boot/slot_b");
+
+                if (!File.Exists(BootStatePath) && File.Exists(BootStateBackupPath))
+                {
+                    try { File.Move(BootStateBackupPath, BootStatePath); }
+                    catch { }
+                }
+                if (File.Exists(BootStateTempPath))
+                {
+                    try { File.Delete(BootStateTempPath); }
+                    catch { }
+                }
 
                 if (!File.Exists(BootStatePath))
                 {
@@ -194,6 +209,9 @@ namespace ZonderqOS.SystemCore.Updates
         {
             try
             {
+                if (!Directory.Exists("/boot"))
+                    Directory.CreateDirectory("/boot");
+
                 var sb = new System.Text.StringBuilder();
                 sb.AppendLine("# ZonderqOS A/B Bootloader State Configuration");
                 sb.AppendLine("ACTIVE_SLOT=" + ActiveSlot);
@@ -211,10 +229,61 @@ namespace ZonderqOS.SystemCore.Updates
                 sb.AppendLine("SLOT_B_BUILD=" + SlotBBuild);
                 sb.AppendLine("LAST_MODIFIED=" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
 
-                File.WriteAllText(BootStatePath, sb.ToString());
+                byte[] payload = Encoding.UTF8.GetBytes(sb.ToString());
+                if (File.Exists(BootStateTempPath))
+                    File.Delete(BootStateTempPath);
+
+                using (var fs = new FileStream(BootStateTempPath, FileMode.Create, FileAccess.Write))
+                {
+                    fs.Write(payload, 0, payload.Length);
+                    fs.Flush();
+                }
+
+                if (File.Exists(BootStateBackupPath))
+                    File.Delete(BootStateBackupPath);
+
+                if (File.Exists(BootStatePath))
+                    File.Move(BootStatePath, BootStateBackupPath);
+
+                try
+                {
+                    File.Move(BootStateTempPath, BootStatePath);
+                }
+                catch
+                {
+                    // Fallback for FAT32/VFS implementations where File.Move fails across target entries.
+                    try
+                    {
+                        if (File.Exists(BootStatePath))
+                            File.Delete(BootStatePath);
+                        File.Copy(BootStateTempPath, BootStatePath, true);
+                        File.Delete(BootStateTempPath);
+                    }
+                    catch
+                    {
+                        if (!File.Exists(BootStatePath) && File.Exists(BootStateBackupPath))
+                        {
+                            try { File.Move(BootStateBackupPath, BootStatePath); }
+                            catch { }
+                        }
+                        throw;
+                    }
+                }
+
+                if (File.Exists(BootStateBackupPath))
+                {
+                    try { File.Delete(BootStateBackupPath); }
+                    catch { }
+                }
             }
             catch (Exception ex)
             {
+                try
+                {
+                    if (File.Exists(BootStateTempPath))
+                        File.Delete(BootStateTempPath);
+                }
+                catch { }
                 SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT", "SaveBootState error: " + ex.Message);
                 throw;
             }
@@ -276,10 +345,12 @@ namespace ZonderqOS.SystemCore.Updates
 
                     if (PendingSlot == SlotA)
                         SlotAStatus = SlotHealth.Failed;
-                    else
+                    else if (PendingSlot == SlotB)
                         SlotBStatus = SlotHealth.Failed;
 
+                    string failedSlot = ActiveSlot;
                     ActiveSlot = FallbackSlot;
+                    FallbackSlot = failedSlot;
                     PendingSlot = string.Empty;
                     BootAttempts = 0;
                     PrebootFallbackRequested = false;
@@ -332,31 +403,107 @@ namespace ZonderqOS.SystemCore.Updates
             return slot == SlotB ? SlotBPath : SlotAPath;
         }
 
-        // Structural ELF64 x86_64 check. This is not cryptographic proof or
-        // complete ELF validation; it prevents replacing a valid slot with an
-        // obviously invalid/truncated image even when its hash matches.
-        internal static bool HasValidX64ElfHeader(byte[] image)
+        // Streamed SHA-256 over a small 8 KiB buffer using BouncyCastle's managed
+        // Sha256Digest so large kernels/payloads never allocate multi-megabyte byte[].
+        internal static string ComputeFileSha256(string filePath)
         {
-            if (image == null || image.Length < 64 ||
-                image[0] != 0x7f || image[1] != (byte)'E' ||
-                image[2] != (byte)'L' || image[3] != (byte)'F' ||
-                image[4] != 2 || image[5] != 1 || image[6] != 1)
+            var digest = new Sha256Digest();
+            byte[] buffer = new byte[8192];
+            using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read))
+            {
+                int read;
+                while ((read = fs.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    digest.BlockUpdate(buffer, 0, read);
+                }
+            }
+
+            byte[] hash = new byte[digest.GetDigestSize()];
+            digest.DoFinal(hash, 0);
+
+            const string digits = "0123456789ABCDEF";
+            char[] chars = new char[hash.Length * 2];
+            for (int i = 0; i < hash.Length; i++)
+            {
+                chars[i * 2] = digits[hash[i] >> 4];
+                chars[i * 2 + 1] = digits[hash[i] & 0x0F];
+            }
+            return new string(chars);
+        }
+
+        private static bool HasValidElfHeaderCore(byte[] header, ulong totalLength, int expectedMachine)
+        {
+            if (header == null || header.Length < 64 || totalLength < 64 ||
+                header[0] != 0x7f || header[1] != (byte)'E' ||
+                header[2] != (byte)'L' || header[3] != (byte)'F' ||
+                header[4] != 2 || header[5] != 1 || header[6] != 1)
                 return false;
-            int type = image[16] | (image[17] << 8);
-            int machine = image[18] | (image[19] << 8);
-            if ((type != 2 && type != 3) || machine != 62)
+            int type = header[16] | (header[17] << 8);
+            int machine = header[18] | (header[19] << 8);
+            if ((type != 2 && type != 3) || machine != expectedMachine)
                 return false;
             // Program header offset (ELF64 LE), reject out-of-file offsets.
             ulong offset = 0;
             for (int i = 0; i < 8; i++)
-                offset |= ((ulong)image[32 + i]) << (8 * i);
-            int headerSize = image[54] | (image[55] << 8);
-            int headerCount = image[56] | (image[57] << 8);
+                offset |= ((ulong)header[32 + i]) << (8 * i);
+            int headerSize = header[54] | (header[55] << 8);
+            int headerCount = header[56] | (header[57] << 8);
             if (headerCount == 0 || headerSize < 56 || offset < 64)
                 return false;
-            ulong length = (ulong)image.Length;
-            return offset <= length &&
-                (ulong)headerCount <= (length - offset) / (ulong)headerSize;
+            return offset <= totalLength &&
+                (ulong)headerCount <= (totalLength - offset) / (ulong)headerSize;
+        }
+
+        // Structural ELF64 check for the target build architecture. This is not
+        // cryptographic proof or complete ELF validation; it prevents replacing a
+        // valid slot with an obviously invalid/truncated image even when its hash matches.
+        internal static bool HasValidElfHeader(byte[] header, ulong totalLength)
+        {
+#if ZONDERQ_ARCH_ARM64
+            const int expectedMachine = 183;
+#else
+            const int expectedMachine = 62;
+#endif
+            return HasValidElfHeaderCore(header, totalLength, expectedMachine);
+        }
+
+        internal static bool HasValidElfHeaderFile(string kernelPath)
+        {
+            if (string.IsNullOrEmpty(kernelPath) || !File.Exists(kernelPath))
+                return false;
+
+            try
+            {
+                byte[] header = new byte[64];
+                ulong totalLength;
+                using (var fs = new FileStream(kernelPath, FileMode.Open, FileAccess.Read))
+                {
+                    if (fs.Length < 64)
+                        return false;
+                    totalLength = (ulong)fs.Length;
+                    int totalRead = 0;
+                    while (totalRead < 64)
+                    {
+                        int read = fs.Read(header, totalRead, 64 - totalRead);
+                        if (read <= 0)
+                            return false;
+                        totalRead += read;
+                    }
+                }
+                return HasValidElfHeader(header, totalLength);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // Wrapper preserved for existing x86_64 header unit tests.
+        internal static bool HasValidX64ElfHeader(byte[] image)
+        {
+            if (image == null)
+                return false;
+            return HasValidElfHeaderCore(image, (ulong)image.Length, 62);
         }
 
         /// <summary>
@@ -403,6 +550,10 @@ namespace ZonderqOS.SystemCore.Updates
             string targetDir = Path.GetDirectoryName(targetPath);
             bool movedOldKernel = false;
             bool promotedNewKernel = false;
+            string previousTargetVersion = targetSlot == SlotA ? SlotAVersion : SlotBVersion;
+            int previousTargetBuild = targetSlot == SlotA ? SlotABuild : SlotBBuild;
+            SlotHealth previousTargetStatus = targetSlot == SlotA ? SlotAStatus : SlotBStatus;
+            bool slotMetaMutated = false;
             try
             {
                 if (!Directory.Exists(targetDir))
@@ -415,28 +566,35 @@ namespace ZonderqOS.SystemCore.Updates
                 if (totalBytes < 4)
                     throw new IOException("Obraz kernela jest zbyt krotki.");
                 long copiedBytes = 0;
-                byte[] buffer = new byte[64 * 1024];
-
-                using (FileStream src = new FileStream(sourceKernelPath, FileMode.Open, FileAccess.Read))
-                using (FileStream dst = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write))
+                NativeScratchBuffer<byte> copyBuffer = default;
+                copyBuffer.Allocate(64 * 1024);
+                try
                 {
-                    int read;
-                    while ((read = src.Read(buffer, 0, buffer.Length)) > 0)
+                    Span<byte> buffer = copyBuffer.AsSpan();
+                    using (FileStream src = new FileStream(sourceKernelPath, FileMode.Open, FileAccess.Read))
+                    using (FileStream dst = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write))
                     {
-                        dst.Write(buffer, 0, read);
-                        copiedBytes += read;
-                        int pct = 20 + (int)(copiedBytes * 40 / Math.Max(1, totalBytes));
-                        progress?.Invoke(pct, "Zapis obrazu do nieaktywnego slotu " + targetSlot);
+                        int read;
+                        while ((read = src.Read(buffer)) > 0)
+                        {
+                            dst.Write(buffer.Slice(0, read));
+                            copiedBytes += read;
+                            int pct = 20 + (int)(copiedBytes * 40 / Math.Max(1, totalBytes));
+                            progress?.Invoke(pct, "Zapis obrazu do nieaktywnego slotu " + targetSlot);
+                        }
+                        dst.Flush();
                     }
-                    dst.Flush();
+                }
+                finally
+                {
+                    copyBuffer.Dispose();
                 }
                 if (copiedBytes != totalBytes)
                     throw new IOException("Rozmiar pliku zmienil sie podczas kopiowania.");
 
-                byte[] stagedImage = File.ReadAllBytes(tempPath);
-                if (!HasValidX64ElfHeader(stagedImage))
-                    throw new IOException("Obraz nie jest poprawnym ELF64 x86_64 z tablica program headers.");
-                string actualHash = Crypto.ComputeSha256(stagedImage);
+                if (!HasValidElfHeaderFile(tempPath))
+                    throw new IOException("Obraz nie jest poprawnym ELF64 z tablica program headers.");
+                string actualHash = ComputeFileSha256(tempPath);
                 if (!Crypto.FixedTimeEquals(actualHash.ToLowerInvariant(), expectedSha256.ToLowerInvariant()))
                     throw new IOException("Blad SHA-256 tymczasowego obrazu kernela.");
 
@@ -450,7 +608,7 @@ namespace ZonderqOS.SystemCore.Updates
                 File.Move(tempPath, targetPath);
                 promotedNewKernel = true;
 
-                string readback = Crypto.ComputeSha256(File.ReadAllBytes(targetPath));
+                string readback = ComputeFileSha256(targetPath);
                 if (!Crypto.FixedTimeEquals(readback.ToLowerInvariant(), expectedSha256.ToLowerInvariant()))
                     throw new IOException("Blad SHA-256 po przeniesieniu do slotu.");
 
@@ -470,6 +628,7 @@ namespace ZonderqOS.SystemCore.Updates
                     SlotBBuild = build;
                     SlotBStatus = SlotHealth.PendingConfirmation;
                 }
+                slotMetaMutated = true;
                 SaveBootState();
                 // Once the staged slot is committed, a backup cleanup failure
                 // must NOT undo the successful new image while leaving its
@@ -489,6 +648,21 @@ namespace ZonderqOS.SystemCore.Updates
             catch (Exception ex)
             {
                 error = "Blad bezpiecznego stagingu slotu " + targetSlot + ": " + ex.Message;
+                if (slotMetaMutated)
+                {
+                    if (targetSlot == SlotA)
+                    {
+                        SlotAVersion = previousTargetVersion;
+                        SlotABuild = previousTargetBuild;
+                        SlotAStatus = previousTargetStatus;
+                    }
+                    else
+                    {
+                        SlotBVersion = previousTargetVersion;
+                        SlotBBuild = previousTargetBuild;
+                        SlotBStatus = previousTargetStatus;
+                    }
+                }
                 try
                 {
                     if (promotedNewKernel && File.Exists(targetPath)) File.Delete(targetPath);
@@ -537,6 +711,7 @@ namespace ZonderqOS.SystemCore.Updates
             int previousAttempts = BootAttempts;
             SlotHealth previousAStatus = SlotAStatus;
             SlotHealth previousBStatus = SlotBStatus;
+            bool previousPrebootFallback = PrebootFallbackRequested;
             bool stateWasMutated = false;
             try
             {
@@ -554,10 +729,9 @@ namespace ZonderqOS.SystemCore.Updates
                     return false;
                 }
                 string expectedHash = File.ReadAllText(hashPath).Trim();
-                byte[] candidate = File.ReadAllBytes(kernelPath);
-                if (!HasValidX64ElfHeader(candidate) ||
-                    expectedHash.Length != 64 ||
-                    !Crypto.FixedTimeEquals(Crypto.ComputeSha256(candidate).ToLowerInvariant(), expectedHash.ToLowerInvariant()))
+                if (expectedHash.Length != 64 ||
+                    !HasValidElfHeaderFile(kernelPath) ||
+                    !Crypto.FixedTimeEquals(ComputeFileSha256(kernelPath).ToLowerInvariant(), expectedHash.ToLowerInvariant()))
                 {
                     error = "Niepoprawny obraz ELF lub SHA-256 docelowego slotu.";
                     return false;
@@ -593,6 +767,7 @@ namespace ZonderqOS.SystemCore.Updates
                     BootAttempts = previousAttempts;
                     SlotAStatus = previousAStatus;
                     SlotBStatus = previousBStatus;
+                    PrebootFallbackRequested = previousPrebootFallback;
                     try
                     {
                         SyncLimineConfig();
@@ -617,21 +792,70 @@ namespace ZonderqOS.SystemCore.Updates
             Initialize();
             error = string.Empty;
 
+            string previousActive = ActiveSlot;
+            string previousFallback = FallbackSlot;
+            string previousPending = PendingSlot;
+            int previousAttempts = BootAttempts;
+            SlotHealth previousAStatus = SlotAStatus;
+            SlotHealth previousBStatus = SlotBStatus;
+            bool previousPrebootFallback = PrebootFallbackRequested;
+            bool stateWasMutated = false;
+
             try
             {
                 string previousSlot = FallbackSlot;
-                string kernelPath = GetSlotKernelPath(previousSlot);
+                if (previousSlot != SlotA && previousSlot != SlotB)
+                {
+                    error = $"Niepoprawny slot przywracania: '{previousSlot}'.";
+                    return false;
+                }
+                if (previousSlot == ActiveSlot)
+                {
+                    error = "Brak odrebnego slotu przywracania — FallbackSlot jest rowny ActiveSlot.";
+                    return false;
+                }
 
+                string kernelPath = GetSlotKernelPath(previousSlot);
                 if (!File.Exists(kernelPath))
                 {
                     error = $"Brak pliku kernela w slocie przywracania {previousSlot} ({kernelPath})!";
                     return false;
                 }
 
+                if (!HasValidElfHeaderFile(kernelPath))
+                {
+                    error = $"Obraz kernela w slocie przywracania {previousSlot} ma nieprawidlowy naglowek ELF.";
+                    return false;
+                }
+
+                string hashPath = Path.Combine(Path.GetDirectoryName(kernelPath), "kernel.sha256");
+                if (File.Exists(hashPath))
+                {
+                    string expectedHash = File.ReadAllText(hashPath).Trim();
+                    if (expectedHash.Length != 64 ||
+                        !Crypto.FixedTimeEquals(ComputeFileSha256(kernelPath).ToLowerInvariant(), expectedHash.ToLowerInvariant()))
+                    {
+                        error = $"Blad sumy SHA-256 obrazu kernela w slocie przywracania {previousSlot}.";
+                        return false;
+                    }
+                }
+
+                string failedSlot = ActiveSlot;
                 ActiveSlot = previousSlot;
+                FallbackSlot = failedSlot;
+                if (failedSlot == SlotA)
+                    SlotAStatus = SlotHealth.Failed;
+                else if (failedSlot == SlotB)
+                    SlotBStatus = SlotHealth.Failed;
+                if (previousSlot == SlotA && SlotAStatus == SlotHealth.Failed)
+                    SlotAStatus = SlotHealth.Healthy;
+                else if (previousSlot == SlotB && SlotBStatus == SlotHealth.Failed)
+                    SlotBStatus = SlotHealth.Healthy;
+
                 PendingSlot = string.Empty;
                 BootAttempts = 0;
                 PrebootFallbackRequested = false;
+                stateWasMutated = true;
 
                 SyncLimineConfig();
                 SaveBootState();
@@ -642,6 +866,26 @@ namespace ZonderqOS.SystemCore.Updates
             catch (Exception ex)
             {
                 error = "Blad manualnego rollbacku: " + ex.Message;
+                if (stateWasMutated)
+                {
+                    ActiveSlot = previousActive;
+                    FallbackSlot = previousFallback;
+                    PendingSlot = previousPending;
+                    BootAttempts = previousAttempts;
+                    SlotAStatus = previousAStatus;
+                    SlotBStatus = previousBStatus;
+                    PrebootFallbackRequested = previousPrebootFallback;
+                    try
+                    {
+                        SyncLimineConfig();
+                        SaveBootState();
+                    }
+                    catch (Exception recoveryEx)
+                    {
+                        error += " UWAGA: NIE UDALO SIE ODTWORZYC KONFIGURACJI ROZRUCHU: " +
+                            recoveryEx.Message;
+                    }
+                }
                 return false;
             }
         }

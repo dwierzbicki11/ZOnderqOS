@@ -183,6 +183,58 @@ internal static class Program
         Check(cache.GcHeapText == "N/A", "GC heap returns to N/A when unavailable");
         Check(cache.GcCommittedText == "N/A", "GC committed returns to N/A when unavailable");
 
+        // 6. Off-tab gating skips non-visible string allocations and catches up on tab switch
+        refUsed = cache.UsedMemoryText;
+        refFree = cache.FreeMemoryText;
+        refTotal = cache.TotalMemoryText;
+        refDetail = cache.MemoryDetailText;
+        refGcHeap = cache.GcHeapText;
+        refGcComm = cache.GcCommittedText;
+        int offTabStartLabels = cache.FormattedLabelCount;
+
+        ulong bigUsedPages = newUsedPages + 200;
+        cache.Update(bigUsedPages, totalPages - bigUsedPages, totalPages,
+            64UL * 1024UL * 1024UL, 80UL * 1024UL * 1024UL, installed, usable,
+            includeDetail: false, includeFullPoolLabels: false);
+        Check(object.ReferenceEquals(cache.UsedMemoryText, refUsed), "off-tab skips UsedMemoryText formatting");
+        Check(object.ReferenceEquals(cache.FreeMemoryText, refFree), "off-tab skips FreeMemoryText formatting");
+        Check(object.ReferenceEquals(cache.TotalMemoryText, refTotal), "off-tab skips TotalMemoryText formatting");
+        Check(object.ReferenceEquals(cache.MemoryDetailText, refDetail), "off-tab skips MemoryDetailText formatting");
+        Check(object.ReferenceEquals(cache.GcHeapText, refGcHeap), "off-tab skips GcHeapText formatting");
+        Check(object.ReferenceEquals(cache.GcCommittedText, refGcComm), "off-tab skips GcCommittedText formatting");
+        Check(cache.FormattedLabelCount == offTabStartLabels + 1, "off-tab formats only compact usage percent");
+
+        for (int i = 0; i < 20; i++)
+        {
+            cache.Update(bigUsedPages, totalPages - bigUsedPages, totalPages,
+                64UL * 1024UL * 1024UL, 80UL * 1024UL * 1024UL, installed, usable,
+                includeDetail: false, includeFullPoolLabels: false);
+        }
+        Check(cache.FormattedLabelCount == offTabStartLabels + 1, "zero extra allocations while off-tab remains idle");
+
+        // Switching to Performance -> CPU/SYSTEM syncs Used/Detail only (via pendingDetailSync if needed)
+        cache.Update(bigUsedPages, totalPages - bigUsedPages, totalPages,
+            64UL * 1024UL * 1024UL, 80UL * 1024UL * 1024UL, installed, usable,
+            includeDetail: true, includeFullPoolLabels: false);
+        Check(!object.ReferenceEquals(cache.UsedMemoryText, refUsed), "detail mode syncs UsedMemoryText");
+        Check(!object.ReferenceEquals(cache.MemoryDetailText, refDetail), "detail mode syncs MemoryDetailText");
+        Check(object.ReferenceEquals(cache.FreeMemoryText, refFree), "detail-only skips FreeMemoryText");
+        Check(object.ReferenceEquals(cache.GcHeapText, refGcHeap), "detail-only skips GcHeapText");
+
+        // Switching to Performance -> RAM catches up Free/GC labels cleanly
+        cache.Update(bigUsedPages, totalPages - bigUsedPages, totalPages,
+            64UL * 1024UL * 1024UL, 80UL * 1024UL * 1024UL, installed, usable,
+            includeDetail: true, includeFullPoolLabels: true);
+        Check(cache.GcHeapText == "64.00 MB", "full pool mode catches up GcHeapText: " + cache.GcHeapText);
+        Check(cache.GcCommittedText == "80.00 MB", "full pool mode catches up GcCommittedText: " + cache.GcCommittedText);
+        Check(!object.ReferenceEquals(cache.FreeMemoryText, refFree), "full pool mode catches up FreeMemoryText");
+
+        int settledLabels = cache.FormattedLabelCount;
+        cache.Update(bigUsedPages, totalPages - bigUsedPages, totalPages,
+            64UL * 1024UL * 1024UL, 80UL * 1024UL * 1024UL, installed, usable,
+            includeDetail: true, includeFullPoolLabels: true);
+        Check(cache.FormattedLabelCount == settledLabels, "zero allocations after catching up in full pool mode");
+
         Console.WriteLine("Task Manager refresh/navigation C# PASS: " + assertions + " assertions");
         return 0;
     }

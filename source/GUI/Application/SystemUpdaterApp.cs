@@ -68,6 +68,9 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
+            isBusy = false;
+            currentOp = UpdateOp.None;
+            currentOpStep = 0;
             base.Close();
             closeCallback?.Invoke();
         }
@@ -76,6 +79,16 @@ namespace ZonderqOS.GUI.Apps
         {
             base.HandleKeyboard(key);
             if (key == null) return;
+
+            if (isBusy)
+            {
+                if (key.Key == ConsoleKeyEx.Escape || key.Key == ConsoleKeyEx.F5)
+                {
+                    statusMessage = "Trwa operacja aktualizacji - poczekaj na zakonczenie.";
+                    statusColor = GoldColor;
+                }
+                return;
+            }
 
             if (key.Key == ConsoleKeyEx.Escape)
             {
@@ -101,6 +114,27 @@ namespace ZonderqOS.GUI.Apps
             {
                 int wx = Window.X;
                 int wy = Window.Y + HeaderHeight;
+
+                // Tab switching remains responsive even while an operation runs.
+                int tabY = wy + 150;
+                int tabW = (Window.Width - 24 - 18) / 4;
+                int tabH = 26;
+                for (int t = 0; t < 4; t++)
+                {
+                    int tx = wx + 12 + t * (tabW + 6);
+                    if (Hit(mouseX, mouseY, tx, tabY, tabW, tabH))
+                    {
+                        activeTab = t;
+                        return;
+                    }
+                }
+
+                if (isBusy)
+                {
+                    statusMessage = "Trwa operacja aktualizacji - poczekaj na zakonczenie.";
+                    statusColor = GoldColor;
+                    return;
+                }
 
                 // 1. Channel Selector Pill (wx + 12, wy + 76, 105, 24)
                 if (Hit(mouseX, mouseY, wx + 12, wy + 76, 105, 24))
@@ -147,20 +181,6 @@ namespace ZonderqOS.GUI.Apps
                         return;
                     }
                 }
-
-                // 5. Tabs (wy + 150, 4 tabs)
-                int tabY = wy + 150;
-                int tabW = (Window.Width - 24 - 18) / 4;
-                int tabH = 26;
-                for (int t = 0; t < 4; t++)
-                {
-                    int tx = wx + 12 + t * (tabW + 6);
-                    if (Hit(mouseX, mouseY, tx, tabY, tabW, tabH))
-                    {
-                        activeTab = t;
-                        return;
-                    }
-                }
             }
         }
 
@@ -169,8 +189,29 @@ namespace ZonderqOS.GUI.Apps
             return mx >= x && mx < x + w && my >= y && my < y + h;
         }
 
+        private static bool IsRootAuthorized()
+        {
+            return SecurityContext.IsAuthenticated && SecurityContext.CurrentUid == 0;
+        }
+
+        private bool RequireRootAccess(string actionDescription)
+        {
+            if (IsRootAuthorized())
+                return true;
+
+            statusMessage = "Brak uprawnien administratora (wymagany root).";
+            statusColor = RedColor;
+            SecurityLogger.LogEvent("WARN",
+                "Unauthorized SystemUpdater action (" + actionDescription + ") by " +
+                (SecurityContext.CurrentUser ?? "?"));
+            return false;
+        }
+
         private void CycleChannel()
         {
+            if (isBusy || !RequireRootAccess("change-channel"))
+                return;
+
             UpdateChannel cur = UpdateManager.Channel;
             UpdateChannel next = cur switch
             {
@@ -187,6 +228,9 @@ namespace ZonderqOS.GUI.Apps
 
         private void CycleSourceMode()
         {
+            if (isBusy || !RequireRootAccess("change-source"))
+                return;
+
             UpdateSourceMode cur = UpdateManager.SourceMode;
             UpdateSourceMode next = cur switch
             {
@@ -224,6 +268,15 @@ namespace ZonderqOS.GUI.Apps
 
             if (currentOp == UpdateOp.Installing)
             {
+                if (!IsRootAuthorized())
+                {
+                    isBusy = false;
+                    currentOp = UpdateOp.None;
+                    statusMessage = "Brak uprawnien administratora (wymagany root).";
+                    statusColor = RedColor;
+                    return;
+                }
+
                 UpdatePackageInfo pkg = UpdateManager.AvailablePackage;
                 if (pkg == null)
                 {
@@ -263,6 +316,15 @@ namespace ZonderqOS.GUI.Apps
 
             if (currentOp == UpdateOp.RollingBack)
             {
+                if (!IsRootAuthorized())
+                {
+                    isBusy = false;
+                    currentOp = UpdateOp.None;
+                    statusMessage = "Brak uprawnien administratora (wymagany root).";
+                    statusColor = RedColor;
+                    return;
+                }
+
                 string err;
                 bool stepResult = UpdateManager.RollbackStep(ref currentOpStep, (pct, txt) =>
                 {
@@ -293,6 +355,9 @@ namespace ZonderqOS.GUI.Apps
 
         private void CheckUpdatesNow(bool force)
         {
+            if (isBusy)
+                return;
+
             isBusy = true;
             currentOp = UpdateOp.Checking;
             currentProgress = 100;
@@ -303,6 +368,9 @@ namespace ZonderqOS.GUI.Apps
 
         private void PerformInstall()
         {
+            if (isBusy || !RequireRootAccess("install"))
+                return;
+
             UpdatePackageInfo pkg = UpdateManager.AvailablePackage;
             if (pkg == null) return;
 
@@ -317,6 +385,9 @@ namespace ZonderqOS.GUI.Apps
 
         private void PerformRollback()
         {
+            if (isBusy || !RequireRootAccess("rollback"))
+                return;
+
             if (!UpdateManager.HasRollbackSnapshot())
             {
                 statusMessage = "Brak dostepnej migawki do wycofania zmian.";
@@ -335,9 +406,12 @@ namespace ZonderqOS.GUI.Apps
 
         private void PerformReboot()
         {
+            if (isBusy || !RequireRootAccess("reboot"))
+                return;
+
             statusMessage = "Restartowanie systemu ZOnderqOS...";
             statusColor = GoldColor;
-            Cosmos.Kernel.System.Power.Reboot();
+            global::ZonderqOS.SystemCore.SystemPower.Reboot("gui-update-reboot");
         }
 
         public override void Render(Canvas canvas)
@@ -539,7 +613,7 @@ namespace ZonderqOS.GUI.Apps
 
                 lineY += 6;
                 canvas.DrawFilledRectangle(GoldColor, x + 16, lineY + 4, 6, 6);
-                string signDesc = pkg.IsSigned ? (pkg.IsSignatureValid ? "Podpis HMAC-SHA256: ZWERYFIKOWANY (DEV-KEY)" : "Podpis cyfrowy: NIEPOPRAWNY!") : "Podpis cyfrowy: Brak (wydanie niepodpisane)";
+                string signDesc = pkg.IsSigned ? (pkg.IsSignatureValid ? "Podpis SHA-256 / Ed25519: ZWERYFIKOWANY" : "Podpis cyfrowy: NIEPOPRAWNY!") : "Podpis cyfrowy: Brak (wydanie niepodpisane)";
                 SmallTextRenderer.Draw(canvas, signDesc, x + 30, lineY, pkg.IsSigned && pkg.IsSignatureValid ? GreenColor : GoldColor);
                 lineY += 22;
 

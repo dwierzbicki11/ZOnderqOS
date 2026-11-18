@@ -624,19 +624,29 @@ namespace ZonderqOS.SystemCore.Packages
 
                 // Recheck the limit while reading: the source can grow after
                 // FileInfo.Length was sampled above.
-                byte[] buffer = new byte[16 * 1024];
-                using (FileStream input = File.OpenRead(files[i]))
-                using (FileStream output = new FileStream(target, FileMode.CreateNew, FileAccess.Write))
+                // Unmanaged >= 4096 B buffer frees its PageAllocator pages immediately after copy.
+                NativeScratchBuffer<byte> copyBuffer = default(NativeScratchBuffer<byte>);
+                try
                 {
-                    int read;
-                    while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                    copyBuffer.Allocate(16 * 1024);
+                    Span<byte> bufSpan = copyBuffer.AsSpan();
+                    using (FileStream input = File.OpenRead(files[i]))
+                    using (FileStream output = new FileStream(target, FileMode.CreateNew, FileAccess.Write))
                     {
-                        if ((ulong)read > MaxPackageBytes - totalBytes)
-                            throw new InvalidOperationException("Package exceeds maximum installed size.");
+                        int read;
+                        while ((read = input.Read(bufSpan)) > 0)
+                        {
+                            if ((ulong)read > MaxPackageBytes - totalBytes)
+                                throw new InvalidOperationException("Package exceeds maximum installed size.");
 
-                        output.Write(buffer, 0, read);
-                        totalBytes += (ulong)read;
+                            output.Write(bufSpan.Slice(0, read));
+                            totalBytes += (ulong)read;
+                        }
                     }
+                }
+                finally
+                {
+                    copyBuffer.Dispose();
                 }
             }
 

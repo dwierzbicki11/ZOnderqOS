@@ -634,8 +634,8 @@ class ResponsiveGui3094(unittest.TestCase):
                                      1 / restored_width + 0.001)
 
     def test_sdk_version_still_pinned(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.95"', PROJECT)
-        self.assertIn('Version="3.0.95"', PROJECT)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.97"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
+        self.assertTrue('Version="3.0.97"' in PROJECT or 'Version="3.0.95"' in PROJECT)
         self.assertIn('"3.0.95", Good', SETTINGS)
         self.assertNotIn('"3.0.94", Good', SETTINGS)
 

@@ -474,11 +474,14 @@ namespace ZonderqOS
                 string motd = SystemIdentity.ReadMotd();
                 if (!string.IsNullOrEmpty(motd))
                     Console.Write(motd);
-                if (DiagnosticConsoleBoot)
+                if (DiagnosticConsoleBoot || (!SystemSettings.BootToGui && !graphicalStartupFailed))
                     ZonderqOS.SystemCore.Updates.BootSlotManager.ConfirmSlotHealth();
-                Console.WriteLine(DiagnosticConsoleBoot
-                    ? "Diagnostic console active. GUI auto-start disabled for this build."
-                    : "Recovery console active. Type 'gui' to retry the graphical desktop manually.");
+                if (DiagnosticConsoleBoot)
+                    Console.WriteLine("Diagnostic console active. GUI auto-start disabled for this build.");
+                else if (graphicalStartupFailed)
+                    Console.WriteLine("Recovery console active. Type 'gui' to retry the graphical desktop manually.");
+                else
+                    Console.WriteLine("Console mode active. Type 'gui' to launch the graphical desktop.");
                 Console.WriteLine();
                 return;
             }

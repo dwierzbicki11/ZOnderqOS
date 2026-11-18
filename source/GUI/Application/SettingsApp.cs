@@ -381,7 +381,7 @@ namespace ZonderqOS.GUI.Apps
         private void RenderMemory(Canvas canvas, int contentX, int contentWidth)
         {
             DrawNumericRow(canvas, contentX, contentWidth, 0, IconType.Settings,
-                "RAM FIZYCZNY", "Calkowity fizyczny RAM (mapa Limine / BIOS)", physicalRamMb > 0 ? physicalRamMb : PagesToMb(totalPages), " MB");
+                "RAM WIDOCZNY", "RAM z mapy Limine (zainstalowany: nieznany, brak SMBIOS)", physicalRamMb > 0 ? physicalRamMb : PagesToMb(totalPages), " MB");
             DrawNumericRow(canvas, contentX, contentWidth, 1, IconType.Settings,
                 "RAM WOLNY", "Aktualnie wolne strony fizyczne", PagesToMb(freePages), " MB");
             DrawNumericRow(canvas, contentX, contentWidth, 2, IconType.Settings,
@@ -672,6 +672,17 @@ namespace ZonderqOS.GUI.Apps
         {
             if (applicationManager == null)
                 return;
+
+            for (int i = 0; i < applicationManager.Applications.Count; i++)
+            {
+                if (applicationManager.Applications[i] is TaskManagerModernApp existing && existing.IsRunning)
+                {
+                    applicationManager.Activate(existing);
+                    SetStatus("OTWARTO MANAGER ZADAN", Good);
+                    return;
+                }
+            }
+
             applicationManager.Launch(new TaskManagerModernApp(Window.X + 40, Window.Y + 30, applicationManager, null));
             SetStatus("OTWARTO MANAGER ZADAN", Good);
         }
@@ -726,7 +737,7 @@ namespace ZonderqOS.GUI.Apps
                 ulong physBytes = ZonderqOS.Hardware.PhysicalMemoryDetector.TotalPhysicalBytes;
                 physicalRamMb = physBytes > 0 ? physBytes / (1024UL * 1024UL) : PagesToMb(totalPages);
                 ulong instBytes = ZonderqOS.Hardware.PhysicalMemoryDetector.InstalledBytes;
-                installedRamMb = instBytes > 0 ? instBytes / (1024UL * 1024UL) : physicalRamMb;
+                installedRamMb = instBytes / (1024UL * 1024UL); // 0 == unknown (no SMBIOS)
             }
             catch
             {
@@ -830,6 +841,7 @@ namespace ZonderqOS.GUI.Apps
         {
             try
             {
+                SecurityLogger.Flush();
                 const string path = "/var/log/auth.log";
                 auditLogPresent = File.Exists(path);
                 auditLogBytes = auditLogPresent ? new FileInfo(path).Length : 0;

@@ -43,6 +43,7 @@ namespace ZonderqOS.GUI.Apps
         public NotepadApp(int x, int y, string path, Action onClose) : base("Notatnik")
         {
             closeCallback = onClose;
+            openDirectory = GetDefaultDirectory();
             Window = new Window(x, y, 980, 650, "Notatnik");
             Window.CloseAction = RequestClose;
 
@@ -51,9 +52,14 @@ namespace ZonderqOS.GUI.Apps
             Window.AddChild(view);
 
             if (!string.IsNullOrEmpty(path))
-                LoadDocument(path);
+            {
+                if (!LoadDocument(path))
+                    UpdateWindowTitle();
+            }
             else
+            {
                 UpdateWindowTitle();
+            }
 
             UpdateLayout();
             UpdatePositionText();
@@ -376,14 +382,23 @@ namespace ZonderqOS.GUI.Apps
                 status = "Enlarge window to open a file";
                 return;
             }
-            string start = "/root";
+            string start = GetDefaultDirectory();
             if (!string.IsNullOrEmpty(filePath))
             {
                 try
                 {
                     string parent = Path.GetDirectoryName(filePath);
-                    if (!string.IsNullOrEmpty(parent) && Directory.Exists(parent))
-                        start = parent.Replace('\\', '/');
+                    if (!string.IsNullOrEmpty(parent))
+                    {
+                        string normalizedParent = NormalizePath(parent);
+                        if (!string.IsNullOrEmpty(normalizedParent) &&
+                            Directory.Exists(normalizedParent) &&
+                            global::ZonderqOS.PermissionManager.CanRead(normalizedParent,
+                                global::ZonderqOS.SecurityContext.CurrentUser))
+                        {
+                            start = normalizedParent;
+                        }
+                    }
                 }
                 catch
                 {
@@ -401,7 +416,9 @@ namespace ZonderqOS.GUI.Apps
         private void BeginSaveAs()
         {
             dialogMode = 2;
-            dialogText = string.IsNullOrEmpty(filePath) ? "/root/untitled.txt" : filePath;
+            dialogText = string.IsNullOrEmpty(filePath)
+                ? GetDefaultDirectory().TrimEnd('/') + "/untitled.txt"
+                : filePath;
             status = "Zapisz jako";
         }
 
@@ -602,18 +619,43 @@ namespace ZonderqOS.GUI.Apps
 
             try
             {
-                if (string.IsNullOrEmpty(openDirectory) || !Directory.Exists(openDirectory))
-                    openDirectory = "/root";
-                if (!Directory.Exists(openDirectory))
-                    openDirectory = "/";
+                string normalizedDir = NormalizePath(openDirectory);
+                if (string.IsNullOrEmpty(normalizedDir) || !Directory.Exists(normalizedDir))
+                    normalizedDir = GetDefaultDirectory();
+                if (!Directory.Exists(normalizedDir))
+                    normalizedDir = "/";
+
+                openDirectory = normalizedDir;
+                string currentUser = global::ZonderqOS.SecurityContext.CurrentUser;
+                if (!global::ZonderqOS.SecurityContext.IsAuthenticated ||
+                    !global::ZonderqOS.PermissionManager.CanRead(openDirectory, currentUser))
+                {
+                    status = "Brak uprawnien do odczytu: " + openDirectory;
+                    return;
+                }
 
                 string[] directories = Directory.GetDirectories(openDirectory);
                 string[] files = Directory.GetFiles(openDirectory);
 
                 for (int i = 0; i < directories.Length; i++)
-                    openEntries.Add(new OpenEntry(GetDisplayName(directories[i]), directories[i].Replace('\\', '/'), true));
+                {
+                    string dirPath = NormalizePath(directories[i]);
+                    if (!string.IsNullOrEmpty(dirPath) &&
+                        global::ZonderqOS.PermissionManager.CanRead(dirPath, currentUser))
+                    {
+                        openEntries.Add(new OpenEntry(GetDisplayName(dirPath), dirPath, true));
+                    }
+                }
+
                 for (int i = 0; i < files.Length; i++)
-                    openEntries.Add(new OpenEntry(GetDisplayName(files[i]), files[i].Replace('\\', '/'), false));
+                {
+                    string entryPath = NormalizePath(files[i]);
+                    if (!string.IsNullOrEmpty(entryPath) &&
+                        global::ZonderqOS.PermissionManager.CanRead(entryPath, currentUser))
+                    {
+                        openEntries.Add(new OpenEntry(GetDisplayName(entryPath), entryPath, false));
+                    }
+                }
 
                 SortOpenEntries();
                 status = openEntries.Count + " elementow w " + openDirectory;
@@ -724,40 +766,74 @@ namespace ZonderqOS.GUI.Apps
                 openScrollIndex = 0;
         }
 
+        private static string GetDefaultDirectory()
+        {
+            if (!global::ZonderqOS.SecurityContext.IsAuthenticated ||
+                string.IsNullOrEmpty(global::ZonderqOS.SecurityContext.CurrentUser) ||
+                global::ZonderqOS.SecurityContext.CurrentUser == "root")
+            {
+                return "/root";
+            }
+
+            string home = global::ZonderqOS.SecurityContext.CurrentHome;
+            if (!string.IsNullOrEmpty(home) && home != "/" &&
+                FileClipboard.IsSafeAbsolutePath(home))
+            {
+                string trimmed = home.TrimEnd('/');
+                return trimmed.Length == 0 ? "/" : trimmed;
+            }
+
+            return "/home/" + global::ZonderqOS.SecurityContext.CurrentUser;
+        }
+
         private string NormalizePath(string path)
         {
             string value = (path ?? "").Trim().Replace('\\', '/');
             if (string.IsNullOrEmpty(value))
-                return value;
+                return string.Empty;
+
             if (value[0] != '/')
-                value = "/root/" + value;
-            return value;
+                value = GetDefaultDirectory().TrimEnd('/') + "/" + value;
+
+            string[] rawParts = value.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var cleanParts = new List<string>(rawParts.Length);
+            for (int i = 0; i < rawParts.Length; i++)
+            {
+                string part = rawParts[i];
+                if (part == "." || part == "..")
+                    return string.Empty;
+                cleanParts.Add(part);
+            }
+
+            return cleanParts.Count == 0 ? "/" : "/" + string.Join("/", cleanParts);
         }
 
         private bool LoadDocument(string path)
         {
-            if (string.IsNullOrEmpty(path))
+            string normalized = NormalizePath(path);
+            if (string.IsNullOrEmpty(normalized))
             {
-                status = "Sciezka nie moze byc pusta";
+                status = "Nieprawidlowa sciezka pliku";
                 return false;
             }
 
             try
             {
-                if (!File.Exists(path))
+                if (!global::ZonderqOS.SecurityContext.IsAuthenticated ||
+                    !global::ZonderqOS.PermissionManager.CanRead(normalized,
+                        global::ZonderqOS.SecurityContext.CurrentUser))
                 {
-                    status = "Nie znaleziono pliku: " + path;
+                    status = "Brak uprawnien do odczytu: " + normalized;
                     return false;
                 }
 
-                if (!global::ZonderqOS.PermissionManager.CanRead(path,
-                    global::ZonderqOS.SecurityContext.CurrentUser))
+                if (!File.Exists(normalized))
                 {
-                    status = "Brak uprawnien do odczytu: " + path;
+                    status = "Nie znaleziono pliku: " + normalized;
                     return false;
                 }
 
-                string content = File.ReadAllText(path).Replace("\r", "");
+                string content = File.ReadAllText(normalized).Replace("\r", "");
                 string[] loaded = content.Split('\n');
 
                 lines.Clear();
@@ -766,14 +842,14 @@ namespace ZonderqOS.GUI.Apps
                 if (lines.Count == 0)
                     lines.Add("");
 
-                filePath = path;
+                filePath = normalized;
                 cursorX = 0;
                 cursorY = 0;
                 scrollX = 0;
                 scrollY = 0;
                 dirty = false;
                 documentVersion++;
-                status = "Otwarto: " + path;
+                status = "Otwarto: " + normalized;
                 UpdateWindowTitle();
                 UpdatePositionText();
                 return true;
@@ -798,37 +874,38 @@ namespace ZonderqOS.GUI.Apps
 
         private bool SaveTo(string path)
         {
-            if (string.IsNullOrEmpty(path))
+            string normalized = NormalizePath(path);
+            if (string.IsNullOrEmpty(normalized) || normalized == "/")
             {
-                status = "Sciezka nie moze byc pusta";
+                status = "Nieprawidlowa sciezka pliku";
                 return false;
             }
 
-            if (VirtualFs.IsReadOnlyPath(path))
+            if (VirtualFs.IsReadOnlyPath(normalized))
             {
-                status = "System plikow tylko do odczytu: " + path;
+                status = "System plikow tylko do odczytu: " + normalized;
                 return false;
             }
 
             try
             {
-                bool existed = File.Exists(path);
-                string permissionPath = existed ? path : Path.GetDirectoryName(path);
-                if (!global::ZonderqOS.PermissionManager.CanWrite(permissionPath,
-                    global::ZonderqOS.SecurityContext.CurrentUser))
+                string currentUser = global::ZonderqOS.SecurityContext.CurrentUser;
+                if (!global::ZonderqOS.SecurityContext.IsAuthenticated ||
+                    !global::ZonderqOS.PermissionManager.CanCreate(normalized, currentUser))
                 {
-                    status = "Brak uprawnien do zapisu: " + path;
+                    status = "Brak uprawnien do zapisu: " + normalized;
                     return false;
                 }
 
+                bool existed = File.Exists(normalized);
+
                 // Document content has no artificial character/size cap.
-                File.WriteAllText(path, string.Join("\n", lines));
+                File.WriteAllText(normalized, string.Join("\n", lines));
                 if (!existed)
-                    global::ZonderqOS.PermissionManager.SetPermission(path,
-                        global::ZonderqOS.SecurityContext.CurrentUser, 644);
-                filePath = path;
+                    global::ZonderqOS.PermissionManager.SetPermission(normalized, currentUser, 644);
+                filePath = normalized;
                 dirty = false;
-                status = "Zapisano: " + path;
+                status = "Zapisano: " + normalized;
                 UpdateWindowTitle();
                 return true;
             }
@@ -873,14 +950,28 @@ namespace ZonderqOS.GUI.Apps
 
         private void CloseNow()
         {
+            if (!IsRunning)
+                return;
+
+            dirty = false;
+            dialogMode = 0;
+            dialogText = "";
+            pendingAction = 0;
+            lines.Clear();
+            openEntries.Clear();
             base.Close();
             if (closeCallback != null)
                 closeCallback();
         }
 
+        public void ForceClose()
+        {
+            CloseNow();
+        }
+
         public override void Close()
         {
-            RequestClose();
+            ForceClose();
         }
 
         public List<string> Lines { get { return lines; } }

@@ -54,6 +54,7 @@ ZqDecision zq_bootguard_prepare(ZqBootState *state, int pending_image_valid,
 int zq_bootguard_confirm(ZqBootState *state, ZqSlot running_slot)
 {
     if (!state || !normal_slot(running_slot) ||
+        !normal_slot(state->fallback) ||
         state->pending != running_slot ||
         state->active != running_slot ||
         state->fallback == running_slot ||

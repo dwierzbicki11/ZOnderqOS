@@ -56,6 +56,28 @@ namespace ZonderqOS.GUI.Icons
                 EnsureSource((IconType)i);
         }
 
+        /// <summary>
+        /// Clears runtime-scaled icon caches at session boundaries while preserving
+        /// preloaded source PNG bitmaps used by desktop and titlebar icons.
+        /// </summary>
+        public static void ClearSessionCache()
+        {
+            for (int i = 0; i < MaxScaledCacheEntries; i++)
+            {
+                scaledPixels[i] = null;
+                scaledTypes[i] = default;
+                scaledWidths[i] = 0;
+                scaledHeights[i] = 0;
+                scaledUseRuns[i] = false;
+                scaledTouchedSinceSweep[i] = false;
+            }
+
+            scaledCacheCount = 0;
+            nextScaledEvictionSlot = 0;
+            System.Array.Clear(scaledRecentSlots, 0, scaledRecentSlots.Length);
+            System.Array.Clear(scaledPreviousSlots, 0, scaledPreviousSlots.Length);
+        }
+
         public static void Draw(Canvas canvas, IconType type, int x, int y, Color color)
         {
             DrawScaled(canvas, type, x, y, IconSize, IconSize);
@@ -293,6 +315,19 @@ namespace ZonderqOS.GUI.Icons
                 return 0;
 
             int oldCount = scaledCacheCount;
+            bool anyTouchedSinceLastSweep = false;
+            for (int i = 0; i < oldCount; i++)
+            {
+                if (scaledTouchedSinceSweep[i])
+                {
+                    anyTouchedSinceLastSweep = true;
+                    break;
+                }
+            }
+            // Do not evict visible desktop icons if GUI skipped scene redraws across sweeps.
+            if (!anyTouchedSinceLastSweep)
+                return 0;
+
             int write = 0;
             int removed = 0;
 
@@ -334,9 +369,12 @@ namespace ZonderqOS.GUI.Icons
             if (write < MaxScaledCacheEntries)
                 nextScaledEvictionSlot = 0;
 
-            // Compaction changes slot indices; discard hints, never image data.
-            System.Array.Clear(scaledRecentSlots, 0, scaledRecentSlots.Length);
-            System.Array.Clear(scaledPreviousSlots, 0, scaledPreviousSlots.Length);
+            if (removed > 0)
+            {
+                // Compaction changes slot indices; discard hints, never image data.
+                System.Array.Clear(scaledRecentSlots, 0, scaledRecentSlots.Length);
+                System.Array.Clear(scaledPreviousSlots, 0, scaledPreviousSlots.Length);
+            }
             return removed;
         }
 

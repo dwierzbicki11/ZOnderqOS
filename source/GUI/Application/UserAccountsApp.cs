@@ -449,5 +449,11 @@ namespace ZonderqOS.GUI.Apps
             pendingAuthorizationPassword = string.Empty;
             pendingNewPassword = string.Empty;
         }
+
+        public override void Close()
+        {
+            ClearInputState();
+            base.Close();
+        }
     }
 }

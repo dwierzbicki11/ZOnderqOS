@@ -14,12 +14,13 @@ verification MUST NOT unblock UpdateManager.ApplyUpdateStep.
 """
 import argparse
 import hashlib
+import os
 import pathlib
 import re
 import subprocess
 import sys
 
-HEX64 = re.compile(r"[a-fA-F0-9]{64}\Z")
+HEX64 = re.compile(r"[a-fA-F0-9]{64}\Z", re.ASCII)
 MAX_MANIFEST = 1024 * 1024
 VALID_KEYS = {
     "VERSION", "BUILD", "ARCH", "TITLE", "DATE", "SEVERITY",
@@ -28,10 +29,14 @@ VALID_KEYS = {
     "UPDATE_FORMAT", "SIGNATURE_ALG",
 }
 SINGLE_KEYS = VALID_KEYS - {"FILE"}
+ASCII_METADATA_KEYS = (
+    "UPDATE_FORMAT", "SIGNATURE_ALG", "VERSION", "BUILD",
+    "ARCH", "DATE", "KERNEL_IMAGE", "KERNEL_SHA256", "PAYLOAD_DIR",
+)
 
 
 def relative_path(value: str) -> pathlib.PurePosixPath:
-    if not value or len(value) > 240 or "\\" in value or ":" in value:
+    if not value or not value.isascii() or len(value) > 240 or "\\" in value or ":" in value:
         raise ValueError("Unsafe path: " + repr(value))
     parts = value.split("/")
     for part in parts:
@@ -62,13 +67,14 @@ def parse_manifest(raw: bytes):
             values[key] = value
         else:
             fields = value.split(":")
-            if len(fields) != 3 or not HEX64.fullmatch(fields[1]):
+            if (len(fields) != 3 or not fields[1].isascii() or
+                    not HEX64.fullmatch(fields[1])):
                 raise ValueError(f"Invalid FILE at line {number}; SHA-256 and size required")
             path = relative_path(fields[0])
             if str(path).casefold() in seen_paths:
                 raise ValueError(f"Duplicate FILE at line {number}")
             seen_paths.add(str(path).casefold())
-            if not fields[2].isdigit():
+            if not fields[2].isascii() or not fields[2].isdigit():
                 raise ValueError(f"Invalid FILE size at line {number}")
             files.append((path, fields[1].lower(), int(fields[2])))
             if len(files) > 1024:
@@ -76,15 +82,18 @@ def parse_manifest(raw: bytes):
     for key in ("UPDATE_FORMAT", "SIGNATURE_ALG", "VERSION", "BUILD", "ARCH", "KERNEL_IMAGE", "KERNEL_SHA256", "PAYLOAD_DIR"):
         if not values.get(key):
             raise ValueError(f"Missing required field {key}")
+    for key in ASCII_METADATA_KEYS:
+        if key in values and not values[key].isascii():
+            raise ValueError(f"Non-ASCII metadata not permitted in {key}")
     if values["UPDATE_FORMAT"] != "2" or values["SIGNATURE_ALG"] != "ED25519":
         raise ValueError("Signed package must be format 2 with ED25519")
     if values["ARCH"] != "x86_64":
         raise ValueError("Unsupported architecture")
-    if not HEX64.fullmatch(values["KERNEL_SHA256"]):
+    if not values["KERNEL_SHA256"].isascii() or not HEX64.fullmatch(values["KERNEL_SHA256"]):
         raise ValueError("Malformed kernel SHA-256")
     relative_path(values["KERNEL_IMAGE"])
     relative_path(values["PAYLOAD_DIR"])
-    if not values["BUILD"].isdigit():
+    if not values["BUILD"].isascii() or not values["BUILD"].isdigit():
         raise ValueError("Invalid build")
     return values, files
 
@@ -103,12 +112,14 @@ def digest_file(path: pathlib.Path):
 
 
 def require_file(root: pathlib.Path, relative: pathlib.PurePosixPath):
+    if os.path.islink(root) or root.is_symlink():
+        raise ValueError("Symlink not permitted: " + str(root))
     path = root.joinpath(*relative.parts)
     # Do not follow any symlink, including symlinked parent directories.
     current = root
     for part in relative.parts:
         current = current / part
-        if current.is_symlink():
+        if os.path.islink(current) or current.is_symlink():
             raise ValueError("Symlink not permitted: " + str(current))
     if not path.is_file():
         raise ValueError("Missing file: " + str(path))
@@ -124,6 +135,11 @@ def check_files(bundle: pathlib.Path, values, files):
     if sha != values["KERNEL_SHA256"].lower():
         raise ValueError("Kernel SHA-256 mismatch")
     payload_root = relative_path(values["PAYLOAD_DIR"])
+    current = bundle
+    for part in payload_root.parts:
+        current = current / part
+        if os.path.islink(current) or current.is_symlink():
+            raise ValueError("Payload symlink rejected: " + str(current))
     expected = set()
     for relative, sha, length in files:
         full_relative = payload_root / relative
@@ -135,7 +151,7 @@ def check_files(bundle: pathlib.Path, values, files):
     directory = bundle.joinpath(*payload_root.parts)
     if directory.exists():
         for path in directory.rglob("*"):
-            if path.is_symlink():
+            if os.path.islink(path) or path.is_symlink():
                 raise ValueError("Payload symlink rejected: " + str(path))
             if path.is_file() and path.relative_to(bundle).as_posix().casefold() not in expected:
                 raise ValueError("Undeclared payload file: " + str(path))
@@ -144,6 +160,8 @@ def check_files(bundle: pathlib.Path, values, files):
 def openssl(mode: str, bundle: pathlib.Path, key: pathlib.Path):
     manifest = bundle / "update.manifest"
     signature = bundle / "update.manifest.sig"
+    if os.path.islink(manifest) or os.path.islink(signature):
+        raise ValueError("Symlink not permitted for manifest or signature")
     args = ["openssl", "pkeyutl", "-" + mode, "-rawin", "-inkey", str(key)]
     if mode == "verify":
         args += ["-pubin"]
@@ -166,11 +184,25 @@ def main():
     if args.mode == "sign" and not args.private_key or args.mode == "verify" and not args.public_key:
         parser.error("sign needs --private-key; verify needs --public-key")
     try:
+        if os.path.islink(args.bundle) or args.bundle.is_symlink():
+            raise ValueError("Symlink not permitted for bundle: " + str(args.bundle))
         bundle = args.bundle.resolve(strict=True)
+        if not bundle.is_dir():
+            raise ValueError("Bundle is not a directory: " + str(bundle))
         manifest = require_file(bundle, pathlib.PurePosixPath("update.manifest"))
-        values, files = parse_manifest(manifest.read_bytes())
-        check_files(bundle, values, files)
-        openssl(args.mode, bundle, args.private_key or args.public_key)
+        if args.mode == "verify":
+            # Verify cryptographic signature BEFORE parsing manifest or hashing payload.
+            require_file(bundle, pathlib.PurePosixPath("update.manifest.sig"))
+            openssl("verify", bundle, args.public_key)
+            values, files = parse_manifest(manifest.read_bytes())
+            check_files(bundle, values, files)
+        else:
+            sig_path = bundle / "update.manifest.sig"
+            if os.path.islink(sig_path) or sig_path.is_symlink():
+                raise ValueError("Symlink not permitted: " + str(sig_path))
+            values, files = parse_manifest(manifest.read_bytes())
+            check_files(bundle, values, files)
+            openssl("sign", bundle, args.private_key)
     except (ValueError, OSError, subprocess.CalledProcessError, UnicodeDecodeError) as exc:
         print("FAIL: release bundle rejected: " + str(exc), file=sys.stderr)
         return 1

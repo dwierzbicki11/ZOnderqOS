@@ -492,7 +492,14 @@ namespace ZonderqOS.GUI.Apps
                 updateSnapshot.Clear();
                 updating = false;
                 if (removed)
+                {
+                    if (mouseCapture != null && (!mouseCapture.IsRunning ||
+                        mouseCapture.Window == null || !applications.Contains(mouseCapture)))
+                    {
+                        mouseCapture = null;
+                    }
                     SetActiveStates(ActiveApplication);
+                }
             }
         }
 

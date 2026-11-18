@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
+    <Compile Include="../../source/Common/CommandIO.cs" Link="CommandIO.cs" />
+    <Compile Include="../../source/Common/Crypto.cs" Link="Crypto.cs" />
+    <Compile Include="../../source/Core/KernelBuildInfo.cs" Link="KernelBuildInfo.cs" />
+    <Compile Include="../../source/Core/NativeScratchBuffer.cs" Link="NativeScratchBuffer.cs" />
+    <Compile Include="../../source/Core/ProcessManager.cs" Link="ProcessManager.cs" />
+    <Compile Include="../../source/Core/ProcessSignals.cs" Link="ProcessSignals.cs" />
+    <Compile Include="../../source/Core/RunFs.cs" Link="RunFs.cs" />
+    <Compile Include="../../source/Core/TmpFs.cs" Link="TmpFs.cs" />
+    <Compile Include="../../source/Core/Updates/BootSlotManager.cs" Link="BootSlotManager.cs" />
+    <Compile Include="../../source/Security/AuthenticationGuard.cs" Link="AuthenticationGuard.cs" />
+    <Compile Include="../../source/Security/PasswordPolicy.cs" Link="PasswordPolicy.cs" />
+    <Compile Include="../../source/Security/PermissionManager.cs" Link="PermissionManager.cs" />
+    <Compile Include="../../source/Security/SecurityContext.cs" Link="SecurityContext.cs" />
+    <Compile Include="../../source/Security/UserManager.cs" Link="UserManager.cs" />
+    <Compile Include="../../source/Security/UserProfileManager.cs" Link="UserProfileManager.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+</Project>

@@ -9,11 +9,13 @@ namespace ZonderqOS
     {
         private const int MaxCapturedCharacters = 256 * 1024;
         private const int MaxRedirectionDepth = 8;
+        private const int MaxInputDepth = 64;
         private const string TruncatedMarker = "\n[output truncated]\n";
 
         private static readonly Stack<CaptureBuffer> _outBuffers = new Stack<CaptureBuffer>();
         private static readonly Stack<TextWriter> _consoleWriters = new Stack<TextWriter>();
         private static readonly Stack<BoundedTextWriter> _captureWriters = new Stack<BoundedTextWriter>();
+        private static readonly Stack<string> _inBuffers = new Stack<string>();
 
         private static string _inBuffer = null;
         private static int _graphicalCommandDepth;
@@ -59,6 +61,30 @@ namespace ZonderqOS
 
         public static bool HasInput => !string.IsNullOrEmpty(_inBuffer);
 
+        public static void SaveInput()
+        {
+            if (_inBuffers.Count >= MaxInputDepth)
+                throw new InvalidOperationException("Maximum input nesting depth exceeded.");
+
+            _inBuffers.Push(_inBuffer);
+        }
+
+        public static void RestoreInput()
+        {
+            _inBuffer = _inBuffers.Count > 0 ? _inBuffers.Pop() : null;
+        }
+
+        public static void PushInput(string input)
+        {
+            SaveInput();
+            _inBuffer = input;
+        }
+
+        public static void PopInput()
+        {
+            RestoreInput();
+        }
+
         public static void StartRedirection()
         {
             // Redirection can nest through pipelines, GUI capture and shell scripts.
@@ -69,6 +95,7 @@ namespace ZonderqOS
                 _consoleWriters.Count >= MaxRedirectionDepth)
                 throw new InvalidOperationException("Maximum output redirection depth exceeded.");
 
+            SaveInput();
             _outBuffers.Push(new CaptureBuffer(MaxCapturedCharacters));
 
             TextWriter previous = Console.Out;
@@ -90,6 +117,7 @@ namespace ZonderqOS
             Console.SetOut(_consoleWriters.Pop());
 
             CaptureBuffer commandCapture = _outBuffers.Pop();
+            RestoreInput();
             return commandCapture.GetText() + consoleOutput;
         }
 

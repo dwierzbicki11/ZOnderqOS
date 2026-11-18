@@ -4,6 +4,7 @@ using System.Drawing;
 using System.IO;
 using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Graphics.Fonts;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -88,7 +89,22 @@ namespace ZonderqOS.GUI.Apps
 
         private void Save()
         {
-            if (File.Exists(filePath) && !PermissionManager.CanWrite(filePath, SecurityContext.CurrentUser))
+            if (string.IsNullOrWhiteSpace(filePath) ||
+                filePath.IndexOf("..", StringComparison.Ordinal) >= 0 ||
+                filePath[0] != '/')
+            {
+                status = "Invalid file path";
+                return;
+            }
+
+            if (VirtualFs.IsReadOnlyPath(filePath))
+            {
+                status = "Read-only virtual filesystem";
+                SecurityLogger.LogEvent("WARN", $"Rejected nano write on read-only path {filePath} by {SecurityContext.CurrentUser}");
+                return;
+            }
+
+            if (!PermissionManager.CanCreate(filePath, SecurityContext.CurrentUser))
             {
                 status = "Permission denied";
                 SecurityLogger.LogEvent("WARN", $"Unauthorized nano write attempt on {filePath} by {SecurityContext.CurrentUser}");
@@ -98,7 +114,7 @@ namespace ZonderqOS.GUI.Apps
             try
             {
                 Disk.CreateFile(filePath, string.Join("\n", lines));
-                status = "Saved " + filePath;
+                status = CommandIO.LastCommandSuccess ? "Saved " + filePath : "Permission denied";
             }
             catch (Exception ex)
             {
@@ -206,6 +222,9 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
+            lines.Clear();
+            documentCharacters = 0;
+            status = string.Empty;
             base.Close();
             closeCallback?.Invoke();
         }

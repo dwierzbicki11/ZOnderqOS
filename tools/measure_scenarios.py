@@ -14,10 +14,23 @@ from pathlib import Path
 from pyfatfs.PyFatFS import PyFatFS
 
 ROOT = Path("/home/zonderq/Pulpit/ZOnderqOS")
-ISO = ROOT / "bin/Debug/net10.0/linux-x64/cosmos/ZonderqOS.iso"
-KERNEL_ELF = ROOT / "obj/Debug/net10.0/linux-x64/cosmos/iso_root/boot/ZonderqOS.elf"
+DEFAULT_OUTPUT_ISO = ROOT / "output-x64/ZonderqOS.iso"
+DEFAULT_OUTPUT_ELF = ROOT / "output-x64/ZonderqOS.elf"
+DEFAULT_DEBUG_ISO = ROOT / "bin/Debug/net10.0/linux-x64/cosmos/ZonderqOS.iso"
+DEFAULT_DEBUG_ELF = ROOT / "obj/Debug/net10.0/linux-x64/cosmos/iso_root/boot/ZonderqOS.elf"
+DEFAULT_RELEASE_ISO = ROOT / "bin/Release/net10.0/linux-x64/cosmos/ZonderqOS.iso"
+DEFAULT_RELEASE_ELF = ROOT / "obj/Release/net10.0/linux-x64/cosmos/iso_root/boot/ZonderqOS.elf"
 
-def prepare_disk(disk_path):
+ISO = DEFAULT_OUTPUT_ISO if DEFAULT_OUTPUT_ISO.exists() else (
+    DEFAULT_DEBUG_ISO if DEFAULT_DEBUG_ISO.exists() else DEFAULT_RELEASE_ISO
+)
+KERNEL_ELF = DEFAULT_OUTPUT_ELF if DEFAULT_OUTPUT_ELF.exists() else (
+    DEFAULT_DEBUG_ELF if DEFAULT_DEBUG_ELF.exists() else DEFAULT_RELEASE_ELF
+)
+
+
+def prepare_disk(disk_path, kernel_elf=None):
+    elf_path = Path(kernel_elf) if kernel_elf else KERNEL_ELF
     if disk_path.exists():
         disk_path.unlink()
     subprocess.run(["truncate", "-s", "256M", str(disk_path)], check=True)
@@ -67,7 +80,7 @@ def prepare_disk(disk_path):
     with fs.open("/etc/zonderq/settings.conf", "w") as scf:
         scf.write(settings_cfg)
 
-    with open(KERNEL_ELF, "rb") as kf:
+    with open(elf_path, "rb") as kf:
         kernel_bytes = kf.read()
     with fs.open("/boot/slot_a/ZonderqOS.elf", "wb") as out_kf:
         out_kf.write(kernel_bytes)
@@ -186,25 +199,92 @@ def parse_samples(serial_path):
                     samples.append(data)
     return samples
 
-def run_scenario(scenario_name, smp=1, duration_sec=300, out_dir=None):
+def extract_60s_checkpoints(samples):
+    if not samples:
+        return []
+    checkpoints = [samples[0]]
+    next_target = samples[0]["sec"] + 60
+    for s in samples[1:]:
+        if s["sec"] >= next_target:
+            checkpoints.append(s)
+            while next_target <= s["sec"]:
+                next_target += 60
+    if checkpoints[-1]["sec"] != samples[-1]["sec"]:
+        checkpoints.append(samples[-1])
+    return checkpoints
+
+
+def open_task_manager(channel):
+    qmp_send_keys(channel, "ctrl", "shift", "esc")
+    time.sleep(2.5)
+
+
+def setup_workload(channel, workload, cycles=8):
+    # Dismiss startup WelcomeApp so bare desktop starts with zero open apps.
+    qmp_send_keys(channel, "esc")
+    time.sleep(1.2)
+
+    if workload == "A":
+        pass
+    elif workload == "B":
+        open_task_manager(channel)
+        # Wydajnosc -> Pamiec (RAM)
+        qmp_send_keys(channel, "right")
+        time.sleep(0.8)
+        qmp_send_keys(channel, "down")
+        time.sleep(0.8)
+    elif workload == "C":
+        open_task_manager(channel)
+        # Wydajnosc -> System
+        qmp_send_keys(channel, "right")
+        time.sleep(0.8)
+        qmp_send_keys(channel, "down")
+        time.sleep(0.6)
+        qmp_send_keys(channel, "down")
+        time.sleep(0.8)
+    elif workload == "D":
+        for _ in range(cycles):
+            open_task_manager(channel)
+            qmp_send_keys(channel, "esc")
+            time.sleep(1.5)
+    elif workload == "E":
+        # Lock screen (Ctrl+Alt+L)
+        qmp_send_keys(channel, "ctrl", "alt", "l")
+        time.sleep(2.0)
+
+
+def run_scenario(scenario_name, smp=1, duration_sec=300, out_dir=None, iso_path=None, kernel_elf=None, cycles=8, workload=None, ram="2048M"):
+    iso = Path(iso_path) if iso_path else ISO
+    elf = Path(kernel_elf) if kernel_elf else KERNEL_ELF
+    if not iso.exists():
+        raise FileNotFoundError(f"ISO not found: {iso}")
+    if not elf.exists():
+        raise FileNotFoundError(f"Kernel ELF not found: {elf}")
+
+    active_workload = workload or ("B" if scenario_name.startswith("F") else scenario_name)
     if out_dir is None:
         out_dir = Path(f"/tmp/zonderq_bench_{scenario_name}_smp{smp}")
+    else:
+        out_dir = Path(out_dir)
     if out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True)
 
     disk_path = out_dir / "zonderqdata.img"
-    prepare_disk(disk_path)
+    prepare_disk(disk_path, kernel_elf=elf)
 
     serial_log = out_dir / "serial.log"
-    qmp_sock = out_dir / "qmp.sock"
+    qmp_sock = Path(f"/tmp/zonderq_qmp_{os.getpid()}_{smp}.sock")
+    if qmp_sock.exists():
+        qmp_sock.unlink()
+    screendump_path = out_dir / "setup_check.ppm"
 
     cmd = [
         "qemu-system-x86_64",
         "-M", "q35", "-accel", "tcg", "-cpu", "Nehalem",
-        "-smp", str(smp), "-m", "2048M",
+        "-smp", str(smp), "-m", ram,
         "-vga", "std",
-        "-drive", f"file={ISO},if=none,id=cosmoscd,format=raw,readonly=on",
+        "-drive", f"file={iso},if=none,id=cosmoscd,format=raw,readonly=on",
         "-device", "ide-cd,drive=cosmoscd,bootindex=0", "-boot", "d",
         "-device", "ich9-ahci,id=ahci0",
         "-drive", f"file={disk_path},if=none,id=ahcidisk0,format=raw,cache=directsync",
@@ -216,115 +296,55 @@ def run_scenario(scenario_name, smp=1, duration_sec=300, out_dir=None):
         "-no-reboot", "-no-shutdown"
     ]
 
-    print(f"[{scenario_name} smp={smp}] Launching QEMU for {duration_sec}s...")
+    print(f"[{scenario_name} smp={smp}] Launching QEMU ({iso.name}) for {duration_sec}s...")
     proc = subprocess.Popen(cmd)
     try:
-        # Wait 25s for boot splash & setup screen
-        time.sleep(25)
+        # Wait until Kernel.Run() enters InitialSetupManager (immune to TCG speed variance)
+        t_boot = time.time()
+        while time.time() - t_boot < 45:
+            if proc.poll() is not None:
+                raise RuntimeError(f"QEMU exited during boot wait with code {proc.returncode}")
+            if serial_log.exists() and "[Kernel] Calling Run()" in serial_log.read_text(errors="ignore"):
+                break
+            time.sleep(0.5)
+        time.sleep(3)
+
         print(f"[{scenario_name} smp={smp}] Logging in...")
         subprocess.run(["python3", str(ROOT / "tools/qmp-gui-login.py"), str(qmp_sock), "first"],
                        check=True, capture_output=True)
-        time.sleep(5) # Let desktop stabilize
+
+        # Wait until GuiManager completes wallpaper/icon decode and enters active desktop loop
+        t_desk = time.time()
+        while time.time() - t_desk < 45:
+            if proc.poll() is not None:
+                raise RuntimeError(f"QEMU exited while loading desktop with code {proc.returncode}")
+            if parse_samples(serial_log):
+                break
+            time.sleep(0.5)
+        time.sleep(1.5)  # Let WelcomeApp finish initial frame
 
         # Connect to QMP for scenario actions
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
             conn.settimeout(20)
             conn.connect(str(qmp_sock))
             channel = conn.makefile("rwb", buffering=0)
-            json.loads(channel.readline()) # greeting
+            json.loads(channel.readline())  # greeting
             qmp_command(channel, {"execute": "qmp_capabilities"})
 
-            if scenario_name == "A":
-                # Bare desktop: do nothing
-                print(f"[{scenario_name} smp={smp}] Bare desktop scenario - idling...")
-                pass
+            print(f"[{scenario_name} smp={smp}] Setting up scenario workload={active_workload}...", flush=True)
+            setup_workload(channel, active_workload, cycles=cycles)
+            time.sleep(1.5)
+            try:
+                qmp_command(channel, {"execute": "screendump", "arguments": {"filename": str(screendump_path)}})
+            except Exception as ex:
+                print(f"[{scenario_name} smp={smp}] screendump warning: {ex}", flush=True)
 
-            elif scenario_name == "B":
-                # Task Manager on RAM tab
-                print(f"[{scenario_name} smp={smp}] Opening Task Manager...")
-                qmp_send_keys(channel, "alt", "spc")
-                time.sleep(1)
-                for c in "task":
-                    qmp_send_keys(channel, c)
-                time.sleep(1)
-                qmp_send_keys(channel, "ret")
-                time.sleep(4)
-                # Performance tab
-                qmp_send_keys(channel, "right")
-                time.sleep(1)
-                # Memory resource
-                qmp_send_keys(channel, "down")
-                time.sleep(1)
-                print(f"[{scenario_name} smp={smp}] Task Manager on RAM tab - idling...")
-
-            elif scenario_name == "C":
-                # Task Manager on CPU tab
-                print(f"[{scenario_name} smp={smp}] Opening Task Manager on CPU tab...")
-                qmp_send_keys(channel, "alt", "spc")
-                time.sleep(1)
-                for c in "task":
-                    qmp_send_keys(channel, c)
-                time.sleep(1)
-                qmp_send_keys(channel, "ret")
-                time.sleep(4)
-                # Performance tab (CPU is default)
-                qmp_send_keys(channel, "right")
-                time.sleep(1)
-                print(f"[{scenario_name} smp={smp}] Task Manager on CPU tab - idling...")
-
-            elif scenario_name == "D":
-                # Task Manager minimized
-                print(f"[{scenario_name} smp={smp}] Opening Task Manager then minimizing...")
-                qmp_send_keys(channel, "alt", "spc")
-                time.sleep(1)
-                for c in "task":
-                    qmp_send_keys(channel, c)
-                time.sleep(1)
-                qmp_send_keys(channel, "ret")
-                time.sleep(4)
-                # Bounds on 1366x768: X=165, Y=22, Width=1040, Height=690
-                # Minimize button center: X + Width - 79 = 165 + 1040 - 79 = 1126
-                # Y + 19 = 22 + 19 = 41
-                qmp_move_to_corner_then(channel, 1126, 41)
-                qmp_click_mouse(channel)
-                time.sleep(2)
-                print(f"[{scenario_name} smp={smp}] Task Manager minimized - idling...")
-
-            elif scenario_name == "E":
-                # Task Manager closed after opening
-                print(f"[{scenario_name} smp={smp}] Opening Task Manager then closing...")
-                qmp_send_keys(channel, "alt", "spc")
-                time.sleep(1)
-                for c in "task":
-                    qmp_send_keys(channel, c)
-                time.sleep(1)
-                qmp_send_keys(channel, "ret")
-                time.sleep(4)
-                qmp_send_keys(channel, "esc")
-                time.sleep(2)
-                print(f"[{scenario_name} smp={smp}] Task Manager closed - idling...")
-
-            elif scenario_name == "F":
-                # Repeated opening and closing (5 cycles)
-                print(f"[{scenario_name} smp={smp}] Cycling Task Manager open/close 5 times...")
-                for cycle in range(5):
-                    qmp_send_keys(channel, "alt", "spc")
-                    time.sleep(0.8)
-                    for c in "task":
-                        qmp_send_keys(channel, c)
-                    time.sleep(0.8)
-                    qmp_send_keys(channel, "ret")
-                    time.sleep(2.5)
-                    qmp_send_keys(channel, "esc")
-                    time.sleep(1.5)
-                print(f"[{scenario_name} smp={smp}] Cycles complete - idling...")
-
-        # Remaining measurement time
-        remaining = max(0, duration_sec - 35)
-        print(f"[{scenario_name} smp={smp}] Collecting samples for remaining {remaining}s...", flush=True)
+        # Wait comparable measurement span after login/setup
+        setup_samples = parse_samples(serial_log)
+        measure_start_sec = setup_samples[-1]["sec"] if setup_samples else None
         t0 = time.time()
         last_report = t0
-        while time.time() - t0 < remaining:
+        while time.time() - t0 < duration_sec:
             if proc.poll() is not None:
                 raise RuntimeError(f"QEMU exited prematurely with code {proc.returncode}")
             time.sleep(5)
@@ -332,13 +352,14 @@ def run_scenario(scenario_name, smp=1, duration_sec=300, out_dir=None):
                 last_report = time.time()
                 cur_samples = parse_samples(serial_log)
                 if cur_samples:
+                    s_first = next((s for s in cur_samples if measure_start_sec is None or s["sec"] >= measure_start_sec), cur_samples[0])
                     s_latest = cur_samples[-1]
-                    s_first = cur_samples[0]
-                    elapsed = s_latest['sec'] - s_first['sec']
-                    delta_mb = s_latest['used_mb'] - s_first['used_mb']
-                    rate = (delta_mb / (elapsed / 60.0)) if elapsed > 0 else 0
-                    print(f"[{scenario_name} smp={smp} PROGRESS {int(time.time()-t0)}s/{remaining}s] "
-                          f"latest t={s_latest['sec']}s: used={s_latest['used_mb']}MB, delta={delta_mb:+.2f}MB, rate={rate:+.3f}MB/min",
+                    elapsed = s_latest["sec"] - s_first["sec"]
+                    delta_mb = s_latest["used_mb"] - s_first["used_mb"]
+                    rate = (delta_mb / (elapsed / 60.0)) if elapsed > 0 else 0.0
+                    print(f"[{scenario_name} smp={smp} PROGRESS {int(time.time()-t0)}s/{duration_sec}s] "
+                          f"t={s_latest['sec']}s: used={s_latest['used_mb']}MB (delta={delta_mb:+.2f}MB, rate={rate:+.3f}MB/min) "
+                          f"gc_comm={s_latest.get('gc_comm_kb')}KB gc_heap={s_latest.get('gc_heap_kb')}KB threads={s_latest.get('threads', '?')}",
                           flush=True)
 
     finally:
@@ -349,69 +370,162 @@ def run_scenario(scenario_name, smp=1, duration_sec=300, out_dir=None):
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
+        qmp_sock.unlink(missing_ok=True)
 
     samples = parse_samples(serial_log)
-    print(f"[{scenario_name} smp={smp}] Finished. Captured {len(samples)} samples.", flush=True)
+    checkpoints = extract_60s_checkpoints(samples)
+    print(f"[{scenario_name} smp={smp}] Finished. Captured {len(samples)} samples ({len(checkpoints)} checkpoints).", flush=True)
+
+    summary = {
+        "scenario": scenario_name,
+        "workload": active_workload,
+        "smp": smp,
+        "iso": str(iso),
+        "kernel_elf": str(elf),
+        "sample_count": len(samples),
+        "checkpoints_60s": checkpoints,
+    }
 
     if samples:
-        t_start = samples[0]['sec']
-        t_end = samples[-1]['sec']
+        t_start = samples[0]["sec"]
+        t_end = samples[-1]["sec"]
         total_span = t_end - t_start
+        warmup_cutoff = min(t_start + 120, t_start + total_span // 3)
+        steady_samples = [s for s in samples if s["sec"] > warmup_cutoff]
 
-        # Split warmup (first 300s from boot or first 25% of run) and steady-state
-        warmup_cutoff = min(t_start + 300, t_start + total_span // 3)
-        warmup_samples = [s for s in samples if s['sec'] <= warmup_cutoff]
-        steady_samples = [s for s in samples if s['sec'] > warmup_cutoff]
+        s0 = samples[0]
+        s1 = samples[-1]
+        net_pages = s1["used_p"] - s0["used_p"]
+        net_bytes = net_pages * 4096
+        net_mb = s1["used_mb"] - s0["used_mb"]
+        gc_comm_delta_kb = s1.get("gc_comm_kb", 0) - s0.get("gc_comm_kb", 0)
+        gc_seg_delta = gc_comm_delta_kb / 64.0
+
+        summary.update({
+            "t_start": t_start,
+            "t_end": t_end,
+            "span_sec": total_span,
+            "initial": s0,
+            "final": s1,
+            "net_pages": net_pages,
+            "net_bytes": net_bytes,
+            "net_mb": round(net_mb, 3),
+            "gc_comm_delta_kb": gc_comm_delta_kb,
+            "gc_seg_delta": round(gc_seg_delta, 3),
+        })
 
         print(f"\n=======================================================", flush=True)
-        print(f"MEASUREMENT REPORT: Scenario {scenario_name} (smp={smp})", flush=True)
+        print(f"MEASUREMENT REPORT: Scenario {scenario_name} (workload={active_workload}, smp={smp})", flush=True)
         print(f"=======================================================", flush=True)
-        print(f"Total test span: {total_span}s ({len(samples)} samples)", flush=True)
-        print(f"Initial sample: t={samples[0]['sec']}s, used={samples[0]['used_mb']} MB ({samples[0]['used_p']} pages)", flush=True)
-        print(f"Final sample:   t={samples[-1]['sec']}s, used={samples[-1]['used_mb']} MB ({samples[-1]['used_p']} pages)", flush=True)
-        net_delta = samples[-1]['used_mb'] - samples[0]['used_mb']
-        print(f"Total net delta: {net_delta:+.2f} MB", flush=True)
+        print(f"Total span: {total_span}s ({len(samples)} samples)", flush=True)
+        print(f"Initial: t={s0['sec']}s, used={s0['used_mb']} MB ({s0['used_p']} pages), p_gc={s0.get('p_gc')}, p_rat={s0.get('p_rat')}, p_sys={s0.get('p_sys')}, gc_comm={s0.get('gc_comm_kb')}KB, gc_heap={s0.get('gc_heap_kb')}KB, gc_frag={s0.get('gc_frag_kb')}KB, gc_gen={s0.get('gc_gen')}, threads={s0.get('threads', 'N/A')}", flush=True)
+        print(f"Final:   t={s1['sec']}s, used={s1['used_mb']} MB ({s1['used_p']} pages), p_gc={s1.get('p_gc')}, p_rat={s1.get('p_rat')}, p_sys={s1.get('p_sys')}, gc_comm={s1.get('gc_comm_kb')}KB, gc_heap={s1.get('gc_heap_kb')}KB, gc_frag={s1.get('gc_frag_kb')}KB, gc_gen={s1.get('gc_gen')}, threads={s1.get('threads', 'N/A')}", flush=True)
+        print(f"Net delta: {net_mb:+.2f} MB ({net_pages:+d} pages, {net_bytes:+d} bytes, GC comm {gc_comm_delta_kb:+d} KB / {gc_seg_delta:+.2f} segments)", flush=True)
 
         if steady_samples:
             s_first_steady = steady_samples[0]
             s_last_steady = steady_samples[-1]
-            steady_span = s_last_steady['sec'] - s_first_steady['sec']
-            steady_delta = s_last_steady['used_mb'] - s_first_steady['used_mb']
+            steady_span = s_last_steady["sec"] - s_first_steady["sec"]
+            steady_delta = s_last_steady["used_mb"] - s_first_steady["used_mb"]
+            steady_pages = s_last_steady["used_p"] - s_first_steady["used_p"]
             steady_rate = (steady_delta / (steady_span / 60.0)) if steady_span > 0 else 0.0
-            print(f"Steady-state span: {steady_span}s ({len(steady_samples)} samples, from t={s_first_steady['sec']}s to t={s_last_steady['sec']}s)", flush=True)
-            print(f"Steady-state delta: {steady_delta:+.2f} MB", flush=True)
-            print(f"Steady-state growth rate: {steady_rate:+.4f} MB/min", flush=True)
+            summary.update({
+                "steady_start": s_first_steady,
+                "steady_end": s_last_steady,
+                "steady_span": steady_span,
+                "steady_delta_mb": round(steady_delta, 3),
+                "steady_pages": steady_pages,
+                "steady_rate_mb_min": round(steady_rate, 4),
+            })
+            print(f"Steady-state ({s_first_steady['sec']}s -> {s_last_steady['sec']}s, {steady_span}s): {steady_delta:+.2f} MB ({steady_pages:+d} pages, {steady_rate:+.4f} MB/min)", flush=True)
 
-            # Last 20 minutes (1200s) analysis if test was long enough
-            last20_cutoff = max(s_first_steady['sec'], t_end - 1200)
-            last20_samples = [s for s in steady_samples if s['sec'] >= last20_cutoff]
-            if len(last20_samples) >= 2:
-                last20_delta = last20_samples[-1]['used_mb'] - last20_samples[0]['used_mb']
-                last20_span = last20_samples[-1]['sec'] - last20_samples[0]['sec']
-                last20_rate = (last20_delta / (last20_span / 60.0)) if last20_span > 0 else 0.0
-                print(f"Last period ({last20_span}s): delta={last20_delta:+.2f} MB, rate={last20_rate:+.4f} MB/min", flush=True)
-
-            passed_16mb = steady_delta <= 16.0
-            print(f"Criteria check (steady-state delta <= 16 MiB): {'PASS' if passed_16mb else 'FAIL'}", flush=True)
+        print("60s Checkpoints:", flush=True)
+        for cp in checkpoints:
+            print(
+                f"  t={cp['sec']:>4}s | used={cp['used_mb']:>6.2f}MB ({cp['used_p']}p) | "
+                f"p_gc={cp.get('p_gc')} p_rat={cp.get('p_rat')} p_sys={cp.get('p_sys')} | "
+                f"gc_comm={cp.get('gc_comm_kb')}KB gc_heap={cp.get('gc_heap_kb')}KB "
+                f"gc_frag={cp.get('gc_frag_kb')}KB gc_gen={cp.get('gc_gen')} threads={cp.get('threads', 'N/A')}",
+                flush=True
+            )
         print(f"=======================================================\n", flush=True)
 
-    return samples
+    with open(out_dir / "summary.json", "w") as sf:
+        json.dump(summary, sf, indent=2)
+    return summary
+
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--scenario", default="B", choices=["A", "B", "C", "D", "E", "F", "ALL"])
-    parser.add_argument("--smp", type=int, default=1)
+    parser.add_argument("--smp", type=int, default=None)
+    parser.add_argument("--ram", default="2048M")
     parser.add_argument("--duration", type=int, default=300)
+    parser.add_argument("--cycles", type=int, default=8)
+    parser.add_argument("--workload", default=None, choices=["A", "B", "C", "D", "E"])
+    parser.add_argument("--iso", default=None)
+    parser.add_argument("--kernel", default=None)
+    parser.add_argument("--out-dir", default=None)
     args = parser.parse_args()
 
     if args.scenario == "ALL":
-        results = {}
-        for sc in ["A", "B", "C", "D", "E", "F"]:
-            results[sc] = run_scenario(sc, smp=args.smp, duration_sec=args.duration)
-        with open("/tmp/results_summary.json", "w") as f:
-            json.dump(results, f, indent=2)
+        base_out = Path(args.out_dir) if args.out_dir else Path("/tmp/zonderq_bench_suite")
+        base_out.mkdir(parents=True, exist_ok=True)
+        suite = {}
+        default_smp = args.smp if args.smp is not None else 1
+        runs = [
+            ("A", default_smp, None),
+            ("B", default_smp, None),
+            ("C", default_smp, None),
+            ("D", default_smp, None),
+            ("E", default_smp, None),
+            ("F_1vcpu", 1, args.workload or "B"),
+            ("F_8vcpu", 8, args.workload or "B"),
+        ]
+        for name, smp_val, wl in runs:
+            suite[name] = run_scenario(
+                name,
+                smp=smp_val,
+                duration_sec=args.duration,
+                out_dir=base_out / f"{name}_smp{smp_val}",
+                iso_path=args.iso,
+                kernel_elf=args.kernel,
+                cycles=args.cycles,
+                workload=wl,
+                ram=args.ram,
+            )
+        with open(base_out / "results_summary.json", "w") as f:
+            json.dump(suite, f, indent=2)
+    elif args.scenario == "F" and args.smp is None:
+        base_out = Path(args.out_dir) if args.out_dir else Path("/tmp/zonderq_bench_F")
+        base_out.mkdir(parents=True, exist_ok=True)
+        suite = {}
+        for smp_val in (1, 8):
+            name = f"F_{smp_val}vcpu"
+            suite[name] = run_scenario(
+                name,
+                smp=smp_val,
+                duration_sec=args.duration,
+                out_dir=base_out / name,
+                iso_path=args.iso,
+                kernel_elf=args.kernel,
+                cycles=args.cycles,
+                workload=args.workload or "B",
+                ram=args.ram,
+            )
+        with open(base_out / "results_summary.json", "w") as f:
+            json.dump(suite, f, indent=2)
     else:
-        samples = run_scenario(args.scenario, smp=args.smp, duration_sec=args.duration)
-        for s in samples:
-            print(f"t={s['sec']}s: used={s['used_mb']} MB ({s['used_p']} pages), free={s['free_p']}")
+        smp_val = args.smp if args.smp is not None else 1
+        run_scenario(
+            args.scenario,
+            smp=smp_val,
+            duration_sec=args.duration,
+            out_dir=args.out_dir,
+            iso_path=args.iso,
+            kernel_elf=args.kernel,
+            cycles=args.cycles,
+            workload=args.workload,
+            ram=args.ram,
+        )

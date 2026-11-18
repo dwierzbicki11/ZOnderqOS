@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using Cosmos.Kernel.System.Graphics;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -52,7 +53,7 @@ namespace ZonderqOS.GUI.Apps
             0xFF8B4513  // Brazowy
         };
 
-        private uint[] canvasBuffer = new uint[CanvasWidth * CanvasHeight];
+        private NativeScratchBuffer<uint> canvasBuffer;
         private Tool activeTool = Tool.Pencil;
         private uint currentColor = 0xFF000000; // Black default
         private bool isDrawing;
@@ -67,6 +68,7 @@ namespace ZonderqOS.GUI.Apps
         public PaintApp(int x, int y, Action onClose) : base("Paint")
         {
             closeCallback = onClose;
+            canvasBuffer.Allocate(CanvasWidth * CanvasHeight);
             Window = new Window(x, y, 540, 440, "Paint");
             Window.CloseAction = Close;
             ClearCanvas();
@@ -74,33 +76,26 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
-            canvasBuffer = null;
-            floodQueue = null;
+            canvasBuffer.Dispose();
             base.Close();
             closeCallback?.Invoke();
         }
 
         private void ClearCanvas()
         {
-            if (canvasBuffer == null)
+            if (!canvasBuffer.IsAllocated)
                 return;
             for (int i = 0; i < canvasBuffer.Length; i++)
                 canvasBuffer[i] = 0xFFFFFFFF; // White
             statusMessage = "Wyczyszczono plotno";
         }
 
-        private void SaveDrawing()
+        private unsafe void SaveDrawing()
         {
             try
             {
-                if (canvasBuffer == null)
+                if (!canvasBuffer.IsAllocated)
                     return;
-                byte[] bmpBytes = BmpEncoder.Encode(CanvasWidth, CanvasHeight, canvasBuffer);
-                if (bmpBytes.Length == 0)
-                {
-                    statusMessage = "Blad generowania pliku";
-                    return;
-                }
 
                 string targetDir = "0:/Paint";
                 if (!Directory.Exists(targetDir))
@@ -116,7 +111,29 @@ namespace ZonderqOS.GUI.Apps
                     filePath = Path.Combine(targetDir, "rysunek_" + saveCounter + ".bmp");
                 }
 
-                File.WriteAllBytes(filePath, bmpBytes);
+                bool saved;
+                using (FileStream fs = new FileStream(filePath, FileMode.Create, FileAccess.Write))
+                {
+                    if (canvasBuffer.Pointer != null)
+                    {
+                        saved = BmpEncoder.EncodeToStream(fs, CanvasWidth, CanvasHeight, canvasBuffer.Pointer);
+                    }
+                    else
+                    {
+                        byte[] bmpBytes = BmpEncoder.Encode(CanvasWidth, CanvasHeight, canvasBuffer.AsSpan().ToArray());
+                        saved = bmpBytes.Length > 0;
+                        if (saved)
+                        {
+                            fs.Write(bmpBytes, 0, bmpBytes.Length);
+                            fs.Flush();
+                        }
+                    }
+                }
+                if (!saved)
+                {
+                    statusMessage = "Blad generowania pliku";
+                    return;
+                }
                 statusMessage = "Zapisano: " + Path.GetFileName(filePath);
                 saveCounter++;
 
@@ -137,7 +154,7 @@ namespace ZonderqOS.GUI.Apps
         {
             base.HandleMouse(mouseX, mouseY, leftClicked, leftWasClicked, rightClicked, rightWasClicked);
 
-            if (!Window.Visible || Window.IsMinimized || canvasBuffer == null)
+            if (!Window.Visible || Window.IsMinimized || !canvasBuffer.IsAllocated)
                 return;
 
             int contentX = Window.X + 8;
@@ -297,7 +314,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void SetPixel(int x, int y, uint color)
         {
-            if (canvasBuffer != null && x >= 0 && x < CanvasWidth && y >= 0 && y < CanvasHeight)
+            if (canvasBuffer.IsAllocated && x >= 0 && x < CanvasWidth && y >= 0 && y < CanvasHeight)
                 canvasBuffer[y * CanvasWidth + x] = color;
         }
 
@@ -408,11 +425,10 @@ namespace ZonderqOS.GUI.Apps
         }
 
         private static readonly string[] ToolLabels = { "OLW", "PED", "GUM", "LIN", "REC", "WPR", "WIA" };
-        private int[] floodQueue;
 
         private void FloodFill(int startX, int startY, uint targetColor)
         {
-            if (startX < 0 || startX >= CanvasWidth || startY < 0 || startY >= CanvasHeight)
+            if (!canvasBuffer.IsAllocated || startX < 0 || startX >= CanvasWidth || startY < 0 || startY >= CanvasHeight)
                 return;
 
             uint sourceColor = canvasBuffer[startY * CanvasWidth + startX];
@@ -420,48 +436,53 @@ namespace ZonderqOS.GUI.Apps
                 return;
 
             int maxPixels = CanvasWidth * CanvasHeight;
-            if (floodQueue == null)
-                floodQueue = new int[maxPixels];
-
-            int head = 0;
-            int tail = 0;
-            int startIdx = startY * CanvasWidth + startX;
-            floodQueue[tail++] = startIdx;
-            canvasBuffer[startIdx] = targetColor;
-
-            while (head < tail)
+            NativeScratchBuffer<int> floodQueue = default;
+            floodQueue.Allocate(maxPixels);
+            try
             {
-                int curr = floodQueue[head++];
-                int cx = curr % CanvasWidth;
-                int cy = curr / CanvasWidth;
+                int head = 0;
+                int tail = 0;
+                int startIdx = startY * CanvasWidth + startX;
+                floodQueue[tail++] = startIdx;
+                canvasBuffer[startIdx] = targetColor;
 
-                // 4-way neighbors
-                if (cx > 0 && canvasBuffer[curr - 1] == sourceColor)
+                while (head < tail)
                 {
-                    canvasBuffer[curr - 1] = targetColor;
-                    floodQueue[tail++] = curr - 1;
+                    int curr = floodQueue[head++];
+                    int cx = curr % CanvasWidth;
+                    int cy = curr / CanvasWidth;
+
+                    if (cx > 0 && canvasBuffer[curr - 1] == sourceColor)
+                    {
+                        canvasBuffer[curr - 1] = targetColor;
+                        floodQueue[tail++] = curr - 1;
+                    }
+                    if (cx < CanvasWidth - 1 && canvasBuffer[curr + 1] == sourceColor)
+                    {
+                        canvasBuffer[curr + 1] = targetColor;
+                        floodQueue[tail++] = curr + 1;
+                    }
+                    if (cy > 0 && canvasBuffer[curr - CanvasWidth] == sourceColor)
+                    {
+                        canvasBuffer[curr - CanvasWidth] = targetColor;
+                        floodQueue[tail++] = curr - CanvasWidth;
+                    }
+                    if (cy < CanvasHeight - 1 && canvasBuffer[curr + CanvasWidth] == sourceColor)
+                    {
+                        canvasBuffer[curr + CanvasWidth] = targetColor;
+                        floodQueue[tail++] = curr + CanvasWidth;
+                    }
                 }
-                if (cx < CanvasWidth - 1 && canvasBuffer[curr + 1] == sourceColor)
-                {
-                    canvasBuffer[curr + 1] = targetColor;
-                    floodQueue[tail++] = curr + 1;
-                }
-                if (cy > 0 && canvasBuffer[curr - CanvasWidth] == sourceColor)
-                {
-                    canvasBuffer[curr - CanvasWidth] = targetColor;
-                    floodQueue[tail++] = curr - CanvasWidth;
-                }
-                if (cy < CanvasHeight - 1 && canvasBuffer[curr + CanvasWidth] == sourceColor)
-                {
-                    canvasBuffer[curr + CanvasWidth] = targetColor;
-                    floodQueue[tail++] = curr + CanvasWidth;
-                }
+            }
+            finally
+            {
+                floodQueue.Dispose();
             }
         }
 
         public override void Render(Canvas canvas)
         {
-            if (!Window.Visible || Window.IsMinimized || canvasBuffer == null)
+            if (!Window.Visible || Window.IsMinimized || !canvasBuffer.IsAllocated)
                 return;
 
             base.Render(canvas);

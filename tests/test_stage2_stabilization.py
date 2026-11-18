@@ -41,14 +41,14 @@ class Stage2StabilizationTests(unittest.TestCase):
     def test_paint_app_close_releases_canvas_buffer_and_guards_null(self):
         self.assertIn("public override void Close()", PAINT)
         close_body = PAINT.split("public override void Close()", 1)[1].split("}", 1)[0]
-        self.assertIn("canvasBuffer = null;", close_body)
+        self.assertIn("canvasBuffer.Dispose();", close_body)
         self.assertIn("base.Close();", close_body)
-        self.assertIn("canvasBuffer == null", PAINT)
+        self.assertIn("!canvasBuffer.IsAllocated", PAINT)
 
     def test_hex_viewer_close_releases_file_bytes(self):
         self.assertIn("public override void Close()", HEX_VIEWER)
         close_body = HEX_VIEWER.split("public override void Close()", 1)[1].split("}", 1)[0]
-        self.assertIn("fileBytes = null;", close_body)
+        self.assertIn("fileBuffer.Dispose();", close_body)
         self.assertIn("base.Close();", close_body)
 
     def test_file_manager_close_clears_cached_entries(self):

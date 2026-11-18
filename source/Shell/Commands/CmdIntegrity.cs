@@ -11,16 +11,24 @@ namespace ZonderqOS.Commands
 
         public void Execute(string[] args, ref string currentPath)
         {
+            if (!SecurityContext.IsAuthenticated)
+            {
+                WriteMessage.WriteError("Access denied. Authentication required.", "SEC");
+                SecurityLogger.LogEvent("WARN", "Unauthenticated integrity command attempt.");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             IntegrityGuard.Initialize();
 
             string action = args.Length > 1 ? args[1].ToLowerInvariant() : "check";
 
             if (action == "baseline" || action == "update")
             {
-                if (SecurityContext.CurrentUser != "root")
+                if (!HasRootPrivilege())
                 {
                     WriteMessage.WriteError("Access denied. Root privileges required to update integrity baseline.", "SEC");
-                    SecurityLogger.LogEvent("WARN", "Unauthorized attempt to re-baseline system integrity.");
+                    SecurityLogger.LogEvent("WARN", "Unauthorized attempt to re-baseline system integrity by " + (SecurityContext.CurrentUser ?? "?"));
                     CommandIO.LastCommandSuccess = false;
                     return;
                 }
@@ -47,7 +55,14 @@ namespace ZonderqOS.Commands
                 return;
             }
 
-            // Default: check / scan
+            if (action != "check" && action != "scan")
+            {
+                WriteMessage.WriteError("Usage: integrity [status | check | scan | baseline | update]", "CMD");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
+            // check / scan
             CommandIO.WriteLine("=== ZOnderqOS File Integrity & Anti-Tamper Scan ===");
             IntegrityGuard.ScanAll();
 
@@ -64,9 +79,11 @@ namespace ZonderqOS.Commands
                 else if (r.Status == IntegrityStatus.Missing) { statusStr = "MISSING [!]"; violations++; }
                 else if (r.Status == IntegrityStatus.PermissionMismatch) { statusStr = "PERM ERR [!]"; violations++; }
 
-                string hashPrefix = !string.IsNullOrEmpty(r.CurrentHash) && r.CurrentHash.Length >= 12
-                    ? r.CurrentHash.Substring(0, 12) + "..."
-                    : "---";
+                string hashPrefix = !PermissionManager.CanRead(r.Path, SecurityContext.CurrentUser)
+                    ? "[RESTRICTED]"
+                    : (!string.IsNullOrEmpty(r.CurrentHash) && r.CurrentHash.Length >= 12
+                        ? r.CurrentHash.Substring(0, 12) + "..."
+                        : "---");
 
                 CommandIO.WriteLine(string.Format("{0,-24} {1,-8} {2,-16} {3}", r.Path, r.CurrentPerms, statusStr, hashPrefix));
             }
@@ -83,5 +100,7 @@ namespace ZonderqOS.Commands
                 CommandIO.LastCommandSuccess = false;
             }
         }
+
+        private static bool HasRootPrivilege() => SecurityContext.IsAuthenticated && SecurityContext.CurrentUid == 0;
     }
 }
