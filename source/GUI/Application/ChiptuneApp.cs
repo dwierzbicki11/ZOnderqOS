@@ -277,8 +277,8 @@ namespace ZonderqOS.GUI.Apps
             return id switch
             {
                 1 => "Tetris Korobeiniki",
-                2 => "Marsz Imperialny",
-                3 => "Fanfara ZOnderqOS",
+                2 => "Imperial March",
+                3 => "ZOnderqOS Fanfare",
                 _ => "Super Mario Bros"
             };
         }
@@ -299,7 +299,7 @@ namespace ZonderqOS.GUI.Apps
 
                     if (songTimerTicks % noteFrames == 0)
                     {
-                        PlayTone(noteFreq, noteDur, "Nuta " + (songStepIndex + 1));
+                        PlayTone(noteFreq, noteDur, "Note " + (songStepIndex + 1));
                         songStepIndex++;
                     }
                 }
@@ -327,16 +327,16 @@ namespace ZonderqOS.GUI.Apps
 
             // Top Bar: Octave Controls & Presets
             int topBarY = wy + 14;
-            SmallTextRenderer.Draw(canvas, "Oktawa:", wx + 16, topBarY - 10, Color.White);
-            DrawPill(canvas, "Oktawa 3", wx + 16, topBarY + 4, 65, 24, currentOctave == 3);
-            DrawPill(canvas, "Oktawa 4", wx + 86, topBarY + 4, 65, 24, currentOctave == 4);
-            DrawPill(canvas, "Oktawa 5", wx + 156, topBarY + 4, 65, 24, currentOctave == 5);
+            SmallTextRenderer.Draw(canvas, "Octave:", wx + 16, topBarY - 10, Color.White);
+            DrawPill(canvas, "Octave 3", wx + 16, topBarY + 4, 65, 24, currentOctave == 3);
+            DrawPill(canvas, "Octave 4", wx + 86, topBarY + 4, 65, 24, currentOctave == 4);
+            DrawPill(canvas, "Octave 5", wx + 156, topBarY + 4, 65, 24, currentOctave == 5);
 
-            SmallTextRenderer.Draw(canvas, "Melodie demo (8-bit):", wx + 240, topBarY - 10, Color.White);
+            SmallTextRenderer.Draw(canvas, "Demo melodies (8-bit):", wx + 240, topBarY - 10, Color.White);
             DrawPill(canvas, "Mario", wx + 240, topBarY + 4, 70, 24, isPlayingSong && currentSongIndex == 0);
             DrawPill(canvas, "Tetris", wx + 316, topBarY + 4, 70, 24, isPlayingSong && currentSongIndex == 1);
             DrawPill(canvas, "Imperial", wx + 392, topBarY + 4, 70, 24, isPlayingSong && currentSongIndex == 2);
-            DrawPill(canvas, "Fanfara", wx + 468, topBarY + 4, 85, 24, isPlayingSong && currentSongIndex == 3);
+            DrawPill(canvas, "Fanfare", wx + 468, topBarY + 4, 85, 24, isPlayingSong && currentSongIndex == 3);
 
             // Oscilloscope & Display Box
             int dispY = wy + 52;
@@ -347,8 +347,8 @@ namespace ZonderqOS.GUI.Apps
             // Status label & current note
             string modeText = isPlayingSong ? "PLAYING DEMO: " + GetSongName(currentSongIndex) : "LIVE SYNTHESIZER MODE (Use mouse or keys A-K)";
             SmallTextRenderer.Draw(canvas, modeText, wx + 28, dispY + 10, CyanColor);
-            SmallTextRenderer.Draw(canvas, "Biezacy dzwiek: " + lastPlayedNote, wx + 28, dispY + 28, GoldColor);
-            SmallTextRenderer.Draw(canvas, "Uklad klawiatury: [A=C] [W=C#] [S=D] [E=D#] [D=E] [F=F] [T=F#] [G=G] [Y=G#] [H=A] [U=A#] [J=B] [K=C+]", wx + 28, dispY + 46, MutedColor);
+            SmallTextRenderer.Draw(canvas, "Current note: " + lastPlayedNote, wx + 28, dispY + 28, GoldColor);
+            SmallTextRenderer.Draw(canvas, "Keyboard layout: [A=C] [W=C#] [S=D] [E=D#] [D=E] [F=F] [T=F#] [G=G] [Y=G#] [H=A] [U=A#] [J=B] [K=C+]", wx + 28, dispY + 46, MutedColor);
 
             // Draw 8-bit Chiptune Square Waveform
             int waveY = dispY + 80;
