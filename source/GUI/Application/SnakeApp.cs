@@ -482,7 +482,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.DrawUInt(canvas, score, headerX + 10, headerY + 19, AccentColor);
 
             // High Score
-            SmallTextRenderer.Draw(canvas, "REKORD", headerX + 80, headerY + 5, MutedColor);
+            SmallTextRenderer.Draw(canvas, "BEST", headerX + 80, headerY + 5, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, highScore, headerX + 80, headerY + 19, TextColor);
 
             // Header Action Button
@@ -516,7 +516,7 @@ namespace ZonderqOS.GUI.Apps
             }
             else
             {
-                actText = "OD NOWA";
+                actText = "RESTART";
                 actColor = DangerColor;
             }
             SmallTextRenderer.DrawCentered(canvas, actText, actBtnX, actBtnY + 8, actBtnW, actColor);
@@ -599,7 +599,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Border, rstX, btnY + 27, rstW, 1);
             canvas.DrawFilledRectangle(Border, rstX, btnY, 1, 28);
             canvas.DrawFilledRectangle(Border, rstX + rstW - 1, btnY, 1, 28);
-            SmallTextRenderer.DrawCentered(canvas, "NOWA GRA", rstX, btnY + 10, rstW, TextColor);
+            SmallTextRenderer.DrawCentered(canvas, "NEW GAME", rstX, btnY + 10, rstW, TextColor);
 
             // Overlay message for Ready / GameOver / Paused
             if (status == GameStatus.Ready)
