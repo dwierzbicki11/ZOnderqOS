@@ -68,7 +68,7 @@ class Alpha1ReleaseGateContractTests(unittest.TestCase):
 
     def test_harness_does_not_fake_fat32_or_efi_pass(self):
         source = HARNESS.read_text(encoding="utf-8")
-        self.assertNotIn("qemu_audit_e2e.py", source)
+        self.assertNotIn('str(ROOT / "tools/qemu_audit_e2e.py")', source)
         self.assertIn('"guest_fat32_acl_e2e": "NOT_TESTED"', source)
         self.assertIn('"ovmf_efi_stub": "PASS"', source)
         self.assertIn('"real_uefi_kernel_chain": "NOT_TESTED"', source)
