@@ -10,36 +10,23 @@ namespace ZonderqOS.SystemCore.Diagnostics
 
         public static bool TryFindZonderqDataRoot(out string rootPath)
         {
-            // Disk.Initialize() binds ONLY the uniquely approved ZONDERQDATA
-            // FAT32 partition to "/"; never guess 0:/1: or scan foreign disks.
-            const string root = "/";
-            try
-            {
-                string state = Path.Combine(root, "boot", "boot_state.cfg");
-                if (Directory.Exists(root) && File.Exists(state))
-                {
-                    using (var reader = new StreamReader(state))
-                    {
-                        if (reader.ReadLine() == "# ZonderqOS A/B Bootloader State Configuration")
-                        {
-                            rootPath = root;
-                            return true;
-                        }
-                    }
-                }
-            }
-            catch (Exception)
-            {
-                // Fail closed without touching any disk.
-            }
+            // Disk.Initialize() binds the only DataVolumePolicy-approved FAT32
+            // ZONDERQDATA partition to "/". The mount is the authority;
+            // boot_state.cfg may be absent/recovered and is not a disk identity.
+            // RAM-root and unknown host disks are never approved here.
             rootPath = null;
-            return false;
+            if (!global::ZonderqOS.Disk.IsVerifiedPersistentDataRootMounted)
+                return false;
+
+            rootPath = "/";
+            return true;
         }
 
         public static (bool ok, string reason, string metrics) RunIsolatedFat32Test(string rootPath)
         {
-            if (string.IsNullOrEmpty(rootPath))
-                return (false, "Brak zweryfikowanej partycji ZONDERQDATA", "root=null");
+            if (rootPath != "/" ||
+                !global::ZonderqOS.Disk.IsVerifiedPersistentDataRootMounted)
+                return (false, "Brak zweryfikowanego montowania ZONDERQDATA pod /", "root_unverified");
 
             string diagDir = Path.Combine(rootPath, DiagDirName);
             string testFile = Path.Combine(diagDir, DiagFileName);

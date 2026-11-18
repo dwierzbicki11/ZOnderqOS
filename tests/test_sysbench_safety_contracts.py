@@ -28,8 +28,14 @@ class SysbenchSafetyContracts(unittest.TestCase):
 
     def test_fat32_disk_identity_is_mounted_system_root(self):
         source = self.load(DIAG / "Fat32DiagnosticHelper.cs")
-        self.assertIn('const string root = "/"', source)
-        self.assertIn('boot_state.cfg', source)
+        self.assertIn('rootPath = "/"', source)
+        self.assertIn('Disk.IsVerifiedPersistentDataRootMounted', source)
+        self.assertNotIn('File.Exists(state)', source)
+        self.assertNotIn('reader.ReadLine()', source)
+        disk = self.load(ROOT / "source/Storage/Disk.cs")
+        self.assertIn("DataVolumePolicy.TryFindDataPartition", disk)
+        self.assertIn("_verifiedPersistentDataRootMounted = true", disk)
+        self.assertIn("public static bool IsVerifiedPersistentDataRootMounted", disk)
         self.assertNotIn('@"0:', source)
         self.assertNotIn('@"1:', source)
         self.assertIn("FileMode.CreateNew", source)

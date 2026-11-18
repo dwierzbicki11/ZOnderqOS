@@ -290,10 +290,19 @@ namespace ZonderqOS.SystemCore.Diagnostics
                     string mdPath = Path.Combine(root, "sysbench_report.md");
                     string csvPath = Path.Combine(root, "sysbench_report.csv");
                     string jsonPath = Path.Combine(root, "sysbench_report.json");
+                    // The Markdown report is the canonical artifact for USB
+                    // collection. Errors in auxiliary formats must not hide it.
                     File.WriteAllText(mdPath, ExportMarkdown());
-                    File.WriteAllText(csvPath, ExportCsv());
-                    File.WriteAllText(jsonPath, ExportJson());
                     LastReportPath = mdPath;
+                    try
+                    {
+                        File.WriteAllText(csvPath, ExportCsv());
+                        File.WriteAllText(jsonPath, ExportJson());
+                    }
+                    catch (Exception ex)
+                    {
+                        CommandIO.WriteLine("[sysbench] Secondary export failed: " + ex.Message);
+                    }
                     return;
                 }
                 catch (Exception ex)
@@ -302,7 +311,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
                     return;
                 }
             }
-            LastReportPath = "REPORT_NOT_WRITTEN: ZONDERQDATA root not verified";
+            LastReportPath = "REPORT_NOT_WRITTEN: verified ZONDERQDATA root is not mounted";
         }
 
         public string ExportMarkdown()
