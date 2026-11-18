@@ -399,7 +399,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(MissColor, wx + 290, legY + 8, 14, 14);
             SmallTextRenderer.Draw(canvas, "Miss (Water)", wx + 310, legY + 10, MutedColor);
 
-            SmallTextRenderer.Draw(canvas, "Fleet: 1x [4-deck]  2x [3-deck]  3x [2-deck]  4x [1-deck] (Total: 10 ships)", wx + 24, legY + 30, MutedColor);
+            SmallTextRenderer.Draw(canvas, "Fleet: 1x [4-cell]  2x [3-cell]  3x [2-cell]  4x [1-cell] (Total: 10 ships)", wx + 24, legY + 30, MutedColor);
         }
 
         private void RenderGrid(Canvas canvas, int gx, int gy, byte[,] grid, bool showShips)
