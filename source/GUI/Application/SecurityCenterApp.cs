@@ -99,7 +99,7 @@ namespace ZonderqOS.GUI.Apps
             const string logPath = "/var/log/auth.log";
             if (!PermissionManager.CanRead(logPath, SecurityContext.CurrentUser))
             {
-                cachedLogLines.Add("Odmowa dostepu: wymagane uprawnienia do odczytu dziennika audytu.");
+                cachedLogLines.Add("Access denied: permission required to read the audit log.");
                 return;
             }
             if (!File.Exists(logPath))
@@ -514,7 +514,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 SmallTextRenderer.Draw(canvas, "ZAPORA SIECIOWA JEST WYLACZONA - RUCH NIEFILTROWANY", textX, cy + 22, GoldColor);
                 SmallTextRenderer.Draw(canvas, "System files match the baseline, but the computer is not protected against network attacks.", textX, cy + 44, TextColor);
-                SmallTextRenderer.Draw(canvas, "Wlacz zapore sieciowa ponizej lub w zakladce 'Zapora'.", textX, cy + 64, MutedColor);
+                SmallTextRenderer.Draw(canvas, "Enable the firewall below or in the Firewall tab.", textX, cy + 64, MutedColor);
             }
             else
             {
@@ -555,7 +555,7 @@ namespace ZonderqOS.GUI.Apps
 
             // Bottom Action Buttons
             int btnY = cy + 280;
-            DrawButton(canvas, "🔍 Szybki Skan", wx + 16, btnY, 170, 30, PanelHover);
+            DrawButton(canvas, "🔍 Quick Scan", wx + 16, btnY, 170, 30, PanelHover);
             DrawButton(canvas, "🧱 Toggle Firewall", wx + 196, btnY, 170, 30, isFirewallActive ? PanelHover : AccentColor);
             DrawButton(canvas, "↺ Refresh Data", wx + 376, btnY, 150, 30, PanelHover);
 
@@ -768,7 +768,7 @@ namespace ZonderqOS.GUI.Apps
                 return true;
 
             SecurityLogger.LogEvent("WARN", "Unauthorized SecurityCenter action '" + action + "' by " + (SecurityContext.CurrentUser ?? "?"));
-            statusMessage = "Odmowa dostepu: wymagana sesja root (" + action + ").";
+            statusMessage = "Access denied: root session required (" + action + ").";
             return false;
         }
 
