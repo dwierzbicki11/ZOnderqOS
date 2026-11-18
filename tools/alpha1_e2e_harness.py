@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from pyfatfs.PyFatFS import PyFatFS
 
-ROOT = Path("/home/zonderq/Pulpit/ZOnderqOS")
+ROOT = Path(__file__).resolve().parent.parent
 ISO = ROOT / "output-x64/ZonderqOS.iso"
 ELF = ROOT / "output-x64/ZonderqOS.elf"
 OUT_BASE = Path("/tmp/zonderq_alpha1_e2e")
@@ -274,7 +274,7 @@ def stage_auth_lock_wrong_pass(work_dir):
 def stage_fat32_and_acl(work_dir):
     print("[STAGE: fat32_acl] Running live FAT32 + non-root ACL QEMU E2E...", flush=True)
     res = subprocess.run(
-        ["python3", "/home/zonderq/.gemini/antigravity-cli/brain/436d43d1-c73f-43f0-8ac9-b5691e7b1547/scratch/qemu_audit_e2e.py"],
+        ["python3", str(ROOT / "tools/qemu_audit_e2e.py")],
         capture_output=True, text=True, check=True
     )
     print(res.stdout, flush=True)
