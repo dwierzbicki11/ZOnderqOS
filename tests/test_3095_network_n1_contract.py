@@ -111,7 +111,7 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertNotIn("Write8(", pci)
         before = SOURCE.index("E1000E PCI identity/MMIO/busmaster invalid before TX")
         bound = SOURCE.index("DRIVER_BOUND=PASS node=", before)
-        send = SOURCE.index("bool queued = NetworkManager.Send(frame, frame.Length);")
+        send = SOURCE.index("queued = NetworkManager.Send(frame, frame.Length);")
         after = SOURCE.index("E1000E PCI identity/command changed during TX", send)
         self.assertLess(before, bound)
         self.assertLess(bound, send)
@@ -201,7 +201,7 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertLess(helper, health)
         n1 = source.index("E1000E PCI DriverKit binding invalid")
         marker = source.index("DRIVER_BOUND=PASS node=", n1)
-        send = source.index("bool queued = NetworkManager.Send(frame, frame.Length);")
+        send = source.index("queued = NetworkManager.Send(frame, frame.Length);")
         self.assertLess(n1, marker)
         self.assertLess(marker, send)
         self.assertIn("TryGetE1000EDriverKitHealth(out var n1DriverNode)", source[:send])
@@ -219,7 +219,7 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("invalid E1000E PCI resources or IRQ source registration", verifier)
 
     def test_n1_rechecks_live_e1000e_after_raw_tx(self):
-        start = SOURCE.index("bool queued = NetworkManager.Send(frame, frame.Length);")
+        start = SOURCE.index("queued = NetworkManager.Send(frame, frame.Length);")
         check = SOURCE.index("NetworkAdapter txAdapter = NetworkManager.Primary;", start)
         fail = SOURCE.index("E1000E binding/link/MAC changed during TX", check)
         end = SOURCE.index("DHCP=NOT_ATTEMPTED IP=UNASSIGNED", fail)
@@ -361,7 +361,7 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("long echoFrequency = Stopwatch.Frequency;", n4)
         self.assertIn("echoFrequency <= 0 || echoStart <= 0", n4)
         self.assertEqual(n4.count("echoElapsed / echoFrequency >= 20"), 2)
-        self.assertEqual(n4.count("TCP echo total deadline exceeded"), 2)
+        self.assertEqual(n4.count("TCP echo total deadline exceeded"), 3)
         before = n4.index("while (received < response.Length)")
         first = n4.index("echoElapsed / echoFrequency >= 20", before)
         read = n4.index("int read = stream.Read(", before)
@@ -913,12 +913,12 @@ class NetworkN1Isolation(unittest.TestCase):
             "!current.Ready || !current.LinkUp",
             'TryFillSourceMac(current.MacAddress?.ToString() ?? "", liveMacFrame)',
             "liveMacFrame[6 + macByte] != template[6 + macByte]",
-            "if (!NetworkManager.Send(burst, frameLength))",
+            "queued = NetworkManager.Send(burst, frameLength);",
             "Thread.Sleep(5);",
         ):
             self.assertIn(term, burst)
         self.assertLess(burst.index("if ((sequence & 31) == 0)"),
-                        burst.index("if (!NetworkManager.Send(burst, frameLength))"))
+                        burst.index("queued = NetworkManager.Send(burst, frameLength);"))
         # Five read-only PCI BAR/INTx checks at 0/32/64/96/128 TX.
         self.assertIn("ushort expectedPciCommand, ulong expectedPciBar0", burst)
         self.assertIn("byte expectedIrqLine, byte expectedIrqPin", burst)
@@ -928,10 +928,10 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("irqLine != expectedIrqLine || irqPin != expectedIrqPin", burst)
         self.assertIn("finalCommand != expectedPciCommand || finalBar0 != expectedPciBar0", burst)
         self.assertLess(burst.index("E1000EPciIdentity.TryReadReady("),
-                        burst.index("if (!NetworkManager.Send(burst, frameLength))"))
+                        burst.index("queued = NetworkManager.Send(burst, frameLength);"))
         self.assertIn("IsE1000EDriverKitStable(expectedResources, expectedIrqSources)", burst)
         self.assertLess(burst.index("IsE1000EDriverKitStable(expectedResources, expectedIrqSources)"),
-                        burst.index("if (!NetworkManager.Send(burst, frameLength))"))
+                        burst.index("queued = NetworkManager.Send(burst, frameLength);"))
         self.assertIn('TX_NIC_CHECK=PASS sent=128', burst)
         # The last 32 descriptors must be followed by a fresh adapter
         # readiness/link/MAC check, not only PCI config and lease checks.
@@ -946,7 +946,7 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertLess(burst.index('IsE1000ELeaseStable(expectedMac, expectedIp,'),
                         burst.index('TX_NIC_CHECK=PASS sent='))
         self.assertLess(burst.index('TX_NIC_CHECK=PASS sent='),
-                        burst.index('if (!NetworkManager.Send(burst, frameLength))'))
+                        burst.index('queued = NetworkManager.Send(burst, frameLength);'))
         self.assertIn("verify_3095_network_n6_burst.py", SMOKE)
         self.assertIn("verify_3095_e1000e_dma_trace.py", SMOKE)
         self.assertIn("e1000e_tx_descr", SMOKE)
