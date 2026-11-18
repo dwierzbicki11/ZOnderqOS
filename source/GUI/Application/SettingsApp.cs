@@ -363,7 +363,7 @@ namespace ZonderqOS.GUI.Apps
         {
             DrawRow(canvas, contentX, contentWidth, 0, IconType.Settings,
                 "NETWORK STATUS", "ZOnderqOS TCP/IP stack status",
-                networkReady ? "GOTOWA" : "OFFLINE", networkReady ? Good : Danger);
+                networkReady ? "READY" : "OFFLINE", networkReady ? Good : Danger);
             DrawRow(canvas, contentX, contentWidth, 1, IconType.Settings,
                 "IPv4 MODE", "DHCP or saved static profile",
                 global::ZonderqOS.SystemSettings.NetworkModeName, Accent);
