@@ -342,7 +342,7 @@ namespace ZonderqOS.GUI.Apps
                 isRunning = false;
                 statusMessage = "Koniec programu (OK)";
                 statusColor = GreenColor;
-                PrintConsole("--- PROGRAM ZAKONCZONY (OK) ---");
+                PrintConsole("--- PROGRAM FINISHED (OK) ---");
                 return;
             }
 
@@ -372,7 +372,7 @@ namespace ZonderqOS.GUI.Apps
             if (stmt.Equals("END", StringComparison.OrdinalIgnoreCase) || stmt.Equals("STOP", StringComparison.OrdinalIgnoreCase))
             {
                 isRunning = false;
-                statusMessage = "Program zakonczony (END)";
+                statusMessage = "Program finished (END)";
                 statusColor = GreenColor;
                 PrintConsole("--- KONIEC PROGRAMU ---");
                 return;
