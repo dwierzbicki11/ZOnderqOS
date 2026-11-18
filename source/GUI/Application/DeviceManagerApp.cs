@@ -46,7 +46,7 @@ namespace ZonderqOS.GUI.Apps
 
             DrawRow(canvas, 6, IconType.Refresh,
                 viewMode == 0 ? "USTAW AKTYWNY INTERFEJS" : "PONOWNIE SKANUJ PARTYCJE",
-                viewMode == 0 ? "Zastosuj zapisany profil IPv4 na wybranej karcie" : "Bez formatowania; tylko ponowny odczyt tablicy partycji",
+                viewMode == 0 ? "Apply the saved IPv4 profile to the selected adapter" : "No formatting; rescan the partition table only",
                 itemCount > 0 ? "EXECUTE" : "NONE", itemCount > 0 ? Warning : Muted);
         }
 
@@ -114,7 +114,7 @@ namespace ZonderqOS.GUI.Apps
                 viewMode = viewMode == 0 ? 1 : 0;
                 selectedIndex = 0;
                 RefreshData();
-                SetStatus("ZMIENIONO KATEGORIE URZADZEN", Accent);
+                SetStatus("DEVICE CATEGORY CHANGED", Accent);
                 return;
             }
 
@@ -124,7 +124,7 @@ namespace ZonderqOS.GUI.Apps
                 if (index < itemCount)
                 {
                     selectedIndex = index;
-                    SetStatus("WYBRANO URZADZENIE", Good);
+                    SetStatus("DEVICE SELECTED", Good);
                 }
                 return;
             }
