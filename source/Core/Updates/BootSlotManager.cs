@@ -111,7 +111,7 @@ namespace ZonderqOS.SystemCore.Updates
             {
                 EmergencyRecoveryNeeded = true;
                 SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT",
-                    "Error inicjalizacji BootSlotManager: " + ex.Message);
+                    "BootSlotManager initialization error: " + ex.Message);
             }
         }
 
@@ -564,7 +564,7 @@ namespace ZonderqOS.SystemCore.Updates
                     throw new IOException("Stale .previous backup remains; slot diagnostics required.");
                 long totalBytes = new FileInfo(sourceKernelPath).Length;
                 if (totalBytes < 4)
-                    throw new IOException("Obraz kernela jest zbyt krotki.");
+                    throw new IOException("Kernel image is too short.");
                 long copiedBytes = 0;
                 NativeScratchBuffer<byte> copyBuffer = default;
                 copyBuffer.Allocate(64 * 1024);
@@ -596,7 +596,7 @@ namespace ZonderqOS.SystemCore.Updates
                     throw new IOException("Image is not a valid ELF64 file with a program header table.");
                 string actualHash = ComputeFileSha256(tempPath);
                 if (!Crypto.FixedTimeEquals(actualHash.ToLowerInvariant(), expectedSha256.ToLowerInvariant()))
-                    throw new IOException("Error SHA-256 tymczasowego obrazu kernela.");
+                    throw new IOException("Temporary kernel image SHA-256 verification failed.");
 
                 // Preserve the former inactive image until the replacement has
                 // passed readback. Never touch the running/fallback slot.
@@ -647,7 +647,7 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
-                error = "Error bezpiecznego stagingu slotu " + targetSlot + ": " + ex.Message;
+                error = "Secure slot staging failed for " + targetSlot + ": " + ex.Message;
                 if (slotMetaMutated)
                 {
                     if (targetSlot == SlotA)
@@ -753,7 +753,7 @@ namespace ZonderqOS.SystemCore.Updates
                 SaveBootState();
 
                 SystemLogger.Log(SystemLogLevel.Info, "BOOTSLOT",
-                    $"Aktywowano slot {targetSlot}. Limine default_entry zaktualizowany. Wymagany restart.");
+                    $"Activated slot {targetSlot}. Limine default_entry updated. Restart required.");
                 return true;
             }
             catch (Exception ex)
@@ -835,7 +835,7 @@ namespace ZonderqOS.SystemCore.Updates
                     if (expectedHash.Length != 64 ||
                         !Crypto.FixedTimeEquals(ComputeFileSha256(kernelPath).ToLowerInvariant(), expectedHash.ToLowerInvariant()))
                     {
-                        error = $"Error sumy SHA-256 obrazu kernela w slocie przywracania {previousSlot}.";
+                        error = $"Kernel image SHA-256 verification failed in recovery slot {previousSlot}.";
                         return false;
                     }
                 }
