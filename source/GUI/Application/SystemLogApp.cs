@@ -51,7 +51,7 @@ namespace ZonderqOS.GUI.Apps
         protected override void RenderContent(Canvas canvas)
         {
             DrawRow(canvas, 0, IconType.File,
-                "ZRODLO LOGU", "Kliknij aby przelaczyc auth / system / guardian", CurrentName, Accent);
+                "LOG SOURCE", "Click to switch auth / system / guardian", CurrentName, Accent);
             DrawNumericRow(canvas, 1, IconType.File,
                 "ROZMIAR PLIKU", CurrentPath, fileBytes > 0 ? (ulong)fileBytes / 1024UL : 0UL, " KB");
 
@@ -69,7 +69,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (accessDenied)
             {
-                SmallTextRenderer.Draw(canvas, "BRAK UPRAWNIEN DO ODCZYTU TEGO LOGU", x + 12, y + 56, Danger);
+                SmallTextRenderer.Draw(canvas, "NO PERMISSION TO READ THIS LOG", x + 12, y + 56, Danger);
                 return;
             }
 
@@ -89,7 +89,7 @@ namespace ZonderqOS.GUI.Apps
             }
 
             if (lineCount == 0)
-                SmallTextRenderer.Draw(canvas, "BRAK WPISOW", x + 12, y + 56, Muted);
+                SmallTextRenderer.Draw(canvas, "NO ENTRIES", x + 12, y + 56, Muted);
         }
 
         protected override void RefreshData()
@@ -157,7 +157,7 @@ namespace ZonderqOS.GUI.Apps
             else if (row == 1)
             {
                 RefreshData();
-                SetStatus(accessDenied ? "BRAK UPRAWNIEN DO LOGU" : "LOG ODSWIEZONY", accessDenied ? Danger : Good);
+                SetStatus(accessDenied ? "NO LOG ACCESS" : "LOG REFRESHED", accessDenied ? Danger : Good);
             }
         }
 
@@ -239,7 +239,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch
             {
-                SetStatus("NIE UDALO SIE WYCZYSCIC LOGU", Danger);
+                SetStatus("FAILED TO CLEAR LOG", Danger);
             }
         }
     }

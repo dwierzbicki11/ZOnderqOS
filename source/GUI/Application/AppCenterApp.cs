@@ -29,7 +29,7 @@ namespace ZonderqOS.GUI.Apps
         // AppCategory values intentionally map to these tab indexes.
         private static readonly string[] CategoryLabels =
         {
-            "WSZYSTKIE", "SYSTEM", "NARZEDZIA", "PLIKI", "GRY"
+            "ALL", "SYSTEM", "TOOLS", "FILES", "GAMES"
         };
 
         private static readonly Color Surface = Color.FromArgb(19, 24, 30);
@@ -89,7 +89,7 @@ namespace ZonderqOS.GUI.Apps
             if (key.Key == ConsoleKeyEx.F5)
             {
                 RebuildFilter();
-                SetStatus("ODSWIEZONO KATALOG APLIKACJI", Good);
+                SetStatus("APPLICATION CATALOG REFRESHED", Good);
                 return;
             }
 
@@ -221,7 +221,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(SystemTheme.Accent, x, y, 4, 54);
             IconManager.DrawScaled(canvas, IconType.AppCenter, x + 15, y + 13, 28, 28);
             SmallTextRenderer.Draw(canvas, "APP CENTER", x + 55, y + 13, Text);
-            SmallTextRenderer.Draw(canvas, "LOKALNY KATALOG WBUDOWANYCH APLIKACJI ZONDERQOS", x + 55, y + 32, Muted);
+            SmallTextRenderer.Draw(canvas, "LOCAL CATALOG OF ZONDERQOS APPLICATIONS", x + 55, y + 32, Muted);
 
             if (Window.Width >= 950)
             {
@@ -303,7 +303,7 @@ namespace ZonderqOS.GUI.Apps
                 if (!exists)
                 {
                     if (row == 0 && visibleCount == 0)
-                        SmallTextRenderer.Draw(canvas, "BRAK APLIKACJI PASUJACYCH DO FILTRA", x + 18, ry + 24, Muted);
+                        SmallTextRenderer.Draw(canvas, "NO APPLICATIONS MATCH THE FILTER", x + 18, ry + 24, Muted);
                     continue;
                 }
 
@@ -341,7 +341,7 @@ namespace ZonderqOS.GUI.Apps
             AppDescriptor app = SelectedApp();
             if (app == null)
             {
-                SmallTextRenderer.Draw(canvas, "BRAK WYBRANEJ APLIKACJI", x + 16, y + 62, Muted);
+                SmallTextRenderer.Draw(canvas, "NO APPLICATION SELECTED", x + 16, y + 62, Muted);
                 return;
             }
 
@@ -353,14 +353,14 @@ namespace ZonderqOS.GUI.Apps
             DrawDetailLine(canvas, x, y + 127, width, "KATEGORIA", CategoryLabel(app.Category), Text);
             DrawDetailLine(canvas, x, y + 158, width, "STATUS", "ZAINSTALOWANA", Good);
             DrawDetailLine(canvas, x, y + 189, width, "ZRODLO", "SYSTEM", Text);
-            DrawDetailLine(canvas, x, y + 220, width, "AKCJA", "URUCHOM", SystemTheme.Accent);
+            DrawDetailLine(canvas, x, y + 220, width, "ACTION", "LAUNCH", SystemTheme.Accent);
 
             canvas.DrawFilledRectangle(Color.FromArgb(23, 29, 35), x + 14, y + 262, width - 28, 82);
             canvas.DrawRectangle(Border, x + 14, y + 262, width - 28, 82);
             SmallTextRenderer.DrawClipped(canvas, app.Description, x + 27, y + 281,
                 Math.Max(40, width - 54), Text);
             SmallTextRenderer.DrawClipped(canvas,
-                "App Center nie instaluje jeszcze pakietow z sieci.", x + 27, y + 317,
+                "App Center does not yet install packages from the network.", x + 27, y + 317,
                 Math.Max(40, width - 54), Warning);
         }
 
@@ -384,7 +384,7 @@ namespace ZonderqOS.GUI.Apps
         {
             int y = ActionY;
             int buttonWidth = ActionWidth;
-            DrawAction(canvas, 0, Window.X + 18, y, buttonWidth, "URUCHOM", IconType.Play,
+            DrawAction(canvas, 0, Window.X + 18, y, buttonWidth, "LAUNCH", IconType.Play,
                 visibleCount > 0 ? SystemTheme.Accent : Muted);
             DrawAction(canvas, 1, Window.X + 18 + buttonWidth + 10, y, buttonWidth,
                 "WYCZYSC FILTR", IconType.Refresh, Text);
@@ -542,13 +542,13 @@ namespace ZonderqOS.GUI.Apps
             AppDescriptor app = SelectedApp();
             if (app == null)
             {
-                SetStatus("BRAK APLIKACJI DO URUCHOMIENIA", Warning);
+                SetStatus("NO APPLICATION TO LAUNCH", Warning);
                 return;
             }
 
             if (!app.Launch())
             {
-                SetStatus("APLIKACJA NIE MA PODPIETEGO STARTERA", Warning);
+                SetStatus("APPLICATION HAS NO REGISTERED LAUNCHER", Warning);
                 return;
             }
 

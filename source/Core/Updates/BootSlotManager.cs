@@ -341,7 +341,7 @@ namespace ZonderqOS.SystemCore.Updates
                     }
                     // Automatic failover to fallback slot!
                     SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT",
-                        $"AWARYJNY ROLLBACK: Slot {PendingSlot} nie osiagnal stabilnego stanu po {BootAttempts} probach. Przepiecie na slot {FallbackSlot}!");
+                        $"EMERGENCY ROLLBACK: Slot {PendingSlot} did not become healthy after {BootAttempts} attempts. Switching to fallback slot {FallbackSlot}!");
 
                     if (PendingSlot == SlotA)
                         SlotAStatus = SlotHealth.Failed;
@@ -516,12 +516,12 @@ namespace ZonderqOS.SystemCore.Updates
             error = string.Empty;
             if (string.IsNullOrEmpty(sourceKernelPath) || !File.Exists(sourceKernelPath))
             {
-                error = "Brak pliku zrodlowego kernela.";
+                error = "Kernel source file is missing.";
                 return false;
             }
             if (string.IsNullOrEmpty(expectedSha256) || expectedSha256.Length != 64)
             {
-                error = "Brak poprawnego SHA-256 kernela; instalacja zabroniona.";
+                error = "Kernel SHA-256 is missing or invalid; installation denied.";
                 return false;
             }
             for (int i = 0; i < expectedSha256.Length; i++)
@@ -539,7 +539,7 @@ namespace ZonderqOS.SystemCore.Updates
             // another update while A/B recovery is still pending.
             if (!string.IsNullOrEmpty(PendingSlot))
             {
-                error = "Nie mozna nadpisac rezerwowego slotu przed potwierdzeniem rozruchu: " + PendingSlot;
+                error = "Cannot overwrite the fallback slot before boot confirmation: " + PendingSlot;
                 return false;
             }
 
@@ -593,7 +593,7 @@ namespace ZonderqOS.SystemCore.Updates
                     throw new IOException("Rozmiar pliku zmienil sie podczas kopiowania.");
 
                 if (!HasValidElfHeaderFile(tempPath))
-                    throw new IOException("Obraz nie jest poprawnym ELF64 z tablica program headers.");
+                    throw new IOException("Image is not a valid ELF64 file with a program header table.");
                 string actualHash = ComputeFileSha256(tempPath);
                 if (!Crypto.FixedTimeEquals(actualHash.ToLowerInvariant(), expectedSha256.ToLowerInvariant()))
                     throw new IOException("Error SHA-256 tymczasowego obrazu kernela.");
@@ -693,12 +693,12 @@ namespace ZonderqOS.SystemCore.Updates
             }
             if (targetSlot == ActiveSlot || !string.IsNullOrEmpty(PendingSlot))
             {
-                error = "Nie mozna ponownie aktywowac aktywnego slotu ani zmienic niepotwierdzonej aktualizacji.";
+                error = "Cannot reactivate the current slot or replace an unconfirmed update.";
                 return false;
             }
             if (!PrebootGuardEnabled || !HasVerifiedIndependentPrebootRecovery())
             {
-                error = "Nie potwierdzono niezaleznego EFI BootGuard w lancuchu rozruchu. Sama flaga w boot_state.cfg nie wystarcza do aktywacji nowego slotu.";
+                error = "Independent EFI BootGuard was not verified in the boot chain. A flag in boot_state.cfg alone cannot authorize slot activation.";
                 return false;
             }
 
@@ -718,14 +718,14 @@ namespace ZonderqOS.SystemCore.Updates
                 string kernelPath = GetSlotKernelPath(targetSlot);
                 if (!File.Exists(kernelPath))
                 {
-                    error = $"Nie mozna aktywowac slotu {targetSlot}: brak pliku kernela {kernelPath}!";
+                    error = $"Cannot activate slot {targetSlot}: kernel file {kernelPath} is missing!";
                     return false;
                 }
                 // Activation must not proceed with a malformed, unverified slot.
                 string hashPath = Path.Combine(Path.GetDirectoryName(kernelPath), "kernel.sha256");
                 if (!File.Exists(hashPath))
                 {
-                    error = "Brak zapisanego SHA-256 docelowego slotu.";
+                    error = "Target slot SHA-256 is missing.";
                     return false;
                 }
                 string expectedHash = File.ReadAllText(hashPath).Trim();
@@ -775,7 +775,7 @@ namespace ZonderqOS.SystemCore.Updates
                     }
                     catch (Exception recoveryEx)
                     {
-                        error += " UWAGA: NIE UDALO SIE ODTWORZYC KONFIGURACJI ROZRUCHU: " +
+                        error += " WARNING: FAILED TO RESTORE BOOT CONFIGURATION: " +
                             recoveryEx.Message;
                     }
                 }
@@ -811,14 +811,14 @@ namespace ZonderqOS.SystemCore.Updates
                 }
                 if (previousSlot == ActiveSlot)
                 {
-                    error = "Brak odrebnego slotu przywracania — FallbackSlot jest rowny ActiveSlot.";
+                    error = "No separate fallback slot: FallbackSlot equals ActiveSlot.";
                     return false;
                 }
 
                 string kernelPath = GetSlotKernelPath(previousSlot);
                 if (!File.Exists(kernelPath))
                 {
-                    error = $"Brak pliku kernela w slocie przywracania {previousSlot} ({kernelPath})!";
+                    error = $"Kernel file for fallback slot {previousSlot} is missing ({kernelPath})!";
                     return false;
                 }
 
@@ -860,7 +860,7 @@ namespace ZonderqOS.SystemCore.Updates
                 SyncLimineConfig();
                 SaveBootState();
 
-                SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT", $"Reczny powrot (Rollback) do slotu {previousSlot}.");
+                SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT", $"Manual rollback to slot {previousSlot}.");
                 return true;
             }
             catch (Exception ex)
@@ -882,7 +882,7 @@ namespace ZonderqOS.SystemCore.Updates
                     }
                     catch (Exception recoveryEx)
                     {
-                        error += " UWAGA: NIE UDALO SIE ODTWORZYC KONFIGURACJI ROZRUCHU: " +
+                        error += " WARNING: FAILED TO RESTORE BOOT CONFIGURATION: " +
                             recoveryEx.Message;
                     }
                 }
