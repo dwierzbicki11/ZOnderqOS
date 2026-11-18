@@ -127,8 +127,10 @@ def validate(serial: str, pcap: bytes) -> str:
         raise ValueError("missing unique guest lease")
     guest = bytes(int(part) for part in leases[0].group(1).split("."))
     packets = [p for frame in pcap_frames(pcap) if (p := tcp_frame(frame))]
-    # A malformed control packet for the N4 socket must not be skipped in
-    # favour of a later valid handshake. Other TCP flows remain irrelevant.
+    # TCP FIN after a completed echo is normal socket teardown. Earlier
+    # FINs and all RSTs still invalidate the isolated exchange. Evaluate
+    # packets in capture order rather than rejecting legitimate cleanup.
+    echo_completed = False
     for packet in packets:
         outbound = (packet["src"] == guest and packet["dst"] == SERVER and
                     packet["src_mac"] == MAC and packet["dport"] == PORT)
@@ -137,11 +139,15 @@ def validate(serial: str, pcap: bytes) -> str:
         if not (outbound or inbound):
             continue
         flags = packet["flags"]
-        # This isolated echo probe never closes or resets the socket before
-        # the successful reply. A later valid exchange must not conceal a
-        # FIN/RST on the same guest/server port pair.
-        if flags & (0x01 | 0x04):
-            raise ValueError("unexpected N4 TCP FIN/RST control packet")
+        if flags & 0x04:
+            raise ValueError("unexpected N4 TCP RST control packet")
+        if flags & 0x01:
+            if not echo_completed or flags != 0x11 or packet["payload"]:
+                raise ValueError("premature or malformed N4 TCP FIN")
+            continue
+        if (not outbound and packet["payload"] == RESPONSE and
+                flags in (0x10, 0x18)):
+            echo_completed = True
         if flags & 0x02:  # SYN, including SYN-ACK
             expected = 0x02 if outbound else 0x12
             if flags != expected or packet["payload"] or (outbound and packet["ack"] != 0):
@@ -283,6 +289,14 @@ def self_test() -> None:
         PING_START, PING_PASS, TCP_START, TCP_PASS,
     ])
     assert "PASS" in validate(serial, synthetic_capture(frames))
+    # The host closes the socket after sending the echo response. A
+    # checksum-valid FIN|ACK after that response is legitimate TCP teardown.
+    # A late guest FIN|ACK is also permitted; RST remains forbidden.
+    teardown = frames + [
+        fake_tcp(True, 0x11, 5001 + len(RESPONSE), 1001 + len(REQUEST)),
+        fake_tcp(False, 0x11, 1001 + len(REQUEST), 5002 + len(RESPONSE)),
+    ]
+    assert "PASS" in validate(serial, synthetic_capture(teardown))
     # IPv4 reserved flag (0x8000) is invalid even when DF/MF/offset are clear.
     # Recompute the IP checksum so this negative case isolates flag validation.
     reserved = bytearray(frames[-1])
@@ -485,7 +499,7 @@ def self_test() -> None:
         (serial, frames[:7] + [corrupt_mac(frames[7], 0)] + frames[8:]),
         (serial, frames[:7] + [fake_tcp(False, 0x06, 1000, 0)] + frames[8:]),  # SYN|RST
         (serial, frames + [fake_tcp(False, 0x14, 1001 + len(REQUEST), 5001 + len(RESPONSE))]),  # ACK|RST after valid exchange
-        (serial, frames + [fake_tcp(True, 0x11, 5001 + len(RESPONSE), 1001 + len(REQUEST))]),  # FIN|ACK after valid exchange
+        (serial, frames[:11] + [fake_tcp(True, 0x11, 5001, 1001 + len(REQUEST))] + frames[11:]),  # premature FIN before echo reply
         (serial, frames[:7] + [fake_tcp(False, 0x0A, 1000, 0)] + frames[8:]),  # SYN|PSH
         (serial, frames[:7] + [fake_tcp(False, 0x22, 1000, 0)] + frames[8:]),  # SYN|URG
         (serial, frames[:7] + [fake_tcp(False, 0x42, 1000, 0)] + frames[8:]),  # SYN|ECE
