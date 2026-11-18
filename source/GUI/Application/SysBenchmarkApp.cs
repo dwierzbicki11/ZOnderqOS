@@ -6,6 +6,7 @@ using Cosmos.Kernel.System.Graphics;
 using ZonderqOS.GUI;
 using ZonderqOS.GUI.Icons;
 using ZonderqOS.SystemCore;
+using ZonderqOS.SystemCore.Diagnostics;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -658,7 +659,7 @@ namespace ZonderqOS.GUI.Apps
 
                 // Tab selection
                 int tabY = wy + 8;
-                int tabW = 180;
+                int tabW = 145;
                 int tabH = 26;
 
                 if (Hit(mouseX, mouseY, wx + 12, tabY, tabW, tabH))
@@ -676,6 +677,26 @@ namespace ZonderqOS.GUI.Apps
                 {
                     activeTab = 2;
                     return;
+                }
+                if (Hit(mouseX, mouseY, wx + 12 + (tabW + 6) * 3, tabY, tabW, tabH))
+                {
+                    activeTab = 3;
+                    return;
+                }
+
+                if (activeTab == 3)
+                {
+                    int btnY = wy + 348;
+                    if (Hit(mouseX, mouseY, wx + 14, btnY, 195, 30) && !SystemDiagnosticRunner.Shared.IsRunning)
+                    {
+                        SystemDiagnosticRunner.Shared.Start(false, false);
+                        return;
+                    }
+                    if (Hit(mouseX, mouseY, wx + 220, btnY, 110, 30) && SystemDiagnosticRunner.Shared.IsRunning)
+                    {
+                        SystemDiagnosticRunner.Shared.RequestAbort();
+                        return;
+                    }
                 }
 
                 // Tab 0 interactions
@@ -746,12 +767,13 @@ namespace ZonderqOS.GUI.Apps
 
             // Tab bar
             int tabY = wy + 8;
-            int tabW = 180;
+            int tabW = 145;
             int tabH = 26;
 
-            DrawTab(canvas, "⚡ REALNY BENCHMARK", wx + 12, tabY, tabW, tabH, activeTab == 0);
-            DrawTab(canvas, "💻 SPECYFIKACJA SYSTEMU", wx + 12 + tabW + 6, tabY, tabW, tabH, activeTab == 1);
-            DrawTab(canvas, "📊 WYKRES & RANKING", wx + 12 + (tabW + 6) * 2, tabY, tabW, tabH, activeTab == 2);
+            DrawTab(canvas, "⚡ BENCHMARK", wx + 12, tabY, tabW, tabH, activeTab == 0);
+            DrawTab(canvas, "💻 SPECYFIKACJA", wx + 12 + tabW + 6, tabY, tabW, tabH, activeTab == 1);
+            DrawTab(canvas, "📊 RANKING", wx + 12 + (tabW + 6) * 2, tabY, tabW, tabH, activeTab == 2);
+            DrawTab(canvas, "🩺 DIAGNOSTYKA", wx + 12 + (tabW + 6) * 3, tabY, tabW, tabH, activeTab == 3);
 
             canvas.DrawLine(Border, wx + 10, tabY + tabH + 6, wx + ww - 10, tabY + tabH + 6);
 
@@ -765,10 +787,54 @@ namespace ZonderqOS.GUI.Apps
             {
                 RenderSpecsTab(canvas, wx, contentY, ww);
             }
-            else
+            else if (activeTab == 2)
             {
                 RenderComparisonTab(canvas, wx, contentY, ww);
             }
+            else
+            {
+                if (SystemDiagnosticRunner.Shared.IsRunning)
+                    SystemDiagnosticRunner.Shared.Step();
+                RenderDiagnosticsTab(canvas, wx, contentY, ww);
+            }
+        }
+
+        private void RenderDiagnosticsTab(Canvas canvas, int wx, int y, int ww)
+        {
+            var runner = SystemDiagnosticRunner.Shared;
+            SmallTextRenderer.DrawClipped(canvas, "ZOnderqOS System Benchmark & Diagnostics (Alpha 1)", wx + 14, y, ww - 28, TextColor);
+            SmallTextRenderer.DrawClipped(canvas, runner.CurrentScenario, wx + 14, y + 20, ww - 28, MutedColor);
+
+            // Progress bar
+            int barX = wx + 14;
+            int barY = y + 42;
+            int barW = ww - 28;
+            canvas.DrawFilledRectangle(Panel, barX, barY, barW, 14);
+            int fillW = (barW * runner.ProgressPercent) / 100;
+            if (fillW > 0)
+                canvas.DrawFilledRectangle(AccentColor, barX, barY, fillW, 14);
+
+            // Results list
+            int ry = y + 66;
+            for (int i = 0; i < runner.Results.Count && i < 8; i++)
+            {
+                var r = runner.Results[i];
+                Color c = r.Status == DiagnosticStatus.Pass ? GreenColor
+                        : r.Status == DiagnosticStatus.Fail ? RedColor
+                        : GoldColor;
+                SmallTextRenderer.DrawClipped(canvas, r.Name, wx + 14, ry, 220, TextColor);
+                SmallTextRenderer.DrawClipped(canvas, r.Status.ToString(), wx + 240, ry, 80, c);
+                SmallTextRenderer.DrawClipped(canvas, r.Metrics ?? string.Empty, wx + 325, ry, ww - 340, MutedColor);
+                ry += 20;
+            }
+
+            // Action buttons
+            int btnY = y + 296;
+            canvas.DrawFilledRectangle(runner.IsRunning ? Panel : AccentColor, wx + 14, btnY, 195, 30);
+            SmallTextRenderer.DrawClipped(canvas, "Rozpocznij pelny test", wx + 24, btnY + 8, 175, TextColor);
+
+            canvas.DrawFilledRectangle(runner.IsRunning ? RedColor : Panel, wx + 220, btnY, 110, 30);
+            SmallTextRenderer.DrawClipped(canvas, "Przerwij", wx + 245, btnY + 8, 80, TextColor);
         }
 
         private void DrawTab(Canvas canvas, string title, int x, int y, int w, int h, bool selected)
