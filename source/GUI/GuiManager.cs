@@ -1197,8 +1197,8 @@ namespace ZonderqOS.GUI
                 SecurityLogger.LogSessionLockEvent(cachedUnlockLogMessage);
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Security,
-                    "BEZPIECZENSTWO",
-                    "Sesja odblokowana",
+                    "SECURITY",
+                    "Session unlocked",
                     "Desktop access restored after authentication.");
             }
             return unlocked;
