@@ -27,7 +27,7 @@ namespace ZonderqOS.Commands
                 return;
             }
 
-            CommandIO.WriteLine("[INFO] Inicjalizacja sysmond w tle...");
+            CommandIO.WriteLine("[INFO] Initializing sysmond in the background...");
 
             int pid = ProcessManager.Start("sysmond", token =>
             {
