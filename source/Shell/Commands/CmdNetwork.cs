@@ -5,7 +5,7 @@ namespace ZonderqOS.Commands
     public class CmdNetwork : ICommand
     {
         public string Name { get; } = "net";
-        public string Description { get; } = "Zarzadzanie siecia: net [info | dhcp | dns <domena> | udp <ip> <port> <tekst> | device <id>]";
+        public string Description { get; } = "Network management: net [info | dhcp | dns <domain> | udp <ip> <port> <message> | device <id>]";
 
         public void Execute(string[] args, ref string currentPath)
         {
@@ -14,7 +14,7 @@ namespace ZonderqOS.Commands
                 CommandIO.WriteLine("Usage:");
                 CommandIO.WriteLine("  net info                         - Show network interface status");
                 CommandIO.WriteLine("  net dhcp                         - DHCP configuration for the active network adapter");
-                CommandIO.WriteLine("  net dns <domena>                 - Rozwiaz nazwe domeny");
+                CommandIO.WriteLine("  net dns <domain>                 - Resolve domain name");
                 CommandIO.WriteLine("  net udp <ip> <port> <message>  - Send a UDP packet");
                 CommandIO.WriteLine("  net device <id>                  - Switch active network adapter");
                 CommandIO.LastCommandSuccess = false;
@@ -42,7 +42,7 @@ namespace ZonderqOS.Commands
                     }
 
                     string domain = args[2];
-                    CommandIO.WriteLine("[NET] Odpytywanie DNS dla: " + domain + "...");
+                    CommandIO.WriteLine("[NET] DNS lookup for: " + domain + "...");
                     string ip = Network.ResolveDns(domain);
                     if (string.IsNullOrEmpty(ip))
                     {
@@ -51,7 +51,7 @@ namespace ZonderqOS.Commands
                         return;
                     }
 
-                    CommandIO.WriteLine("[DNS] Adres IP dla " + domain + ": " + ip);
+                    CommandIO.WriteLine("[DNS] IP address for " + domain + ": " + ip);
                     CommandIO.LastCommandSuccess = true;
                     return;
 
@@ -86,7 +86,7 @@ namespace ZonderqOS.Commands
                     return;
 
                 default:
-                    CommandIO.WriteLine("Nieznana podkomenda: " + subCommand);
+                    CommandIO.WriteLine("Unknown subcommand: " + subCommand);
                     CommandIO.LastCommandSuccess = false;
                     return;
             }

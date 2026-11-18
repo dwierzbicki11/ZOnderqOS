@@ -100,15 +100,15 @@ namespace ZonderqOS.Security
 
                 // Standard sensible defaults:
                 // Outbound essential network traffic:
-                AddRuleInternal(53, RuleProtocol.UDP, RuleDirection.Outbound, RuleAction.Allow, "Zapytania DNS (Domain Name System)");
-                AddRuleInternal(80, RuleProtocol.TCP, RuleDirection.Outbound, RuleAction.Allow, "Ruch sieciowy WWW (HTTP)");
-                AddRuleInternal(443, RuleProtocol.TCP, RuleDirection.Outbound, RuleAction.Allow, "Ruch szyfrowany SSL/TLS (HTTPS)");
-                AddRuleInternal(123, RuleProtocol.UDP, RuleDirection.Outbound, RuleAction.Allow, "Synchronizacja czasu zegara (NTP)");
+                AddRuleInternal(53, RuleProtocol.UDP, RuleDirection.Outbound, RuleAction.Allow, "DNS queries (Domain Name System)");
+                AddRuleInternal(80, RuleProtocol.TCP, RuleDirection.Outbound, RuleAction.Allow, "Web traffic (HTTP)");
+                AddRuleInternal(443, RuleProtocol.TCP, RuleDirection.Outbound, RuleAction.Allow, "Encrypted traffic SSL/TLS (HTTPS)");
+                AddRuleInternal(123, RuleProtocol.UDP, RuleDirection.Outbound, RuleAction.Allow, "Time synchronization (NTP)");
 
                 // Inbound protection:
-                AddRuleInternal(22, RuleProtocol.TCP, RuleDirection.Inbound, RuleAction.Drop, "Blokada zdalnego dostepu SSH");
-                AddRuleInternal(23, RuleProtocol.TCP, RuleDirection.Inbound, RuleAction.Drop, "Blokada nieszyfrowanego protokolu Telnet");
-                AddRuleInternal(445, RuleProtocol.TCP, RuleDirection.Inbound, RuleAction.Drop, "Blokada portu SMB / NetBIOS");
+                AddRuleInternal(22, RuleProtocol.TCP, RuleDirection.Inbound, RuleAction.Drop, "Block remote SSH access");
+                AddRuleInternal(23, RuleProtocol.TCP, RuleDirection.Inbound, RuleAction.Drop, "Block unencrypted Telnet");
+                AddRuleInternal(445, RuleProtocol.TCP, RuleDirection.Inbound, RuleAction.Drop, "Block SMB / NetBIOS port");
 
                 Mode = FirewallMode.Enabled;
                 SaveConfigLocked();

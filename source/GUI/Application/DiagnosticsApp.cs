@@ -13,17 +13,17 @@ namespace ZonderqOS.GUI.Apps
         private readonly Label graphicsLabel;
         private readonly Button closeButton;
 
-        public DiagnosticsApp(int x, int y, Action onClose) : base("Diagnostyka")
+        public DiagnosticsApp(int x, int y, Action onClose) : base("Diagnostics")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 560, 330, "Diagnostyka ZonderqOS");
+            Window = new Window(x, y, 560, 330, "ZOnderqOS Diagnostics");
             Window.CloseAction = Close;
 
-            titleLabel = new Label(25, 55, "Diagnostyka systemu", Color.MidnightBlue);
-            statusLabel = new Label(25, 100, "Status: GUI dziala poprawnie", Color.Green);
-            keyboardLabel = new Label(25, 135, "Klawiatura: aktywna", Color.Black);
-            mouseLabel = new Label(25, 170, "Mysz: aktywna", Color.Black);
-            graphicsLabel = new Label(25, 205, "Grafika: framebuffer Canvas aktywny", Color.Black);
+            titleLabel = new Label(25, 55, "System diagnostics", Color.MidnightBlue);
+            statusLabel = new Label(25, 100, "Status: GUI is working correctly", Color.Green);
+            keyboardLabel = new Label(25, 135, "Keyboard: active", Color.Black);
+            mouseLabel = new Label(25, 170, "Mouse: active", Color.Black);
+            graphicsLabel = new Label(25, 205, "Graphics: Canvas framebuffer active", Color.Black);
 
             Window.AddChild(titleLabel);
             Window.AddChild(statusLabel);

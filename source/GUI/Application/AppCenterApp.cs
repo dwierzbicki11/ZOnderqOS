@@ -225,7 +225,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (Window.Width >= 950)
             {
-                SmallTextRenderer.Draw(canvas, "ZAINSTALOWANE", x + width - 190, y + 14, Muted);
+                SmallTextRenderer.Draw(canvas, "INSTALLED", x + width - 190, y + 14, Muted);
                 SmallTextRenderer.DrawUInt(canvas, (ulong)registry.AppCenterCount, x + width - 70, y + 14, Text);
             }
         }
@@ -277,7 +277,7 @@ namespace ZonderqOS.GUI.Apps
                 canvas.DrawFilledRectangle(SystemTheme.Accent, caretX, y + 12, 1, 15);
             }
 
-            SmallTextRenderer.Draw(canvas, "WYNIKI", x + width - 100, y + 17, Muted);
+            SmallTextRenderer.Draw(canvas, "RESULTS", x + width - 100, y + 17, Muted);
             SmallTextRenderer.DrawUInt(canvas, (ulong)visibleCount, x + width - 42, y + 17, Text);
         }
 
@@ -322,7 +322,7 @@ namespace ZonderqOS.GUI.Apps
                 int chipX = x + width - 119;
                 canvas.DrawFilledRectangle(Color.FromArgb(23, 31, 37), chipX, ry + 13, 104, 30);
                 canvas.DrawRectangle(Border, chipX, ry + 13, 104, 30);
-                SmallTextRenderer.DrawCentered(canvas, "WBUDOWANA", chipX + 5, ry + 25, 94,
+                SmallTextRenderer.DrawCentered(canvas, "BUILT-IN", chipX + 5, ry + 25, 94,
                     selected ? SystemTheme.Accent : Good);
             }
         }
@@ -335,7 +335,7 @@ namespace ZonderqOS.GUI.Apps
             const int height = 372;
             canvas.DrawFilledRectangle(Panel, x, y, width, height);
             canvas.DrawRectangle(Border, x, y, width, height);
-            SmallTextRenderer.Draw(canvas, "SZCZEGOLY", x + 16, y + 17, Text);
+            SmallTextRenderer.Draw(canvas, "DETAILS", x + 16, y + 17, Text);
             canvas.DrawLine(Border, x + 16, y + 38, x + width - 16, y + 38);
 
             AppDescriptor app = SelectedApp();
@@ -351,7 +351,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "ZONDERQOS BUILT-IN", x + 76, y + 87, Good);
 
             DrawDetailLine(canvas, x, y + 127, width, "CATEGORY", CategoryLabel(app.Category), Text);
-            DrawDetailLine(canvas, x, y + 158, width, "STATUS", "ZAINSTALOWANA", Good);
+            DrawDetailLine(canvas, x, y + 158, width, "STATUS", "INSTALLED", Good);
             DrawDetailLine(canvas, x, y + 189, width, "SOURCE", "SYSTEM", Text);
             DrawDetailLine(canvas, x, y + 220, width, "ACTION", "LAUNCH", SystemTheme.Accent);
 
@@ -368,7 +368,7 @@ namespace ZonderqOS.GUI.Apps
         {
             int index = (int)appCategory;
             if (index < 1 || index >= CategoryLabels.Length)
-                return "INNA";
+                return "OTHER";
             return CategoryLabels[index];
         }
 
@@ -387,7 +387,7 @@ namespace ZonderqOS.GUI.Apps
             DrawAction(canvas, 0, Window.X + 18, y, buttonWidth, "LAUNCH", IconType.Play,
                 visibleCount > 0 ? SystemTheme.Accent : Muted);
             DrawAction(canvas, 1, Window.X + 18 + buttonWidth + 10, y, buttonWidth,
-                "WYCZYSC FILTR", IconType.Refresh, Text);
+                "CLEAR FILTER", IconType.Refresh, Text);
         }
 
         private void DrawAction(Canvas canvas, int index, int x, int y, int width, string label,
@@ -562,7 +562,7 @@ namespace ZonderqOS.GUI.Apps
             selectedVisibleIndex = 0;
             offset = 0;
             RebuildFilter();
-            SetStatus("WYCZYSZCZONO FILTR", Good);
+            SetStatus("FILTER CLEARED", Good);
         }
 
         private void SetStatus(string message, Color color)

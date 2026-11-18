@@ -459,11 +459,11 @@ namespace ZonderqOS.GUI.Apps
             int btnH = 26;
 
             DrawBtn(canvas, "SZESCIAN", contentX + 14, btnY, 74, btnH, currentShape == 0);
-            DrawBtn(canvas, "PIRAMIDA", contentX + 94, btnY, 74, btnH, currentShape == 1);
-            DrawBtn(canvas, "DIAMENT", contentX + 174, btnY, 74, btnH, currentShape == 2);
+            DrawBtn(canvas, "PYRAMID", contentX + 94, btnY, 74, btnH, currentShape == 1);
+            DrawBtn(canvas, "DIAMOND", contentX + 174, btnY, 74, btnH, currentShape == 2);
             DrawBtn(canvas, "TORUS", contentX + 254, btnY, 74, btnH, currentShape == 3);
 
-            string modeLabel = wireframeMode ? "TRYB: SIATKA" : "TRYB: SCIANKI";
+            string modeLabel = wireframeMode ? "MODE: WIREFRAME" : "MODE: SOLID";
             DrawBtn(canvas, modeLabel, contentX + 336, btnY, 124, btnH, false);
 
             string rotLabel = isRotating ? "OBROT: WL" : "OBROT: STOP";

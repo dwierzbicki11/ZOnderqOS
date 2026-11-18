@@ -143,7 +143,7 @@ namespace ZonderqOS.GUI
                 if (key.Key == ConsoleKeyEx.F5)
                 {
                     LoadUsers();
-                    SetStatus("ODSWIEZONO LISTE KONT", Good);
+                    SetStatus("ACCOUNT LIST REFRESHED", Good);
                     return;
                 }
 
@@ -564,7 +564,7 @@ namespace ZonderqOS.GUI
                     layout.InputX + 15, layout.StatusY + helpOffsetY, layout.InputWidth - 26, Muted);
 
                 SmallTextRenderer.DrawClipped(canvas,
-                    "ZOnderqOS chroni pulpit przed dostepem bez uwierzytelnienia.",
+                    "ZOnderqOS protects the desktop against unauthorized access.",
                     layout.HintX, layout.HintY, layout.HintMaxWidth, Muted);
                 RenderPowerButton(canvas, layout.RebootX, layout.PowerBtnY,
                     layout.RebootWidth, layout.PowerBtnHeight, "REBOOT", IconType.Reboot, false);
@@ -577,7 +577,7 @@ namespace ZonderqOS.GUI
                 if (userCount <= 0)
                 {
                     SmallTextRenderer.Draw(canvas, "NO ACCOUNTS", layout.UserRowX, layout.UserRowY + 6, Danger);
-                    SmallTextRenderer.Draw(canvas, "WPISZ LOGIN RECZNIE",
+                    SmallTextRenderer.Draw(canvas, "ENTER USERNAME MANUALLY",
                         layout.UserRowX, layout.UserRowY + 27, Muted);
                     return;
                 }

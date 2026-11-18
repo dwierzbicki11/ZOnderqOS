@@ -102,7 +102,7 @@ namespace ZonderqOS
                     case 4: return "RETRO 95 TEAL";
                     case 5: return "CYBER MATRIX";
                     case 6: return "NORDIC GLACIER";
-                    default: return "TAPETA PNG";
+                    default: return "PNG WALLPAPER";
                 }
             }
         }
@@ -131,7 +131,7 @@ namespace ZonderqOS
             {
                 switch (AutoLockMinutes)
                 {
-                    case 0: return "WYLACZONA";
+                    case 0: return "DISABLED";
                     case 1: return "1 MIN";
                     case 15: return "15 MIN";
                     case 30: return "30 MIN";

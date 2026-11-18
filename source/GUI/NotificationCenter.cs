@@ -421,7 +421,7 @@ namespace ZonderqOS.GUI
                     Width < 380 ? "NOTIFICATIONS" : "NOTIFICATION CENTER",
                     X + 58, Y + 20, Text);
             if (Width >= 380 && Height >= 54)
-                SmallTextRenderer.Draw(canvas, "CTRL+ALT+N  |  D DND  |  R PRZECZYTANE",
+                SmallTextRenderer.Draw(canvas, "CTRL+ALT+N  |  D DND  |  R READ",
                     X + 58, Y + 41, Muted);
 
             if (Width < 100 || Height < 54)
@@ -492,7 +492,7 @@ namespace ZonderqOS.GUI
             if (tabWidth < 65)
                 return index == 0 ? "ALL" : index == 1 ? "NEW" : "!";
             if (tabWidth < 100)
-                return index == 0 ? "WSZ." : index == 1 ? "NOWE" : "WAZNE";
+                return index == 0 ? "WSZ." : index == 1 ? "NEW" : "IMPORTANT";
             return FilterLabels[index];
         }
 
@@ -612,9 +612,9 @@ namespace ZonderqOS.GUI
 
             int buttonX, buttonWidth;
             FooterButtonBounds(0, out buttonX, out buttonWidth);
-            DrawFooterButton(canvas, 0, buttonX, y + 9, buttonWidth, "PRZECZYTANE", IconType.About);
+            DrawFooterButton(canvas, 0, buttonX, y + 9, buttonWidth, "READ", IconType.About);
             FooterButtonBounds(1, out buttonX, out buttonWidth);
-            DrawFooterButton(canvas, 1, buttonX, y + 9, buttonWidth, "WYCZYSC", IconType.Trash);
+            DrawFooterButton(canvas, 1, buttonX, y + 9, buttonWidth, "CLEAR", IconType.Trash);
             FooterButtonBounds(2, out buttonX, out buttonWidth);
             DrawFooterButton(canvas, 2, buttonX, y + 9, buttonWidth,
                 NotificationService.DoNotDisturb ? "DND: WL." : "DND: WYL.", IconType.Settings);

@@ -67,10 +67,10 @@ namespace ZonderqOS.GUI.Apps
         private int zoomPercent = 100;
         private bool fitToWindow = true;
 
-        public ImageViewerApp(int x, int y, string path, Action onClose) : base("Zdjecia")
+        public ImageViewerApp(int x, int y, string path, Action onClose) : base("Photos")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 980, 650, "Zdjecia - ZOnderqOS");
+            Window = new Window(x, y, 980, 650, "Photos - ZOnderqOS");
             Window.CloseAction = Close;
 
             if (!string.IsNullOrEmpty(path))
@@ -536,7 +536,7 @@ namespace ZonderqOS.GUI.Apps
                 sourceHeight = height;
                 currentPath = path;
                 displayName = name;
-                Window.Title = "Zdjecia - " + displayName;
+                Window.Title = "Photos - " + displayName;
 
                 // A mouse-held toolbar navigation must never display pixels
                 // from the previous file while the new preview is pending.

@@ -131,7 +131,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 if (!saved)
                 {
-                    statusMessage = "Error generowania pliku";
+                    statusMessage = "File generation error";
                     return;
                 }
                 statusMessage = "Saved: " + Path.GetFileName(filePath);
@@ -140,8 +140,8 @@ namespace ZonderqOS.GUI.Apps
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Info,
                     "PAINT",
-                    "Saved rysunek",
-                    "Plik: " + filePath);
+                    "Drawing saved",
+                    "File: " + filePath);
             }
             catch (Exception ex)
             {
@@ -303,8 +303,8 @@ namespace ZonderqOS.GUI.Apps
             {
                 case Tool.Pencil: return "Olowek (1px)";
                 case Tool.Brush: return "Pedzel (3px)";
-                case Tool.Eraser: return "Gumka";
-                case Tool.Line: return "Linia";
+                case Tool.Eraser: return "Eraser";
+                case Tool.Line: return "Line";
                 case Tool.Rectangle: return "Prostokat";
                 case Tool.FilledRectangle: return "Wypelniony prostokat";
                 case Tool.Bucket: return "Wypelnienie";
@@ -517,7 +517,7 @@ namespace ZonderqOS.GUI.Apps
 
             // Action buttons
             curX += 16;
-            DrawButton(canvas, curX, tbY + 2, 66, 24, "NOWY", TextColor);
+            DrawButton(canvas, curX, tbY + 2, 66, 24, "NEW", TextColor);
             curX += 72;
             DrawButton(canvas, curX, tbY + 2, 66, 24, "SAVE", AccentColor);
 

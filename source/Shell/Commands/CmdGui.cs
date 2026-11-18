@@ -20,7 +20,7 @@ namespace ZonderqOS.Commands
             }
             catch (Exception ex)
             {
-                WriteMessage.WriteError($"Error uruchamiania GUI: {ex.Message}", "CMD");
+                WriteMessage.WriteError($"Failed to start GUI: {ex.Message}", "CMD");
                 CommandIO.LastCommandSuccess = false;
             }
         }

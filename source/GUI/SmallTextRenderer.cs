@@ -369,7 +369,7 @@ namespace ZonderqOS.GUI
                 return;
             if (deltaPages == 0)
             {
-                Draw(canvas, "0 B (0 stron)", x, y, color);
+                Draw(canvas, "0 B (0 pages)", x, y, color);
                 return;
             }
             bool negative = deltaPages < 0;

@@ -23,7 +23,7 @@ namespace ZonderqOS.GUI.Apps
 
         protected int LastMouseX = -1;
         protected int LastMouseY = -1;
-        protected string StatusMessage = "GOTOWE";
+        protected string StatusMessage = "READY";
         protected Color StatusColor = Good;
         private readonly string headerName;
 
@@ -52,7 +52,7 @@ namespace ZonderqOS.GUI.Apps
             if (key.Key == ConsoleKeyEx.F5)
             {
                 RefreshData();
-                SetStatus("ODSWIEZONO", Good);
+                SetStatus("REFRESHED", Good);
                 return;
             }
             OnKeyboard(key);
@@ -167,7 +167,7 @@ namespace ZonderqOS.GUI.Apps
 
         protected void SetStatus(string message, Color color)
         {
-            StatusMessage = string.IsNullOrEmpty(message) ? "GOTOWE" : message;
+            StatusMessage = string.IsNullOrEmpty(message) ? "READY" : message;
             StatusColor = color;
         }
 

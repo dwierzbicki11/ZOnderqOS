@@ -637,7 +637,7 @@ namespace ZonderqOS.GUI.Apps
 
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Warning,
-                    "AWARIA APLIKACJI",
+                    "APPLICATION CRASH",
                     appName,
                     $"Application closed safely: {errorMsg}");
             }

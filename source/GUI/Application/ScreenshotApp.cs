@@ -20,17 +20,17 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action<string> openImageCallback;
         private readonly Func<Canvas> canvasProvider;
         private string lastSavedPath;
-        private string status = "Ready do wykonania zrzutu";
+        private string status = "Ready to take a screenshot";
         private int hoveredBtn = -1; // 0: Capture, 1: Open
 
         public ScreenshotApp(int x, int y, Func<Canvas> getCanvas, Action<string> onOpenImage, Action onClose)
-            : base("Zrzut ekranu")
+            : base("Screenshot")
         {
             canvasProvider = getCanvas;
             openImageCallback = onOpenImage;
             closeCallback = onClose;
 
-            Window = new Window(x, y, 440, 340, "Zrzut ekranu");
+            Window = new Window(x, y, 440, 340, "Screenshot");
             Window.CloseAction = Close;
         }
 
@@ -133,10 +133,10 @@ namespace ZonderqOS.GUI.Apps
 
             // Details
             int textX = icX + 64;
-            SmallTextRenderer.Draw(canvas, "ZRZUT EKRANU ZOnderqOS", textX, bannerY + 16, TextColor);
+            SmallTextRenderer.Draw(canvas, "ZOnderqOS SCREENSHOT", textX, bannerY + 16, TextColor);
             SmallTextRenderer.Draw(canvas, "Rozdzielczosc: " + canvas.Width + " x " + canvas.Height, textX, bannerY + 36, MutedColor);
-            SmallTextRenderer.Draw(canvas, "Format: 32-bit BMP (pelna jakosc)", textX, bannerY + 52, MutedColor);
-            SmallTextRenderer.Draw(canvas, "Lokalizacja: 0:/Screenshots/", textX, bannerY + 68, MutedColor);
+            SmallTextRenderer.Draw(canvas, "Format: 32-bit BMP (full quality)", textX, bannerY + 52, MutedColor);
+            SmallTextRenderer.Draw(canvas, "Location: 0:/Screenshots/", textX, bannerY + 68, MutedColor);
             SmallTextRenderer.Draw(canvas, status, textX, bannerY + 92, AccentColor);
 
             // Main Capture Button
@@ -168,7 +168,7 @@ namespace ZonderqOS.GUI.Apps
 
             // Shortcut Hint
             int hintY = contentY + contentHeight - 24;
-            SmallTextRenderer.DrawCentered(canvas, "Skrot klawiszowy: Ctrl + Alt + S robi natychmiastowy zrzut",
+            SmallTextRenderer.DrawCentered(canvas, "Shortcut: Ctrl + Alt + S captures a screenshot instantly",
                 contentX, hintY, contentWidth, MutedColor);
         }
     }

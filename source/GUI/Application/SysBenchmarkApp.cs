@@ -505,7 +505,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 vfsWriteSpeedKb = 0;
                 vfsReadSpeedKb = 0;
-                vfsIntegrity = "Error katalogu VFS";
+                vfsIntegrity = "VFS directory error";
                 return;
             }
 
@@ -847,7 +847,7 @@ namespace ZonderqOS.GUI.Apps
             int cardY = cy + 2;
 
             // Card 1: CPU MIPS
-            DrawMetricCard(canvas, wx + 14, cardY, cardW, cardH, "PROCESOR (CPU)",
+            DrawMetricCard(canvas, wx + 14, cardY, cardW, cardH, "PROCESSOR (CPU)",
                 cpuMips > 0 ? cpuMips + " MIPS" : "---",
                 primeTimeMs > 0 ? "Sieve: " + primeTimeMs + "ms | Mand: " + mandelbrotTimeMs + "ms" : "Sieve, Mandel, CRC",
                 cpuMips > 0 ? GreenColor : MutedColor);
@@ -859,9 +859,9 @@ namespace ZonderqOS.GUI.Apps
                 ramSeqWriteMb > 0 ? AccentColor : MutedColor);
 
             // Card 3: GPU / Canvas
-            DrawMetricCard(canvas, wx + 14 + (cardW + gap) * 2, cardY, cardW, cardH, "GRAFIKA VESA",
+            DrawMetricCard(canvas, wx + 14 + (cardW + gap) * 2, cardY, cardW, cardH, "VESA GRAPHICS",
                 gpuKpixSec > 0 ? gpuKpixSec + " kPix/s" : "---",
-                gpuDrawTimeMs > 0 ? "Czas: " + gpuDrawTimeMs + "ms (" + gpuPrimitiveOps + " ops)" : "Raster Canvas",
+                gpuDrawTimeMs > 0 ? "Time: " + gpuDrawTimeMs + "ms (" + gpuPrimitiveOps + " ops)" : "Raster Canvas",
                 gpuKpixSec > 0 ? GoldColor : MutedColor);
 
             // Card 4: VFS Cache
@@ -905,7 +905,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     cachedMandelTimeLine = mandelbrotTimeMs;
                     cachedMandelLine = mandelbrotTimeMs > 0
-                        ? "✓ Mandelbrot (160x100 arytm. 16.16): " + mandelbrotTimeMs + " ms | CRC-32 (1 MB): " + crcTimeMs + " ms [Suma: 0x" + crcResult.ToString("X8") + "]"
+                        ? "✓ Mandelbrot (160x100 fixed-point 16.16): " + mandelbrotTimeMs + " ms | CRC-32 (1 MB): " + crcTimeMs + " ms [Checksum: 0x" + crcResult.ToString("X8") + "]"
                         : "• Mandelbrot complex-set CRC32 check: pending";
                 }
                 SmallTextRenderer.Draw(canvas, cachedMandelLine, wx + 26, dy, mandelbrotTimeMs > 0 ? GreenColor : TextColor);
@@ -927,7 +927,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     cachedGpuKpixLine = gpuKpixSec;
                     cachedGpuLine = gpuKpixSec > 0
-                        ? "✓ Grafika VESA: Rysowanie rastra: " + gpuKpixSec + " kPix/s (" + gpuPrimitiveOps + " prymitywow/s)"
+                        ? "✓ VESA graphics: Raster rendering: " + gpuKpixSec + " kPix/s (" + gpuPrimitiveOps + " primitives/s)"
                         : "• VESA graphics: rendering 600 rectangles and lines on Canvas - pending";
                 }
                 SmallTextRenderer.Draw(canvas, cachedGpuLine, wx + 26, dy, gpuKpixSec > 0 ? GoldColor : TextColor);
@@ -1000,28 +1000,28 @@ namespace ZonderqOS.GUI.Apps
             int sy = cy + 16;
             int lineH = 20;
 
-            SmallTextRenderer.Draw(canvas, "JEDNOSTKA CENTRALNA (CPU):", sx, sy, GoldColor);
+            SmallTextRenderer.Draw(canvas, "CENTRAL PROCESSING UNIT (CPU):", sx, sy, GoldColor);
             sy += lineH;
-            string brand = hardware != null ? hardware.CpuBrand : "Procesor x86_64";
+            string brand = hardware != null ? hardware.CpuBrand : "x86_64 processor";
             SmallTextRenderer.Draw(canvas, "  Model:        " + brand, sx, sy, TextColor);
             sy += lineH;
             string vendor = hardware != null ? hardware.CpuVendor : "GenuineIntel / AuthenticAMD";
             string arch = hardware != null ? hardware.Architecture : "x86_64";
-            SmallTextRenderer.Draw(canvas, "  Producent:    " + vendor + " (" + arch + ")", sx, sy, TextColor);
+            SmallTextRenderer.Draw(canvas, "  Manufacturer:  " + vendor + " (" + arch + ")", sx, sy, TextColor);
             sy += lineH;
             int cores = hardware != null ? hardware.PhysicalCores : 1;
             int threads = hardware != null ? hardware.LogicalProcessors : 1;
-            SmallTextRenderer.Draw(canvas, "  Rdzenie:      " + cores + " fizyczne / " + threads + " logiczne (Cosmos BSP: 1 vCPU)", sx, sy, TextColor);
+            SmallTextRenderer.Draw(canvas, "  Cores:        " + cores + " physical / " + threads + " logical (Cosmos BSP: 1 vCPU)", sx, sy, TextColor);
 
             sy += lineH + 6;
-            SmallTextRenderer.Draw(canvas, "PODSYSTEM PAMIECI OPERACYJNEJ (RAM):", sx, sy, AccentColor);
+            SmallTextRenderer.Draw(canvas, "SYSTEM MEMORY (RAM):", sx, sy, AccentColor);
             sy += lineH;
             ulong totalMb = (hardware != null ? hardware.TotalMemoryBytes : 256UL * 1024 * 1024) / (1024 * 1024);
             ulong usedMb = (hardware != null ? hardware.UsedMemoryBytes : 48UL * 1024 * 1024) / (1024 * 1024);
             ulong freeMb = (hardware != null ? hardware.FreeMemoryBytes : 208UL * 1024 * 1024) / (1024 * 1024);
-            SmallTextRenderer.Draw(canvas, "  Calkowita:    " + totalMb + " MB", sx, sy, TextColor);
+            SmallTextRenderer.Draw(canvas, "  Total:        " + totalMb + " MB", sx, sy, TextColor);
             sy += lineH;
-            SmallTextRenderer.Draw(canvas, "  Uzyta:        " + usedMb + " MB (" + ((usedMb * 100) / Math.Max(1, totalMb)) + "%)", sx, sy, TextColor);
+            SmallTextRenderer.Draw(canvas, "  Used:         " + usedMb + " MB (" + ((usedMb * 100) / Math.Max(1, totalMb)) + "%)", sx, sy, TextColor);
             sy += lineH;
             SmallTextRenderer.Draw(canvas, "  Available:     " + freeMb + " MB", sx, sy, TextColor);
 
@@ -1035,7 +1035,7 @@ namespace ZonderqOS.GUI.Apps
             sy += lineH + 6;
             SmallTextRenderer.Draw(canvas, "VIDEO AND FILE SYSTEM:", sx, sy, GreenColor);
             sy += lineH;
-            SmallTextRenderer.Draw(canvas, "  Ekran:        " + canvas.Width + "x" + canvas.Height + " (VESA 32-bit Direct Color Framebuffer)", sx, sy, TextColor);
+            SmallTextRenderer.Draw(canvas, "  Display:      " + canvas.Width + "x" + canvas.Height + " (VESA 32-bit Direct Color Framebuffer)", sx, sy, TextColor);
             sy += lineH;
             int drives = hardware != null ? hardware.StorageDeviceCount : 1;
             int parts = hardware != null ? hardware.StoragePartitionCount : 2;
@@ -1069,7 +1069,7 @@ namespace ZonderqOS.GUI.Apps
 
             // 5. User system
             int myScore = totalZScore > 0 ? totalZScore : 4200;
-            DrawBenchmarkBar(canvas, wx + 28, startY + rowH * 4, "Twoj ZOnderqOS", myScore, maxScore, barStartX, maxBarW, GreenColor);
+            DrawBenchmarkBar(canvas, wx + 28, startY + rowH * 4, "Your ZOnderqOS", myScore, maxScore, barStartX, maxBarW, GreenColor);
 
             SmallTextRenderer.Draw(canvas, "* Z-Score uses measured Sieve, Mandelbrot 16.16, RAM MB/s, VESA and VFS I/O benchmarks.", wx + 28, cy + 310, MutedColor);
         }

@@ -512,7 +512,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.DrawUInt(canvas, score, sideX, statsY + 14, AccentColor);
 
             // Lines
-            SmallTextRenderer.Draw(canvas, "LINIE", sideX, statsY + 36, MutedColor);
+            SmallTextRenderer.Draw(canvas, "LINES", sideX, statsY + 36, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, linesCleared, sideX, statsY + 50, TextColor);
 
             // Level
@@ -521,11 +521,11 @@ namespace ZonderqOS.GUI.Apps
 
             // Controls legend
             int controlsY = statsY + 118;
-            SmallTextRenderer.Draw(canvas, "STEROWANIE", sideX, controlsY, MutedColor);
+            SmallTextRenderer.Draw(canvas, "CONTROLS", sideX, controlsY, MutedColor);
             SmallTextRenderer.Draw(canvas, "< > - Move", sideX, controlsY + 14, TextColor);
             SmallTextRenderer.Draw(canvas, "^   - Obrot", sideX, controlsY + 26, TextColor);
-            SmallTextRenderer.Draw(canvas, "v   - Opad", sideX, controlsY + 38, TextColor);
-            SmallTextRenderer.Draw(canvas, "SPC - Zrzut", sideX, controlsY + 50, TextColor);
+            SmallTextRenderer.Draw(canvas, "v   - Drop", sideX, controlsY + 38, TextColor);
+            SmallTextRenderer.Draw(canvas, "SPC - Hard drop", sideX, controlsY + 50, TextColor);
             SmallTextRenderer.Draw(canvas, "P   - Pause", sideX, controlsY + 62, TextColor);
 
             // Overlay message for Ready / GameOver / Paused

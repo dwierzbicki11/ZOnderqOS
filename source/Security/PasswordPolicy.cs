@@ -11,7 +11,7 @@ namespace ZonderqOS
     {
         public const int MinLength = 8;
         public const int MaxLength = 128;
-        public const string Summary = "MIN 8 ZNAKOW, CO NAJMNIEJ 1 LITERA I 1 CYFRA";
+        public const string Summary = "MIN 8 CHARACTERS, AT LEAST 1 LETTER AND 1 DIGIT";
 
         public static bool Validate(string password, out string reason)
         {

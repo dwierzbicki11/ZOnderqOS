@@ -62,7 +62,7 @@ namespace ZonderqOS.SystemCore.Updates
     public sealed class StorageEnvironmentInfo
     {
         public string PartitionLabel { get; set; } = "ZONDERQDATA";
-        public string DeviceType { get; set; } = "Disk USB / Dedykowany";
+        public string DeviceType { get; set; } = "USB Disk / Dedicated";
         public bool HasUpdatesDir { get; set; } = false;
         public bool HasManifest { get; set; } = false;
         public bool HasPayload { get; set; } = false;
@@ -1273,10 +1273,10 @@ namespace ZonderqOS.SystemCore.Updates
                 sb.AppendLine("         ZONDERQOS - SYSTEM UPDATE REPORT");
                 sb.AppendLine("============================================================");
                 sb.AppendLine("Installed version: " + pkg.Version + " (Build " + pkg.BuildNumber + ")");
-                sb.AppendLine("Tytul wydania:        " + pkg.Title);
+                sb.AppendLine("Release title:        " + pkg.Title);
                 sb.AppendLine("Installation date:      " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                 sb.AppendLine("Active boot slot:    Slot " + BootSlotManager.ActiveSlot);
-                sb.AppendLine("Suma SHA-256 kernela: " + pkg.ExpectedSha256);
+                sb.AppendLine("Kernel SHA-256: " + pkg.ExpectedSha256);
                 sb.AppendLine("Digital signature:       " + (pkg.IsSigned ? (pkg.IsSignatureValid ? "TRUSTED" : "INVALID") : "MISSING"));
                 sb.AppendLine();
                 sb.AppendLine("CHANGELOG:");
@@ -1285,7 +1285,7 @@ namespace ZonderqOS.SystemCore.Updates
                     sb.AppendLine("  * " + pkg.Changelog[i]);
                 }
                 sb.AppendLine();
-                sb.AppendLine("KOMPONENTY:");
+                sb.AppendLine("COMPONENTS:");
                 for (int i = 0; i < pkg.Components.Length; i++)
                 {
                     sb.AppendLine("  + " + pkg.Components[i]);
@@ -1750,7 +1750,7 @@ namespace ZonderqOS.SystemCore.Updates
                             Status = UpdateStatus.RolledBack;
                             AvailablePackage = null;
 
-                            string logEntry = "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] ROLLBACK: Przywrocono wersje " + prevVersion +
+                            string logEntry = "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] ROLLBACK: Restored version " + prevVersion +
                                               " (Build " + prevBuild + ") in slot " + BootSlotManager.ActiveSlot + "\n";
                             File.AppendAllText(HistoryLogPath, logEntry);
 
@@ -1766,7 +1766,7 @@ namespace ZonderqOS.SystemCore.Updates
                 catch (Exception ex)
                 {
                     Status = UpdateStatus.Error;
-                    error = "Error podczas rollbacku: " + ex.Message;
+                    error = "Rollback error: " + ex.Message;
                     return false;
                 }
             }

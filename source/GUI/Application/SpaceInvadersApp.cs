@@ -542,7 +542,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, waveStr, contentX + 310, contentY + 9, AlienYellow);
 
             // Lives indicators
-            SmallTextRenderer.Draw(canvas, "ZYCIA:", contentX + 395, contentY + 9, MutedColor);
+            SmallTextRenderer.Draw(canvas, "LIVES:", contentX + 395, contentY + 9, MutedColor);
             for (int l = 0; l < lives; l++)
             {
                 int lx = contentX + 445 + l * 14;

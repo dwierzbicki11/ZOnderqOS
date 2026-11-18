@@ -45,7 +45,7 @@ namespace ZonderqOS.GUI.Apps
         private long lastDeltaPages = long.MinValue;
         private bool pendingDetailSync = false;
 
-        private const string ZeroDeltaLabel = "0 B (0 stron)";
+        private const string ZeroDeltaLabel = "0 B (0 pages)";
 
         public string UsedMemoryText { get; private set; } = "0.00 MB";
         public string FreeMemoryText { get; private set; } = "0.00 MB";
@@ -62,7 +62,7 @@ namespace ZonderqOS.GUI.Apps
         public string UsableRamText { get; private set; } = "0 B";
         public string HeapPoolText { get; private set; } = "0 B";
         public string MemoryDetailText { get; private set; } = "0.00 MB (0.00%)";
-        public string MemoryPagesText { get; private set; } = "0 (4096 B/strona)";
+        public string MemoryPagesText { get; private set; } = "0 (4096 B/page)";
         public string HardwareRamText { get; private set; } = "0 B / 0 B";
 
         /// <summary>
@@ -212,8 +212,8 @@ namespace ZonderqOS.GUI.Apps
                 InstalledRamText = physicalInstalledBytes > 0 ? FormatBytesSmart(physicalInstalledBytes) : "unknown (SMBIOS unavailable)";
                 UsableRamText = FormatBytesSmart(physicalUsableBytes);
                 HeapPoolText = FormatBytesSmart(totalPages * PageSize);
-                MemoryPagesText = totalPages + " (" + PageSize + " B/strona)";
-                HardwareRamText = (physicalInstalledBytes > 0 ? InstalledRamText : UsableRamText + " widoczny") + " / " + HeapPoolText;
+                MemoryPagesText = totalPages + " (" + PageSize + " B/page)";
+                HardwareRamText = (physicalInstalledBytes > 0 ? InstalledRamText : UsableRamText + " visible") + " / " + HeapPoolText;
                 FormattedLabelCount += 5;
             }
         }

@@ -17,7 +17,7 @@ namespace ZonderqOS.GUI.Apps
         private int offset;
 
         public StorageInfoApp(int x, int y)
-            : base("Diski i partycje", "Magazyn danych - ZOnderqOS", x, y, 940, 620)
+            : base("Disks and partitions", "Data storage - ZOnderqOS", x, y, 940, 620)
         {
             RefreshData();
         }
@@ -90,7 +90,7 @@ namespace ZonderqOS.GUI.Apps
                     ? ((ulong)device.BlockCount * blockSize) / 1024UL / 1024UL
                     : 0UL;
                 names[itemCount] = device.Name;
-                descriptions[itemCount] = "BLOCK DEVICE  |  BLOK " + blockSize + " B";
+                descriptions[itemCount] = "BLOCK DEVICE  |  BLOCK " + blockSize + " B";
                 values[itemCount] = sizeMb + " MB";
                 itemCount++;
             }

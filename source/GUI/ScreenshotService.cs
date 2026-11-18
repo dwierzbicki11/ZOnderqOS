@@ -45,9 +45,9 @@ namespace ZonderqOS.GUI
 
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Info,
-                    "ZRZUT EKRANU",
-                    "Saved zrzut ekranu",
-                    "Plik: " + fullPath);
+                    "SCREENSHOT",
+                    "Screenshot saved",
+                    "File: " + fullPath);
 
                 return fullPath;
             }
@@ -55,8 +55,8 @@ namespace ZonderqOS.GUI
             {
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Error,
-                    "ZRZUT EKRANU",
-                    "Error zapisu zrzutu",
+                    "SCREENSHOT",
+                    "Failed to save screenshot",
                     ex.Message);
                 return null;
             }

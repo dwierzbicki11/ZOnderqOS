@@ -178,7 +178,7 @@ namespace ZonderqOS.GUI.Apps
                 if (phase == GamePhase.Placement && Hit(mouseX, mouseY, wx + 114, btnY, 105, 24))
                 {
                     RandomizeFleet(playerGrid);
-                    statusMessage = "Przetasowano pozycje Twoich okretow.";
+                    statusMessage = "Your ships have been rearranged.";
                     statusColor = AccentColor;
                     Speaker.Beep(440, 2);
                     return;
@@ -241,7 +241,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 else
                 {
-                    statusMessage = "TRAFIENIE! Trafiles wrogi okret! Masz dodatkowy strzal.";
+                    statusMessage = "HIT! You struck an enemy ship! Take another shot.";
                     statusColor = RedColor;
                 }
             }
@@ -249,7 +249,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 enemyGrid[row, col] = 2; // Marked as miss
                 Speaker.Beep(260, 3); // Low splash tone
-                statusMessage = "Pudlo! Torpeda trafila w wode. Tura floty przeciwnika...";
+                statusMessage = "Miss! Torpedo hit the water. Enemy fleet's turn...";
                 statusColor = MutedColor;
 
                 // Trigger AI Turn
@@ -316,19 +316,19 @@ namespace ZonderqOS.GUI.Apps
                     if (enemyHits >= TotalShipCells)
                     {
                         phase = GamePhase.GameOver;
-                        statusMessage = "PORAZKA! Wrog zatopil Twoja flote. Sprobuj ponownie!";
+                        statusMessage = "DEFEAT! The enemy sank your fleet. Try again!";
                         statusColor = RedColor;
                     }
                     else
                     {
-                        statusMessage = "Wrog trafil Twoj okret w sektorze " + (char)('A' + shotCol) + (shotRow + 1) + "! Twoja tura.";
+                        statusMessage = "Enemy hit your ship in sector " + (char)('A' + shotCol) + (shotRow + 1) + "! Your turn.";
                         statusColor = RedColor;
                     }
                 }
                 else
                 {
                     playerGrid[shotRow, shotCol] = 2; // AI Miss
-                    statusMessage = "Wrog spudlowal w sektorze " + (char)('A' + shotCol) + (shotRow + 1) + ". Twoja tura!";
+                    statusMessage = "Enemy missed in sector " + (char)('A' + shotCol) + (shotRow + 1) + ". Your turn!";
                     statusColor = GreenColor;
                 }
             }
@@ -365,7 +365,7 @@ namespace ZonderqOS.GUI.Apps
             if (phase == GamePhase.Placement)
             {
                 DrawButton(canvas, "RANDOM FLEET", wx + 110, btnY, 105, 24, Panel, Border, AccentColor);
-                DrawButton(canvas, "START BITWY", wx + 222, btnY, 115, 24, GreenColor, Border, Color.Black);
+                DrawButton(canvas, "START BATTLE", wx + 222, btnY, 115, 24, GreenColor, Border, Color.Black);
             }
 
             // Status Panel (wy + 40, h: 26)
@@ -376,12 +376,12 @@ namespace ZonderqOS.GUI.Apps
             // Left Grid: Twoja Flota
             int leftGridX = wx + 36;
             int gridY = wy + 86;
-            SmallTextRenderer.Draw(canvas, "TWOJA FLOTA (Trafienia wroga: " + enemyHits + "/" + TotalShipCells + ")", leftGridX, gridY - 18, AccentColor);
+            SmallTextRenderer.Draw(canvas, "YOUR FLEET (Enemy hits: " + enemyHits + "/" + TotalShipCells + ")", leftGridX, gridY - 18, AccentColor);
             RenderGrid(canvas, leftGridX, gridY, playerGrid, true);
 
             // Right Grid: Wody Wroga
             int rightGridX = wx + 340;
-            SmallTextRenderer.Draw(canvas, "WODY WROGA (Twoje trafienia: " + playerHits + "/" + TotalShipCells + ")", rightGridX, gridY - 18, GoldColor);
+            SmallTextRenderer.Draw(canvas, "ENEMY WATERS (Your hits: " + playerHits + "/" + TotalShipCells + ")", rightGridX, gridY - 18, GoldColor);
             RenderGrid(canvas, rightGridX, gridY, enemyGrid, false);
 
             // Footer Legend (wy + 322)
@@ -391,15 +391,15 @@ namespace ZonderqOS.GUI.Apps
 
             // Legend Items
             canvas.DrawFilledRectangle(ShipColor, wx + 24, legY + 8, 14, 14);
-            SmallTextRenderer.Draw(canvas, "Twoj okret", wx + 44, legY + 10, TextColor);
+            SmallTextRenderer.Draw(canvas, "Your ship", wx + 44, legY + 10, TextColor);
 
             canvas.DrawFilledRectangle(HitColor, wx + 140, legY + 8, 14, 14);
-            SmallTextRenderer.Draw(canvas, "Trafiony (Ogien)", wx + 160, legY + 10, HitColor);
+            SmallTextRenderer.Draw(canvas, "Hit (Fire)", wx + 160, legY + 10, HitColor);
 
             canvas.DrawFilledRectangle(MissColor, wx + 290, legY + 8, 14, 14);
-            SmallTextRenderer.Draw(canvas, "Pudlo (Woda)", wx + 310, legY + 10, MutedColor);
+            SmallTextRenderer.Draw(canvas, "Miss (Water)", wx + 310, legY + 10, MutedColor);
 
-            SmallTextRenderer.Draw(canvas, "Sklad floty: 1x [4-maszt]  2x [3-maszt]  3x [2-maszt]  4x [1-maszt] (Laczenie: 10 okretow)", wx + 24, legY + 30, MutedColor);
+            SmallTextRenderer.Draw(canvas, "Fleet: 1x [4-cell]  2x [3-cell]  3x [2-cell]  4x [1-cell] (Total: 10 ships)", wx + 24, legY + 30, MutedColor);
         }
 
         private void RenderGrid(Canvas canvas, int gx, int gy, byte[,] grid, bool showShips)

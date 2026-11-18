@@ -24,7 +24,7 @@ namespace ZonderqOS.SystemCore.Updates
         public string Architecture { get; set; } = ExpectedArchitecture;
         public string Title { get; set; } = "ZonderqOS System Update";
         public string ReleaseDate { get; set; } = "2026-11-08";
-        public string Severity { get; set; } = "Zalecana";
+        public string Severity { get; set; } = "Recommended";
 
         public string KernelImage { get; set; } = "ZonderqOS.elf";
         public string KernelSha256 { get; set; } = string.Empty;
@@ -89,13 +89,13 @@ namespace ZonderqOS.SystemCore.Updates
 
             if (string.IsNullOrWhiteSpace(content))
             {
-                error = "Manifest jest pusty.";
+                error = "Manifest is empty.";
                 return false;
             }
 
             if (content.Length > 1024 * 1024)
             {
-                error = "Manifest przekracza limit 1 MiB.";
+                error = "Manifest exceeds the 1 MiB limit.";
                 return false;
             }
 
@@ -130,7 +130,7 @@ namespace ZonderqOS.SystemCore.Updates
                     key == "HMAC" ? "SIGNATURE" : key;
                 if (canonicalKey != "FILE" && !singletonKeys.Add(canonicalKey))
                 {
-                    error = "Powtorzone pole manifestu: " + canonicalKey;
+                    error = "Duplicate manifest field: " + canonicalKey;
                     return false;
                 }
 

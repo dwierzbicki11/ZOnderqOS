@@ -24,8 +24,8 @@ namespace ZonderqOS.GUI.Apps
 
         private static readonly string[] MonthNames =
         {
-            "STYCZEN", "LUTY", "MARZEC", "KWIECIEN", "MAJ", "CZERWIEC",
-            "LIPIEC", "SIERPIEN", "WRZESIEN", "PAZDZIERNIK", "LISTOPAD", "GRUDZIEN"
+            "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
+            "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"
         };
 
         private static readonly string[] DayNames =
@@ -56,12 +56,12 @@ namespace ZonderqOS.GUI.Apps
         private int hoveredControl = -1;
         private int lastMouseX = -1;
         private int lastMouseY = -1;
-        private string statusMessage = "GOTOWE";
+        private string statusMessage = "READY";
 
-        public CalendarApp(int x, int y, Action onClose) : base("Kalendarz")
+        public CalendarApp(int x, int y, Action onClose) : base("Calendar")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 900, 680, "Kalendarz - ZOnderqOS");
+            Window = new Window(x, y, 900, 680, "Calendar - ZOnderqOS");
             Window.CloseAction = Close;
             GoToday();
         }
@@ -87,7 +87,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 RefreshTodaySnapshot();
                 RebuildMonth();
-                statusMessage = "ODSWIEZONO DATE SYSTEMOWA";
+                statusMessage = "SYSTEM DATE REFRESHED";
                 return;
             }
 
@@ -176,11 +176,11 @@ namespace ZonderqOS.GUI.Apps
                 Header, Border);
             canvas.DrawFilledRectangle(SystemTheme.Accent, x + 12, y + 2, width - 24, 2);
             IconManager.DrawScaled(canvas, IconType.Calendar, x + 15, y + 17, 28, 28);
-            SmallTextRenderer.Draw(canvas, "KALENDARZ", x + 55, y + 16, Text);
+            SmallTextRenderer.Draw(canvas, "CALENDAR", x + 55, y + 16, Text);
             SmallTextRenderer.Draw(canvas, "ARROWS MONTH  |  T TODAY  |  F5 REFRESH", x + 55, y + 37, Muted);
 
             DrawControl(canvas, 0, x + width - 254, y + 13, 54, 36, "<");
-            DrawControl(canvas, 1, x + width - 192, y + 13, 122, 36, "DZISIAJ");
+            DrawControl(canvas, 1, x + width - 192, y + 13, 122, 36, "TODAY");
             DrawControl(canvas, 2, x + width - 62, y + 13, 54, 36, ">");
         }
 
@@ -255,7 +255,7 @@ namespace ZonderqOS.GUI.Apps
             int height = 462;
             canvas.DrawFilledRectangle(Panel, x, y, width, height);
             canvas.DrawRectangle(Border, x, y, width, height);
-            SmallTextRenderer.Draw(canvas, "WYBRANA DATA", x + 16, y + 18, Text);
+            SmallTextRenderer.Draw(canvas, "SELECTED DATE", x + 16, y + 18, Text);
             canvas.DrawLine(Border, x + 16, y + 40, x + width - 16, y + 40);
 
             DrawInfoLine(canvas, x, y + 63, width, "DAY", selectedDay);
@@ -272,7 +272,7 @@ namespace ZonderqOS.GUI.Apps
 
             canvas.DrawFilledRectangle(Color.FromArgb(23, 29, 35), x + 14, y + 278, width - 28, 116);
             canvas.DrawRectangle(Border, x + 14, y + 278, width - 28, 116);
-            SmallTextRenderer.Draw(canvas, "DZISIAJ", x + 28, y + 295, Muted);
+            SmallTextRenderer.Draw(canvas, "TODAY", x + 28, y + 295, Muted);
             SmallTextRenderer.DrawInt(canvas, todayDay, x + 28, y + 319, Good);
             SmallTextRenderer.Draw(canvas, MonthNames[todayMonth - 1], x + 28, y + 344, Text);
             SmallTextRenderer.DrawInt(canvas, todayYear, x + 28, y + 367, Text);
@@ -306,7 +306,7 @@ namespace ZonderqOS.GUI.Apps
             displayMonth = todayMonth;
             selectedDay = todayDay;
             RebuildMonth();
-            statusMessage = "DZISIAJ";
+            statusMessage = "TODAY";
         }
 
         private void RefreshTodaySnapshot()

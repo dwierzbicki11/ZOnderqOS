@@ -46,7 +46,7 @@ namespace ZonderqOS
                 if (!Disk.Initialize())
                     throw new InvalidOperationException(
                         "No approved ZONDERQDATA volume: refusing normal boot before any filesystem/user writes.");
-                BootSplash.Advance(27, "DYSK GOTOWY");
+                BootSplash.Advance(27, "DISK READY");
                 ZonderqOS.SystemCore.Updates.BootSlotManager.Initialize();
                 if (ZonderqOS.SystemCore.Updates.BootSlotManager.EmergencyRecoveryNeeded)
                     throw new InvalidOperationException(
@@ -61,7 +61,7 @@ namespace ZonderqOS
                 ZonderqOS.Security.FirewallManager.Initialize();
                 ZonderqOS.SystemCore.Updates.UpdateManager.Initialize();
                 SystemLogger.Initialize();
-                BootSplash.Advance(60, "LADOWANIE USLUG SYSTEMOWYCH");
+                BootSplash.Advance(60, "LOADING SYSTEM SERVICES");
                 BootSessionHealth.Initialize();
                 SystemGuardian.Initialize();
                 SystemSettings.Load();
@@ -77,7 +77,7 @@ namespace ZonderqOS
                 SystemIdentity.Initialize();
                 ZonderqOS.Security.IntegrityGuard.Initialize();
                 ServiceManager.Initialize();
-                BootSplash.Advance(90, "PRZYGOTOWYWANIE SESJI");
+                BootSplash.Advance(90, "PREPARING SESSION");
 
                 UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");

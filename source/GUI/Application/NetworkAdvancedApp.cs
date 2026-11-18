@@ -12,7 +12,7 @@ namespace ZonderqOS.GUI.Apps
     {
         public NetworkAdvancedApp(int x, int y) : base("Network niedostepna")
         {
-            Window = new Window(x, y, 620, 260, "Network - funkcja usunieta");
+            Window = new Window(x, y, 620, 260, "Network - feature removed");
             Window.CloseAction = Close;
         }
 

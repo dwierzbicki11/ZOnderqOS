@@ -63,8 +63,8 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Color.FromArgb(18, 23, 29), x, y, width, height);
             canvas.DrawRectangle(Border, x, y, width, height);
 
-            SmallTextRenderer.Draw(canvas, "PODGLAD OSTATNICH WPISOW", x + 12, y + 12, Muted);
-            SmallTextRenderer.Draw(canvas, "STRZALKI GORA/DOL: PRZEWIJANIE  |  DELETE: WYCZYSC (2X)", x + 12, y + 27, Muted);
+            SmallTextRenderer.Draw(canvas, "RECENT LOG ENTRIES", x + 12, y + 12, Muted);
+            SmallTextRenderer.Draw(canvas, "UP/DOWN: SCROLL  |  DELETE: CLEAR (TWICE)", x + 12, y + 27, Muted);
             canvas.DrawLine(Border, x + 10, y + 42, x + width - 10, y + 42);
 
             if (accessDenied)
@@ -204,7 +204,7 @@ namespace ZonderqOS.GUI.Apps
         {
             if (global::ZonderqOS.SecurityContext.CurrentUser != "root")
             {
-                SetStatus("TYLKO ROOT MOZE CZYSIC LOGI", Danger);
+                SetStatus("ONLY ROOT CAN CLEAR LOGS", Danger);
                 return;
             }
 
@@ -215,7 +215,7 @@ namespace ZonderqOS.GUI.Apps
             if (!armed)
             {
                 clearArmedAt = now;
-                SetStatus("DELETE PONOWNIE W CIAGU 6 S ABY WYCZYSC LOG", Warning);
+                SetStatus("PRESS DELETE AGAIN WITHIN 6 S TO CLEAR LOG", Warning);
                 return;
             }
 
@@ -234,7 +234,7 @@ namespace ZonderqOS.GUI.Apps
                 global::ZonderqOS.SecurityLogger.LogEvent("WARN",
                     "System log source cleared from Settings GUI: " + CurrentName + ".");
                 RefreshData();
-                SetStatus(cleared ? "LOG WYCZYSZCZONY" : "LOG WYCZYSZCZONY TYLKO W PAMIECI",
+                SetStatus(cleared ? "LOG CLEARED" : "LOG CLEARED IN MEMORY ONLY",
                     cleared ? Warning : Danger);
             }
             catch

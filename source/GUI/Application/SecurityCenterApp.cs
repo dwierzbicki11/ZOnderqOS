@@ -351,7 +351,7 @@ namespace ZonderqOS.GUI.Apps
             int tabH = 26;
             int tabGap = 6;
 
-            DrawTab(canvas, "🛡 STAN OCHRONY", wx + 12, tabY, tabW, tabH, activeTab == 0);
+            DrawTab(canvas, "🛡 PROTECTION STATUS", wx + 12, tabY, tabW, tabH, activeTab == 0);
             DrawTab(canvas, "🔍 INTEGRALNOSC", wx + 12 + (tabW + tabGap), tabY, tabW, tabH, activeTab == 1);
             DrawTab(canvas, "🧱 FIREWALL", wx + 12 + (tabW + tabGap) * 2, tabY, tabW, tabH, activeTab == 2);
             DrawTab(canvas, "📜 AUDIT LOG", wx + 12 + (tabW + tabGap) * 3, tabY, tabW, tabH, activeTab == 3);
@@ -413,7 +413,7 @@ namespace ZonderqOS.GUI.Apps
             cachedFwLastPort = lastPort;
             cachedFwLastProto = lastProto;
 
-            cachedFwCardStatus = "Tryb: " + ModeLabel(mode) + " (Blok: " + blocked + ")";
+            cachedFwCardStatus = "Mode: " + ModeLabel(mode) + " (Block: " + blocked + ")";
             cachedFwLastBlockText = "Last blocked: " + lastPort + " (" + lastProto + ")";
             cachedFwCountsText = "Allowed: " + allowed + " | Blocked: " + blocked;
         }
@@ -530,7 +530,7 @@ namespace ZonderqOS.GUI.Apps
 
             // Card 1: Integrity
             UiPainter.RoundedPanel(canvas, wx + 16, cardY, cardW, cardH, 4, Panel, Border);
-            SmallTextRenderer.Draw(canvas, "ANTY-TAMPER & INTEGRALNOSC", wx + 26, cardY + 10, GoldColor);
+            SmallTextRenderer.Draw(canvas, "ANTI-TAMPER & INTEGRITY", wx + 26, cardY + 10, GoldColor);
             SmallTextRenderer.Draw(canvas, cachedIntCardStatus, wx + 26, cardY + 30, isIntegrityClean ? GreenColor : RedColor);
             SmallTextRenderer.Draw(canvas, "Database: /etc/integrity.db", wx + 26, cardY + 50, MutedColor);
 
@@ -597,7 +597,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "FILE PATH", wx + 26, startY, MutedColor);
             SmallTextRenderer.Draw(canvas, "CHMOD", wx + 210, startY, MutedColor);
             SmallTextRenderer.Draw(canvas, "STATUS", wx + 270, startY, MutedColor);
-            SmallTextRenderer.Draw(canvas, "SUMA SHA-256 (PREFIX)", wx + 380, startY, MutedColor);
+            SmallTextRenderer.Draw(canvas, "SHA-256 CHECKSUM (PREFIX)", wx + 380, startY, MutedColor);
 
             canvas.DrawLine(Border, wx + 20, startY + 14, wx + panelW + 10, startY + 14);
 
@@ -652,7 +652,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "FIREWALL PROTECTION MODE:", wx + 26, cy + 10, GoldColor);
             int mY = cy + 24;
 
-            DrawModeBtn(canvas, "STANDARDOWA", wx + 26, mY, 130, 24, FirewallManager.Mode == FirewallMode.Enabled);
+            DrawModeBtn(canvas, "STANDARD", wx + 26, mY, 130, 24, FirewallManager.Mode == FirewallMode.Enabled);
             DrawModeBtn(canvas, "STRICT (STEALTH)", wx + 162, mY, 130, 24, FirewallManager.Mode == FirewallMode.Strict);
             DrawModeBtn(canvas, "DISABLED", wx + 298, mY, 130, 24, FirewallManager.Mode == FirewallMode.Disabled);
 
@@ -669,9 +669,9 @@ namespace ZonderqOS.GUI.Apps
             int startY = tableY + 28;
             SmallTextRenderer.Draw(canvas, "PORT", wx + 26, startY, MutedColor);
             SmallTextRenderer.Draw(canvas, "PROTO", wx + 85, startY, MutedColor);
-            SmallTextRenderer.Draw(canvas, "KIERUNEK", wx + 145, startY, MutedColor);
-            SmallTextRenderer.Draw(canvas, "AKCJA", wx + 230, startY, MutedColor);
-            SmallTextRenderer.Draw(canvas, "OPIS REGULY", wx + 300, startY, MutedColor);
+            SmallTextRenderer.Draw(canvas, "DIRECTION", wx + 145, startY, MutedColor);
+            SmallTextRenderer.Draw(canvas, "ACTION", wx + 230, startY, MutedColor);
+            SmallTextRenderer.Draw(canvas, "RULE DESCRIPTION", wx + 300, startY, MutedColor);
 
             canvas.DrawLine(Border, wx + 20, startY + 14, wx + cardW + 10, startY + 14);
 

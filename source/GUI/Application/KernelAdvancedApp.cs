@@ -35,7 +35,7 @@ namespace ZonderqOS.GUI.Apps
         private int pageMode; // 0 kernel, 1 memory/gc, 2 hardware
 
         public KernelAdvancedApp(int x, int y)
-            : base("Panel kernela", "Zaawansowany kernel - ZOnderqOS", x, y, 960, 620)
+            : base("Panel kernela", "Advanced Kernel - ZOnderqOS", x, y, 960, 620)
         {
             cpuInfo = CpuHardwareInfo.Detect();
             RefreshData();
@@ -59,33 +59,33 @@ namespace ZonderqOS.GUI.Apps
         private void RenderKernel(Canvas canvas)
         {
             DrawRow(canvas, 1, IconType.Settings,
-                "SCHEDULER", "Aktywny scheduler Cosmos Gen3", schedulerName, Text);
+                "SCHEDULER", "Cosmos Gen3 scheduler active", schedulerName, Text);
             DrawNumericRow(canvas, 2, IconType.Settings,
-                "WATKI", "Liczba watkow schedulera", (ulong)System.Math.Max(0, threadCount), "");
+                "WATKI", "Scheduler thread count", (ulong)System.Math.Max(0, threadCount), "");
             DrawNumericRow(canvas, 3, IconType.Settings,
-                "ONLINE CPU", "CPU obslugiwane obecnie przez scheduler", cpuCount, "");
+                "ONLINE CPU", "CPUs currently managed by the scheduler", cpuCount, "");
             DrawRow(canvas, 4, IconType.Settings,
-                "PROCESOR", cpuInfo.Vendor, cpuInfo.Brand, Text);
+                "PROCESSOR", cpuInfo.Vendor, cpuInfo.Brand, Text);
             DrawNumericRow(canvas, 5, IconType.Settings,
                 "BUSY CPU TIME", "Total non-idle thread execution time", busyCpuNs / 1000000UL, " MS");
             DrawNumericRow(canvas, 6, IconType.Refresh,
-                "UPTIME", "Monotoniczny czas od startu", uptimeSeconds, " S");
+                "UPTIME", "Monotonic uptime", uptimeSeconds, " S");
         }
 
         private void RenderMemory(Canvas canvas)
         {
             DrawNumericRow(canvas, 1, IconType.Settings,
-                "RAM CALKOWITY", "Fizyczny RAM (Limine / BIOS)", totalRamMb, " MB");
+                "RAM CALKOWITY", "Physical RAM (Limine / BIOS)", totalRamMb, " MB");
             DrawNumericRow(canvas, 2, IconType.Settings,
-                "RAM WOLNY", "Wolne strony fizyczne", freeRamMb, " MB");
+                "FREE RAM", "Free physical pages", freeRamMb, " MB");
             DrawNumericRow(canvas, 3, IconType.Settings,
                 "GC HEAP / COMMITTED", "OrionGC heap; committed memory shown in the status description", gcHeapMb, " MB");
             DrawNumericRow(canvas, 4, IconType.Settings,
-                "FRAGMENTACJA GC", "Wolne/fragmentowane bloki wewnatrz sterty", gcFragmentedKb, " KB");
+                "FRAGMENTACJA GC", "Free/fragmented blocks in heap", gcFragmentedKb, " KB");
             DrawNumericRow(canvas, 5, IconType.Settings,
-                "PINNED OBJECTS", "Obiekty przypiete raportowane przez OrionGC", gcPinned, "");
+                "PINNED OBJECTS", "Pinned objects reported by OrionGC", gcPinned, "");
             DrawNumericRow(canvas, 6, IconType.Refresh,
-                "KOLEKCJE GC", "Automatyczne kolekcje wykonane przez runtime", gcCollections, "");
+                "GC COLLECTIONS", "Automatic collections performed by runtime", gcCollections, "");
         }
 
 
@@ -99,11 +99,11 @@ namespace ZonderqOS.GUI.Apps
                 UpdateHardwareStrings(info);
             }
             DrawRow(canvas, 1, IconType.Settings,
-                "ARCHITEKTURA", "Backend platformy", info.Architecture, Text);
+                "ARCHITECTURE", "Platform backend", info.Architecture, Text);
             DrawRow(canvas, 2, IconType.Settings,
                 "CPU", info.CpuVendor, info.CpuBrand, Text);
             DrawRow(canvas, 3, IconType.Settings,
-                "TOPOLOGIA", "Rdzenie / logiczne / watki na rdzen",
+                "TOPOLOGIA", "Cores / logical CPUs / threads per core",
                 cachedTopologyText, Text);
             DrawRow(canvas, 4, IconType.Settings,
                 "CACHE", "L1 / L2 / L3",
@@ -113,7 +113,7 @@ namespace ZonderqOS.GUI.Apps
                 info.HypervisorPresent ? "Hypervisor detected" : "No hypervisor detected",
                 info.VirtualizationSupported ? "SUPPORTED" : "N/A", Text);
             DrawRow(canvas, 6, IconType.Settings,
-                "FEATURES", "Flagi CPU raportowane przez backend platformy",
+                "FEATURES", "CPU flags reported by platform backend",
                 info.CpuFeatures, Text);
         }
 
@@ -220,7 +220,7 @@ namespace ZonderqOS.GUI.Apps
                 SetStatus(cachedMemoryStatus, Warning);
             }
             else
-                SetStatus("HARDWARE: SNAPSHOT TYLKO DO ODCZYTU", Good);
+                SetStatus("HARDWARE: READ-ONLY SNAPSHOT", Good);
         }
 
         protected override void OnClick(int mouseX, int mouseY)
@@ -236,7 +236,7 @@ namespace ZonderqOS.GUI.Apps
             if (row >= 1 && row <= 6)
             {
                 RefreshData();
-                SetStatus("ODSWIEZONO SNAPSHOT KERNELA", Good);
+                SetStatus("KERNEL SNAPSHOT REFRESHED", Good);
             }
         }
     }

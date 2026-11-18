@@ -93,7 +93,7 @@ namespace ZonderqOS.GUI
             if (!IsActive)
                 return;
 
-            Advance(100, "GOTOWE");
+            Advance(100, "READY");
             // Keep the last rendered frame until the login/setup GUI repaints.
             // Disabling graphics here would expose the boot chatter for a frame.
             IsActive = false;

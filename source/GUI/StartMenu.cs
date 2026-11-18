@@ -498,7 +498,7 @@ namespace ZonderqOS.GUI
             UiPainter.RoundedPanel(canvas, X + 12, Y + 30, searchWidth, 30,
                 UiMetrics.ButtonRadius, UiPalette.SurfaceRaised, UiPalette.Border);
             SmallTextRenderer.DrawClipped(canvas,
-                string.IsNullOrEmpty(searchText) ? "Search aplikacji..." : searchText,
+                string.IsNullOrEmpty(searchText) ? "Search applications..." : searchText,
                 X + 20, Y + 40, Math.Max(1, searchWidth - 16),
                 string.IsNullOrEmpty(searchText) ? Muted : Text);
 
@@ -574,7 +574,7 @@ namespace ZonderqOS.GUI
 
             if (string.IsNullOrEmpty(searchText))
             {
-                SmallTextRenderer.Draw(canvas, "Search aplikacji...", searchX + 40, searchY + 16, Muted);
+                SmallTextRenderer.Draw(canvas, "Search applications...", searchX + 40, searchY + 16, Muted);
             }
             else
             {

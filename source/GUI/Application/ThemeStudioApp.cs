@@ -43,7 +43,7 @@ namespace ZonderqOS.GUI.Apps
 
         private static readonly string[] BackgroundNames =
         {
-            "Tapeta PNG",
+            "PNG Wallpaper",
             "Grafit",
             "Cosmos Navy",
             "OLED Black",
@@ -247,7 +247,7 @@ namespace ZonderqOS.GUI.Apps
             if (curAccent != cachedPreviewAccent)
             {
                 cachedPreviewAccent = curAccent;
-                cachedAccentLine = "Akcent: " + global::ZonderqOS.SystemSettings.AccentThemeName;
+                cachedAccentLine = "Accent: " + global::ZonderqOS.SystemSettings.AccentThemeName;
             }
             int curBg = global::ZonderqOS.SystemSettings.DesktopBackgroundMode;
             if (curBg != cachedPreviewBg)
@@ -263,7 +263,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(SystemTheme.Accent, prevX + 6, prevY + prevH - 3, 24, 2);
 
             // Section 1: Motywy Akcentu
-            SmallTextRenderer.Draw(canvas, "MOTYW KOLORYSTYCZNY (AKCENT OKIEN I PASKA ZADAN):", contentX + 14, contentY + 104, TextColor);
+            SmallTextRenderer.Draw(canvas, "COLOR THEME (WINDOW AND TASKBAR ACCENT):", contentX + 14, contentY + 104, TextColor);
 
             int themeGridY = contentY + 120;
             int tileW = (contentWidth - 28 - 3 * 8) / 4;
@@ -299,7 +299,7 @@ namespace ZonderqOS.GUI.Apps
             }
 
             // Section 2: Tła Pulpitu
-            SmallTextRenderer.Draw(canvas, "STYL TLA PULPITU:", contentX + 14, contentY + 218, TextColor);
+            SmallTextRenderer.Draw(canvas, "DESKTOP BACKGROUND STYLE:", contentX + 14, contentY + 218, TextColor);
 
             int bgGridY = contentY + 234;
             int bgTileW = (contentWidth - 28 - 6 * 6) / 7;

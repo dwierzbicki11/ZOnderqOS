@@ -106,16 +106,16 @@ namespace ZonderqOS.GUI.Apps
                 "130 GUESS = GUESS + 11",
                 "140 IF GUESS > 50 THEN GUESS = GUESS - 45",
                 "150 GOTO 70",
-                "160 PRINT \"-> BRAWO! TRAFIONO W \"; TRIES; \" PROBIE!\"",
+                "160 PRINT \"-> WELL DONE! GUESSED IN \"; TRIES; \" ATTEMPTS!\"",
                 "170 BEEP 880, 200",
                 "180 END"
             },
             // Sample 2: Tabliczka Mnozenia
             new string[]
             {
-                "10 REM --- TABLICZKA MNOZENIA ---",
+                "10 REM --- MULTIPLICATION TABLE ---",
                 "20 CLS",
-                "30 PRINT \"TABLICZKA MNOZENIA 1-5\"",
+                "30 PRINT \"MULTIPLICATION TABLE 1-5\"",
                 "40 PRINT \"====================\"",
                 "50 FOR I = 1 TO 5",
                 "60 FOR J = 1 TO 5",
@@ -125,15 +125,15 @@ namespace ZonderqOS.GUI.Apps
                 "100 PRINT \"--------------------\"",
                 "110 BEEP 440 + I * 60, 40",
                 "120 NEXT I",
-                "130 PRINT \"TABLICA SKOMPLETOWANA!\"",
+                "130 PRINT \"TABLE COMPLETE!\"",
                 "140 END"
             },
             // Sample 3: Generator Wzorow ASCII
             new string[]
             {
-                "10 REM --- GENERATOR CHOINKI ASCII ---",
+                "10 REM --- ASCII CHRISTMAS TREE GENERATOR ---",
                 "20 CLS",
-                "30 PRINT \"WZOR GWIAZDKOWY:\"",
+                "30 PRINT \"STAR PATTERN:\"",
                 "40 FOR R = 1 TO 8",
                 "50 FOR C = 1 TO R",
                 "60 PRINT \"*\";",
@@ -147,9 +147,9 @@ namespace ZonderqOS.GUI.Apps
             // Sample 4: Ciag Fibonacciego
             new string[]
             {
-                "10 REM --- CIAG FIBONACCIEGO ---",
+                "10 REM --- FIBONACCI SEQUENCE ---",
                 "20 CLS",
-                "30 PRINT \"CIAG FIBONACCIEGO:\"",
+                "30 PRINT \"FIBONACCI SEQUENCE:\"",
                 "40 A = 0",
                 "50 B = 1",
                 "60 PRINT A",
@@ -161,7 +161,7 @@ namespace ZonderqOS.GUI.Apps
                 "120 A = B",
                 "130 B = C",
                 "140 NEXT K",
-                "150 PRINT \"KONIEC CIAGU.\"",
+                "150 PRINT \"SEQUENCE COMPLETE.\"",
                 "160 END"
             }
         };
@@ -171,7 +171,7 @@ namespace ZonderqOS.GUI.Apps
             "Chiptune Sounds",
             "Guess the Number",
             "Multiplication Table",
-            "Wzory ASCII",
+            "ASCII Patterns",
             "Fibonacci Sequence"
         };
 
@@ -211,7 +211,7 @@ namespace ZonderqOS.GUI.Apps
             cursorRow = 0;
             cursorCol = 0;
             scrollRow = 0;
-            statusMessage = "Wczytano: " + SampleNames[sampleIndex];
+            statusMessage = "Loaded: " + SampleNames[sampleIndex];
             statusColor = AccentColor;
         }
 
@@ -320,7 +320,7 @@ namespace ZonderqOS.GUI.Apps
             }
 
             isRunning = true;
-            statusMessage = "Wykonywanie...";
+            statusMessage = "Executing...";
             statusColor = GreenColor;
         }
 
@@ -340,7 +340,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 // Reached end of program
                 isRunning = false;
-                statusMessage = "Koniec programu (OK)";
+                statusMessage = "Program finished (OK)";
                 statusColor = GreenColor;
                 PrintConsole("--- PROGRAM FINISHED (OK) ---");
                 return;
@@ -374,7 +374,7 @@ namespace ZonderqOS.GUI.Apps
                 isRunning = false;
                 statusMessage = "Program finished (END)";
                 statusColor = GreenColor;
-                PrintConsole("--- KONIEC PROGRAMU ---");
+                PrintConsole("--- PROGRAM FINISHED ---");
                 return;
             }
 
@@ -460,7 +460,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 else
                 {
-                    Error("Error: RETURN bez GOSUB");
+                    Error("Error: RETURN without GOSUB");
                 }
                 return;
             }
@@ -681,7 +681,7 @@ namespace ZonderqOS.GUI.Apps
         {
             if (forStack.Count == 0)
             {
-                Error("Error: NEXT bez FOR");
+                Error("Error: NEXT without FOR");
                 return;
             }
 
@@ -1017,8 +1017,8 @@ namespace ZonderqOS.GUI.Apps
 
             DrawBtn(canvas, isRunning ? "RUNNING..." : "RUN", contentX + 6, tbY + 2, 90, tbH - 4, isRunning ? YellowColor : GreenColor);
             DrawBtn(canvas, "STOP", contentX + 102, tbY + 2, 65, tbH - 4, RedColor);
-            DrawBtn(canvas, "PRZYKLAD", contentX + 173, tbY + 2, 150, tbH - 4, AccentColor);
-            DrawBtn(canvas, "WYCZYSC", contentX + 329, tbY + 2, 75, tbH - 4, TextColor);
+            DrawBtn(canvas, "EXAMPLE", contentX + 173, tbY + 2, 150, tbH - 4, AccentColor);
+            DrawBtn(canvas, "CLEAR", contentX + 329, tbY + 2, 75, tbH - 4, TextColor);
 
             // Status message in toolbar
             SmallTextRenderer.Draw(canvas, statusMessage, contentX + 414, tbY + 10, statusColor);
@@ -1045,7 +1045,7 @@ namespace ZonderqOS.GUI.Apps
             // Header tab
             canvas.DrawFilledRectangle(ToolbarBg, x, y, w, 20);
             canvas.DrawLine(Border, x, y + 20, x + w, y + 20);
-            SmallTextRenderer.Draw(canvas, "KOD BASIC (F5 - RUN)", x + 8, y + 6, TextColor);
+            SmallTextRenderer.Draw(canvas, "BASIC CODE (F5 - RUN)", x + 8, y + 6, TextColor);
 
             int viewY = y + 24;
             int maxRows = (h - 28) / 14;
