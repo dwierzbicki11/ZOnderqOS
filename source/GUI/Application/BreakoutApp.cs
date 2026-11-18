@@ -370,7 +370,7 @@ namespace ZonderqOS.GUI.Apps
             int fieldX = contentX + 12;
             int fieldY = contentY + 44;
 
-            // Header button hit test [NOWA GRA]
+            // Header button hit test [NEW GAME]
             int btnW = 80;
             int btnH = 24;
             int btnX = contentX + 288;
@@ -446,7 +446,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "SCORE", contentX + 16, contentY + 11, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, score, contentX + 16, contentY + 23, AccentColor);
 
-            SmallTextRenderer.Draw(canvas, "REKORD", contentX + 80, contentY + 11, MutedColor);
+            SmallTextRenderer.Draw(canvas, "BEST", contentX + 80, contentY + 11, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, highScore, contentX + 80, contentY + 23, TextColor);
 
             SmallTextRenderer.Draw(canvas, "ZYCIA", contentX + 155, contentY + 11, MutedColor);
@@ -455,14 +455,14 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "CEGLY", contentX + 215, contentY + 11, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, (ulong)bricksRemaining, contentX + 215, contentY + 23, YellowColor);
 
-            // Header button [NOWA GRA]
+            // Header button [NEW GAME]
             int btnW = 80;
             int btnH = 24;
             int btnX = contentX + 288;
             int btnY = contentY + 10;
             canvas.DrawFilledRectangle(Color.FromArgb(36, 45, 55), btnX, btnY, btnW, btnH);
             canvas.DrawRectangle(Border, btnX, btnY, btnW, btnH);
-            SmallTextRenderer.DrawCentered(canvas, "NOWA GRA", btnX, btnY + 8, btnW, TextColor);
+            SmallTextRenderer.DrawCentered(canvas, "NEW GAME", btnX, btnY + 8, btnW, TextColor);
 
             // Playing Field
             int fieldX = contentX + 12;
