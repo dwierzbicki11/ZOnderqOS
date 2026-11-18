@@ -597,7 +597,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "FILE PATH", wx + 26, startY, MutedColor);
             SmallTextRenderer.Draw(canvas, "CHMOD", wx + 210, startY, MutedColor);
             SmallTextRenderer.Draw(canvas, "STATUS", wx + 270, startY, MutedColor);
-            SmallTextRenderer.Draw(canvas, "SUMA SHA-256 (PREFIX)", wx + 380, startY, MutedColor);
+            SmallTextRenderer.Draw(canvas, "SHA-256 CHECKSUM (PREFIX)", wx + 380, startY, MutedColor);
 
             canvas.DrawLine(Border, wx + 20, startY + 14, wx + panelW + 10, startY + 14);
 
