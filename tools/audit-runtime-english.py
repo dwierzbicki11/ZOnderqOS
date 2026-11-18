@@ -126,6 +126,11 @@ def extract_candidates(text: str, path: str):
             continue
         for m in STRING.finditer(line):
             literal = m.group()
+            # Internal compatibility identifiers are not displayed messages.
+            if path == "source/Core/Updates/UpdateManager.cs" and literal == '"/root/Co_Nowego_W_Aktualizacji.txt"':
+                continue
+            if path == "source/GUI/Taskbar.cs" and literal == '"centrum aplik"':
+                continue
             # Ignore shell comments after # and C# comments after // where
             # feasible, but preserve URLs in string values.
             before = line[:m.start()].strip()
