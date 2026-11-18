@@ -410,7 +410,7 @@ namespace ZonderqOS.GUI.Apps
             openScrollIndex = 0;
             dialogMode = 1;
             RefreshOpenEntries();
-            status = "Wybierz plik do otwarcia";
+            status = "Select a file to open";
         }
 
         private void BeginSaveAs()
@@ -419,7 +419,7 @@ namespace ZonderqOS.GUI.Apps
             dialogText = string.IsNullOrEmpty(filePath)
                 ? GetDefaultDirectory().TrimEnd('/') + "/untitled.txt"
                 : filePath;
-            status = "Zapisz jako";
+            status = "Save As";
         }
 
         private void HandleDialogKeyboard(KeyEvent key)
@@ -716,7 +716,7 @@ namespace ZonderqOS.GUI.Apps
         {
             if (openSelectedIndex < 0 || openSelectedIndex >= openEntries.Count)
             {
-                status = "Wybierz plik lub folder";
+                status = "Select a file or folder";
                 return;
             }
 
@@ -1354,7 +1354,7 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            canvas.DrawString("Zapisz jako", font, Color.WhiteSmoke, x + 14, y + 10);
+            canvas.DrawString("Save As", font, Color.WhiteSmoke, x + 14, y + 10);
 
             int fieldX = x + 14;
             int fieldY = y + 50;
@@ -1454,7 +1454,7 @@ namespace ZonderqOS.GUI.Apps
             }
 
             if (app.OpenEntries.Count == 0)
-                SmallTextRenderer.Draw(canvas, "TEN KATALOG JEST PUSTY", listX + 16, listY + 16, SecondaryText);
+                SmallTextRenderer.Draw(canvas, "THIS DIRECTORY IS EMPTY", listX + 16, listY + 16, SecondaryText);
 
             // Reuse the system ScrollBar widget so the picker behaves consistently with
             // Terminal and other modern ZOnderqOS views.

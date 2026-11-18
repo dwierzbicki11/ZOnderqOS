@@ -168,22 +168,22 @@ namespace ZonderqOS.GUI.Apps
 
         private static readonly string[] SampleNames = new string[]
         {
-            "Dźwięki Chiptune",
-            "Zgadnij Liczbę",
-            "Tabliczka Mnożenia",
+            "Chiptune Sounds",
+            "Guess the Number",
+            "Multiplication Table",
             "Wzory ASCII",
-            "Ciąg Fibonacciego"
+            "Fibonacci Sequence"
         };
 
         public BasicIdeApp(int x, int y, Action onClose) : base("Zonderq BASIC")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 620, 440, "Zonderq BASIC IDE - Środowisko Programistyczne");
+            Window = new Window(x, y, 620, 440, "Zonderq BASIC IDE - Development Environment");
             Window.CloseAction = Close;
 
             LoadSample(0);
             consoleLines.Add("Zonderq BASIC v1.0 [Cosmos Gen3]");
-            consoleLines.Add("Wpisz program lub kliknij [URUCHOM].");
+            consoleLines.Add("Type a program or click [RUN].");
             consoleLines.Add("");
         }
 
@@ -314,7 +314,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (program.Count == 0)
             {
-                statusMessage = "Brak instrukcji do wykonania";
+                statusMessage = "No statements to execute";
                 statusColor = YellowColor;
                 return;
             }
@@ -429,7 +429,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 else
                 {
-                    Error("Error GOTO: brak linii " + targetLine);
+                    Error("GOTO error: missing line " + targetLine);
                 }
                 return;
             }
@@ -446,7 +446,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 else
                 {
-                    Error("Error GOSUB: brak linii " + targetLine);
+                    Error("GOSUB error: missing line " + targetLine);
                 }
                 return;
             }
@@ -582,7 +582,7 @@ namespace ZonderqOS.GUI.Apps
             int thenIdx = text.IndexOf(" THEN ", StringComparison.OrdinalIgnoreCase);
             if (thenIdx < 0)
             {
-                Error("Error IF: brak THEN");
+                Error("IF error: missing THEN");
                 return;
             }
 
@@ -607,7 +607,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (opIdx < 0)
             {
-                Error("Error IF: brak operatora");
+                Error("IF error: missing operator");
                 return;
             }
 
@@ -630,7 +630,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     int idx = FindProgramIndex(targetLine);
                     if (idx >= 0) pc = idx;
-                    else Error("Error IF: brak linii " + targetLine);
+                    else Error("IF error: missing line " + targetLine);
                 }
                 else
                 {
@@ -647,7 +647,7 @@ namespace ZonderqOS.GUI.Apps
             int toIdx = text.IndexOf(" TO ", StringComparison.OrdinalIgnoreCase);
             if (eqIdx < 0 || toIdx < eqIdx)
             {
-                Error("Error składni FOR");
+                Error("FOR syntax error");
                 return;
             }
 
@@ -789,7 +789,7 @@ namespace ZonderqOS.GUI.Apps
             isRunning = false;
             statusMessage = msg;
             statusColor = RedColor;
-            PrintConsole("[BŁĄD] " + msg);
+            PrintConsole("[ERROR] " + msg);
             ZonderqOS.Hardware.Speaker.Tone(220);
             long clock = Stopwatch.Frequency > 0 ? Stopwatch.Frequency : 1000000;
             toneEndTimestamp = Stopwatch.GetTimestamp() + (clock * 150) / 1000;
@@ -1015,7 +1015,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(ToolbarBg, contentX + 4, tbY, contentWidth - 8, tbH);
             canvas.DrawRectangle(Border, contentX + 4, tbY, contentWidth - 8, tbH);
 
-            DrawBtn(canvas, isRunning ? "DZIALA..." : "URUCHOM", contentX + 6, tbY + 2, 90, tbH - 4, isRunning ? YellowColor : GreenColor);
+            DrawBtn(canvas, isRunning ? "RUNNING..." : "RUN", contentX + 6, tbY + 2, 90, tbH - 4, isRunning ? YellowColor : GreenColor);
             DrawBtn(canvas, "STOP", contentX + 102, tbY + 2, 65, tbH - 4, RedColor);
             DrawBtn(canvas, "PRZYKLAD", contentX + 173, tbY + 2, 150, tbH - 4, AccentColor);
             DrawBtn(canvas, "WYCZYSC", contentX + 329, tbY + 2, 75, tbH - 4, TextColor);
@@ -1102,7 +1102,7 @@ namespace ZonderqOS.GUI.Apps
 
                 int rowY = viewY + r * 14;
                 string text = consoleLines[lineIdx];
-                Color c = text.StartsWith("[BŁĄD]") ? RedColor : (text.StartsWith("---") ? AccentColor : TerminalGreen);
+                Color c = text.StartsWith("[ERROR]") ? RedColor : (text.StartsWith("---") ? AccentColor : TerminalGreen);
                 SmallTextRenderer.Draw(canvas, text, x + 8, rowY + 2, c);
             }
         }

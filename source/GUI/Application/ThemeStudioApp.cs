@@ -46,10 +46,10 @@ namespace ZonderqOS.GUI.Apps
             "Tapeta PNG",
             "Grafit",
             "Cosmos Navy",
-            "OLED Czerń",
+            "OLED Black",
             "Retro 95 Teal",
             "Cyber Matrix",
-            "Arktyczny Lód"
+            "Arctic Ice"
         };
 
         private static readonly Color[] BackgroundPreviewColors =
@@ -220,7 +220,7 @@ namespace ZonderqOS.GUI.Apps
 
             // Header labels
             SmallTextRenderer.Draw(canvas, "STUDIO MOTYWOW I PERSONALIZACJI", contentX + 14, contentY + 12, SystemTheme.Accent);
-            SmallTextRenderer.Draw(canvas, "Kliknij styl akcentu lub tlo pulpitu - zmiana nastepuje natychmiast.",
+            SmallTextRenderer.Draw(canvas, "Select an accent style or desktop background; changes apply immediately.",
                 contentX + 14, contentY + 26, MutedColor);
 
             // Live Preview Card (Top Right)
@@ -342,7 +342,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.DrawCentered(canvas, "PRZYWROC DOMYSLNE", btnX, btnY + 8, btnW, TextColor);
 
             // Instructions Footer
-            SmallTextRenderer.Draw(canvas, "Wskazowka: Mozesz takze uzyc skrotu klawiszowego Tab (akcent) oraz B (tlo pulpitu).",
+            SmallTextRenderer.Draw(canvas, "Tip: use Tab for accent style and B for desktop background.",
                 contentX + 14, contentY + 355, MutedColor);
         }
     }
