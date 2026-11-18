@@ -577,7 +577,7 @@ namespace ZonderqOS.GUI.Apps
                 // Tab 0: Changelog
                 UpdatePackageInfo pkg = UpdateManager.AvailablePackage ?? EmptyPackage;
                 SmallTextRenderer.Draw(canvas, "Package version: " + pkg.Version + " - " + pkg.Title, x + 14, y + 10, AccentColor);
-                SmallTextRenderer.Draw(canvas, "Data wydania: " + pkg.ReleaseDate + " | Waznosc: " + pkg.Severity + " | Motyw: " + pkg.TargetThemeName, x + 14, y + 26, MutedColor);
+                SmallTextRenderer.Draw(canvas, "Release date: " + pkg.ReleaseDate + " | Waznosc: " + pkg.Severity + " | Motyw: " + pkg.TargetThemeName, x + 14, y + 26, MutedColor);
 
                 canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
 
