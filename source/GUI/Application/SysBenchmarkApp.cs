@@ -472,7 +472,7 @@ namespace ZonderqOS.GUI.Apps
             EnsureBuffersAllocated();
             long freq = Stopwatch.Frequency > 0 ? Stopwatch.Frequency : 1000000;
             string testPath = benchmarkTestPath;
-            vfsTestPerformed = true;
+            vfsTestPerformed = false;
 
             if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
             {
@@ -612,13 +612,14 @@ namespace ZonderqOS.GUI.Apps
                 vfsWriteSpeedKb = (int)(((long)totalWritten * freq) / (writeElapsed * 1024L));
                 vfsReadSpeedKb = (int)(((long)totalRead * freq) / (readElapsed * 1024L));
                 vfsIntegrity = integrityOk ? "Integralność: 100% Zgodna" : "Ostrzeżenie: Niezgodność sumy";
+                vfsTestPerformed = integrityOk;
             }
             else
             {
                 // Fallback for Read-Only mounted environments
                 vfsWriteSpeedKb = 0;
-                vfsReadSpeedKb = 2500;
-                vfsIntegrity = "VFS Read-Only (Brak zapisu)";
+                vfsReadSpeedKb = 0;
+                vfsIntegrity = "VFS test FAILED / brak bezpiecznego zapisu";
             }
         }
 
