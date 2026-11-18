@@ -30,5 +30,5 @@ def test_sysbench_registered_in_command_cs():
 def test_gui_diagnostics_tab_wired():
     gui_cs = (ROOT / "source/GUI/Application/SysBenchmarkApp.cs").read_text(encoding="utf-8")
     assert "SystemDiagnosticRunner.Shared" in gui_cs
-    assert "Rozpocznij pelny test" in gui_cs
+    assert "Rozpocznij szybki test" in gui_cs
     assert "Przerwij" in gui_cs
