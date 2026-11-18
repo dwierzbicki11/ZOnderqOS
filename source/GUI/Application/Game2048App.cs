@@ -572,7 +572,7 @@ namespace ZonderqOS.GUI.Apps
 
             canvas.DrawFilledRectangle(HeaderPanel, scoreBoxX, scoreBoxY, scoreBoxW, scoreBoxH);
             canvas.DrawRectangle(Border, scoreBoxX, scoreBoxY, scoreBoxW, scoreBoxH);
-            SmallTextRenderer.DrawCentered(canvas, "WYNIK", scoreBoxX, scoreBoxY + 4, scoreBoxW, MutedColor);
+            SmallTextRenderer.DrawCentered(canvas, "SCORE", scoreBoxX, scoreBoxY + 4, scoreBoxW, MutedColor);
             SmallTextRenderer.DrawCentered(canvas, score.ToString(), scoreBoxX, scoreBoxY + 18, scoreBoxW, TextColor);
 
             canvas.DrawFilledRectangle(HeaderPanel, bestBoxX, scoreBoxY, scoreBoxW, scoreBoxH);
@@ -636,11 +636,11 @@ namespace ZonderqOS.GUI.Apps
             // Overlay Banners
             if (isGameOver)
             {
-                DrawOverlay(canvas, boardX, boardY, "KONIEC GRY!", "Brak mozliwych ruchow. Kliknij tutaj.", RedColor);
+                DrawOverlay(canvas, boardX, boardY, "GAME OVER!", "No moves left. Click to restart.", RedColor);
             }
             else if (hasWon && !continueAfterWin)
             {
-                DrawOverlay(canvas, boardX, boardY, "WYGRANA 2048!", "Gratulacje! Kliknij aby grac dalej.", GoldColor);
+                DrawOverlay(canvas, boardX, boardY, "2048 REACHED!", "Congratulations! Click to keep playing.", GoldColor);
             }
         }
 

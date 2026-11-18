@@ -43,9 +43,9 @@ namespace ZonderqOS.GUI.Apps
 
         protected override void RenderContent(Canvas canvas)
         {
-            string pageName = pageMode == 0 ? "KERNEL" : pageMode == 1 ? "PAMIEC / GC" : "HARDWARE";
+            string pageName = pageMode == 0 ? "KERNEL" : pageMode == 1 ? "MEMORY / GC" : "HARDWARE";
             DrawRow(canvas, 0, IconType.Settings,
-                "WIDOK", "Kliknij aby przelaczyc kernel / pamiec / hardware",
+                "VIEW", "Click to switch kernel / memory / hardware",
                 pageName, Accent);
 
             if (pageMode == 0)
@@ -67,7 +67,7 @@ namespace ZonderqOS.GUI.Apps
             DrawRow(canvas, 4, IconType.Settings,
                 "PROCESOR", cpuInfo.Vendor, cpuInfo.Brand, Text);
             DrawNumericRow(canvas, 5, IconType.Settings,
-                "BUSY CPU TIME", "Skumulowany czas pracy watkow nie-idle", busyCpuNs / 1000000UL, " MS");
+                "BUSY CPU TIME", "Total non-idle thread execution time", busyCpuNs / 1000000UL, " MS");
             DrawNumericRow(canvas, 6, IconType.Refresh,
                 "UPTIME", "Monotoniczny czas od startu", uptimeSeconds, " S");
         }
@@ -110,7 +110,7 @@ namespace ZonderqOS.GUI.Apps
                 cachedCacheText, Text);
             DrawRow(canvas, 5, IconType.Settings,
                 "WIRTUALIZACJA",
-                info.HypervisorPresent ? "Wykryto hypervisor" : "Brak wykrytego hypervisora",
+                info.HypervisorPresent ? "Hypervisor detected" : "No hypervisor detected",
                 info.VirtualizationSupported ? "SUPPORTED" : "N/A", Text);
             DrawRow(canvas, 6, IconType.Settings,
                 "FEATURES", "Flagi CPU raportowane przez backend platformy",
@@ -209,7 +209,7 @@ namespace ZonderqOS.GUI.Apps
             }
 
             if (pageMode == 0)
-                SetStatus("KERNEL: ODCZYT TYLKO - BRAK RYZYKOWNYCH ZMIAN SCHEDULERA", Good);
+                SetStatus("KERNEL: READ-ONLY - NO SCHEDULER CHANGES", Good);
             else if (pageMode == 1)
             {
                 if (lastStatusGcCommittedMb != gcCommittedMb)

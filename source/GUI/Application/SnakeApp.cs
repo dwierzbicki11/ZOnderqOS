@@ -478,7 +478,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Border, headerX, headerY + headerHeight - 1, headerWidth, 1);
 
             // Score
-            SmallTextRenderer.Draw(canvas, "WYNIK", headerX + 10, headerY + 5, MutedColor);
+            SmallTextRenderer.Draw(canvas, "SCORE", headerX + 10, headerY + 5, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, score, headerX + 10, headerY + 19, AccentColor);
 
             // High Score
@@ -506,7 +506,7 @@ namespace ZonderqOS.GUI.Apps
             }
             else if (status == GameStatus.Playing)
             {
-                actText = "PAUZA";
+                actText = "PAUSED";
                 actColor = WarningColor;
             }
             else if (status == GameStatus.Paused)
@@ -604,15 +604,15 @@ namespace ZonderqOS.GUI.Apps
             // Overlay message for Ready / GameOver / Paused
             if (status == GameStatus.Ready)
             {
-                RenderPrompt(canvas, gridOriginX, gridOriginY, "KLIKNIJ LUB WCISNIJ SPACJE", "ABY ROZPOCZAC GRE", AccentColor);
+                RenderPrompt(canvas, gridOriginX, gridOriginY, "CLICK OR PRESS SPACE", "TO START", AccentColor);
             }
             else if (status == GameStatus.GameOver)
             {
-                RenderPrompt(canvas, gridOriginX, gridOriginY, "KONIEC GRY!", "KLIKNIJ ABY ZAGRAC PONOWNIE", DangerColor);
+                RenderPrompt(canvas, gridOriginX, gridOriginY, "GAME OVER!", "CLICK TO REPLAY", DangerColor);
             }
             else if (status == GameStatus.Paused)
             {
-                RenderPrompt(canvas, gridOriginX, gridOriginY, "PAUZA", "KLIKNIJ ABY WZNOWIC", WarningColor);
+                RenderPrompt(canvas, gridOriginX, gridOriginY, "PAUSED", "CLICK TO RESUME", WarningColor);
             }
         }
 

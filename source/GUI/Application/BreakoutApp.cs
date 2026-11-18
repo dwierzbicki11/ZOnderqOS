@@ -443,7 +443,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawRectangle(Border, contentX + 8, contentY + 6, contentWidth - 16, 32);
 
             // Header Stats
-            SmallTextRenderer.Draw(canvas, "WYNIK", contentX + 16, contentY + 11, MutedColor);
+            SmallTextRenderer.Draw(canvas, "SCORE", contentX + 16, contentY + 11, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, score, contentX + 16, contentY + 23, AccentColor);
 
             SmallTextRenderer.Draw(canvas, "REKORD", contentX + 80, contentY + 11, MutedColor);
@@ -513,23 +513,23 @@ namespace ZonderqOS.GUI.Apps
             // Draw Overlay messages
             if (status == GameStatus.Ready)
             {
-                DrawOverlayBanner(canvas, fieldX, fieldY, fieldW, fieldH, "KLIKNIJ LUB SPACJA ABY WYSTRZELIC", AccentColor);
+                DrawOverlayBanner(canvas, fieldX, fieldY, fieldW, fieldH, "CLICK OR PRESS SPACE TO LAUNCH", AccentColor);
             }
             else if (status == GameStatus.Paused)
             {
-                DrawOverlayBanner(canvas, fieldX, fieldY, fieldW, fieldH, "PAUZA - WCISNIJ SPACJE", YellowColor);
+                DrawOverlayBanner(canvas, fieldX, fieldY, fieldW, fieldH, "PAUSED - PRESS SPACE", YellowColor);
             }
             else if (status == GameStatus.GameOver)
             {
-                DrawOverlayBanner(canvas, fieldX, fieldY, fieldW, fieldH, "KONIEC GRY! KLIKNIJ ABY ZAGRAC", RedColor);
+                DrawOverlayBanner(canvas, fieldX, fieldY, fieldW, fieldH, "GAME OVER! CLICK TO REPLAY", RedColor);
             }
             else if (status == GameStatus.Victory)
             {
-                DrawOverlayBanner(canvas, fieldX, fieldY, fieldW, fieldH, "WYGRANA! BRAWO! KLIKNIJ ABY ZAGRAC", GreenColor);
+                DrawOverlayBanner(canvas, fieldX, fieldY, fieldW, fieldH, "YOU WIN! CLICK TO REPLAY", GreenColor);
             }
 
             // Controls Footer
-            SmallTextRenderer.Draw(canvas, "Ruch: Mysz / Strzalki  Start: Spacja  P: Pauza  R: Reset",
+            SmallTextRenderer.Draw(canvas, "Move: Mouse / Arrows  Start: Space  P: Pause  R: Reset",
                 contentX + 14, contentY + 398, MutedColor);
         }
 
