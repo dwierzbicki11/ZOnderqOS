@@ -407,7 +407,7 @@ namespace ZonderqOS.GUI.Apps
             DrawDetailLine(canvas, x, y + 88, width, "SYSTEM", mountDetails[index], Text);
             DrawDetailLine(canvas, x, y + 118, width, "SOURCE", mountSources[index], Good);
             DrawInfoBox(canvas, x + 14, y + 185, width - 28,
-                "Widok VFS jest tylko informacyjny. Montowanie wykonuj w zakladce PARTITIONS.", Muted);
+                "VFS view is read-only. Mount volumes in the PARTITIONS tab.", Muted);
         }
 
         private static void DrawDetailLine(Canvas canvas, int x, int y, int width, string label, string value, Color valueColor)
@@ -440,7 +440,7 @@ namespace ZonderqOS.GUI.Apps
             Color color;
             if (tab == 0)
             {
-                label = "SKANUJ PARTITIONS";
+                label = "SCAN PARTITIONS";
                 hint = "R";
                 icon = IconType.DiskManager;
                 color = Warning;
@@ -449,7 +449,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 int source = SelectedPartitionSource();
                 string mount = SelectedPartitionMount();
-                label = source == 0 ? "SYSTEM VOLUME" : string.IsNullOrEmpty(mount) ? "MOUNT" : "ODMOUNT";
+                label = source == 0 ? "SYSTEM VOLUME" : string.IsNullOrEmpty(mount) ? "MOUNT" : "UNMOUNT";
                 hint = source == 0 ? "PROTECTED" : "ENTER / M";
                 icon = IconType.Folder;
                 color = source == 0 ? Warning : Good;
@@ -692,7 +692,7 @@ namespace ZonderqOS.GUI.Apps
                 if (global::ZonderqOS.GUI.StorageMountManager.TryMount(source, out mountedAt, out error))
                 {
                     RefreshSnapshot();
-                    SetStatus("ZAMONTOWANO PARTITIONS", Good);
+                    SetStatus("PARTITION MOUNTED", Good);
                 }
                 else
                 {
@@ -704,7 +704,7 @@ namespace ZonderqOS.GUI.Apps
                 if (global::ZonderqOS.GUI.StorageMountManager.TryUnmount(source, out error))
                 {
                     RefreshSnapshot();
-                    SetStatus("ODMONTOWANO PARTITIONS", Good);
+                    SetStatus("PARTITION UNMOUNTED", Good);
                 }
                 else
                 {
