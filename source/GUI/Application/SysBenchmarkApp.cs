@@ -517,16 +517,23 @@ namespace ZonderqOS.GUI.Apps
                 testBlock[i] = (byte)((i * 31 + 17) & 0xFF);
             }
 
-            bool existedBefore = File.Exists(testPath);
+            // Never overwrite a prior benchmark file or unrelated user data.
+            if (File.Exists(testPath))
+            {
+                vfsWriteSpeedKb = 0;
+                vfsReadSpeedKb = 0;
+                vfsIntegrity = "Plik testowy juz istnieje; zapis anulowany";
+                return;
+            }
             long writeStart = Stopwatch.GetTimestamp();
             bool writeOk = false;
             int totalWritten = 0;
 
             try
             {
-                // Write 4 blocks = 256 KB
-                using (var fs = new FileStream(testPath, FileMode.Create, FileAccess.Write))
+                using (var fs = new FileStream(testPath, FileMode.CreateNew, FileAccess.Write))
                 {
+                    createdByTest = true;
                     Span<byte> writeSlice = testBlock.Slice(0, blockLength);
                     for (int b = 0; b < 4; b++)
                     {
@@ -535,30 +542,13 @@ namespace ZonderqOS.GUI.Apps
                     }
                     fs.Flush();
                 }
-                createdByTest = !existedBefore;
-                if (createdByTest)
-                    global::ZonderqOS.PermissionManager.SetPermission(testPath, user, 600);
+                global::ZonderqOS.PermissionManager.SetPermission(testPath, user, 600);
                 writeOk = true;
             }
             catch
             {
-                try
-                {
-                    using (var fs = new FileStream(testPath, FileMode.Create, FileAccess.Write))
-                    {
-                        fs.Write(testBlock.Slice(0, blockLength));
-                        fs.Flush();
-                    }
-                    totalWritten = blockLength;
-                    createdByTest = !existedBefore;
-                    if (createdByTest)
-                        global::ZonderqOS.PermissionManager.SetPermission(testPath, user, 600);
-                    writeOk = true;
-                }
-                catch
-                {
-                    writeOk = false;
-                }
+                // Never retry with FileMode.Create: that truncates existing data.
+                writeOk = false;
             }
 
             long writeElapsed = Stopwatch.GetTimestamp() - writeStart;
