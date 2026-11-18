@@ -216,7 +216,7 @@ namespace ZonderqOS.GUI
                 if (ch >= 32 && ch <= 126 && passwordLength < MaxPasswordLength)
                 {
                     password[passwordLength++] = ch;
-                    SetStatus("ENTER ODBLOKOWUJE SESJE", Muted);
+                    SetStatus("ENTER UNLOCKS SESSION", Muted);
                 }
             }
 
