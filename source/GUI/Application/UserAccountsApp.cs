@@ -217,7 +217,7 @@ namespace ZonderqOS.GUI.Apps
             if (row == 6)
             {
                 global::ZonderqOS.SystemSettings.CycleAutoLockTimeout();
-                SetStatus("ZMIENIONO CZAS AUTOMATYCZNEJ BLOKADY", Good);
+                SetStatus("AUTO-LOCK TIMEOUT CHANGED", Good);
                 return;
             }
 
