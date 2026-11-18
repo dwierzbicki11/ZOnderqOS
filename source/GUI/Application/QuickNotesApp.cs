@@ -29,7 +29,7 @@ namespace ZonderqOS.GUI.Apps
         private readonly List<string> lines = new List<string>(16);
         private int cursorRow = 0;
         private readonly Action closeCallback;
-        private string statusMessage = "Autozapis aktywny";
+        private string statusMessage = "Autosave enabled";
         private long lastSaveTicks = 0;
         private long lastEditTicks = 0;
         private bool isDirty = false;
@@ -152,7 +152,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch
             {
-                statusMessage = "Error zapisu";
+                statusMessage = "Save error";
             }
         }
 
@@ -320,7 +320,7 @@ namespace ZonderqOS.GUI.Apps
 
             // Buttons
             UiPainter.RoundedPanel(canvas, wx + 180, wy + 4, 65, 20, 3, noteBg, noteBorder);
-            SmallTextRenderer.DrawCentered(canvas, "WYCZYSC", wx + 180, wy + 8, 65, TextColor);
+            SmallTextRenderer.DrawCentered(canvas, "CLEAR", wx + 180, wy + 8, 65, TextColor);
 
             UiPainter.RoundedPanel(canvas, wx + 252, wy + 4, 75, 20, 3, Color.FromArgb(40, 140, 230), Color.FromArgb(30, 110, 190));
             SmallTextRenderer.DrawCentered(canvas, "SAVE", wx + 252, wy + 8, 75, Color.White);
