@@ -59,10 +59,10 @@ namespace ZonderqOS.GUI.Apps
         private bool errorState;
         private int hoveredButton = -1;
 
-        public CalculatorApp(int x, int y, Action onClose) : base("Kalkulator")
+        public CalculatorApp(int x, int y, Action onClose) : base("Calculator")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 500, 690, "Kalkulator");
+            Window = new Window(x, y, 500, 690, "Calculator");
             Window.CloseAction = Close;
         }
 
@@ -166,9 +166,9 @@ namespace ZonderqOS.GUI.Apps
             if (contentWidth >= 80)
             {
                 IconManager.DrawScaled(canvas, IconType.Calculator, contentX + 8, contentY + 8, 28, 28);
-                SmallTextRenderer.DrawClipped(canvas, "KALKULATOR STANDARDOWY",
+                SmallTextRenderer.DrawClipped(canvas, "STANDARD CALCULATOR",
                     contentX + 46, contentY + 12, System.Math.Max(1, contentWidth - 54), Text);
-                SmallTextRenderer.DrawClipped(canvas, "KLAWIATURA I MYSZ",
+                SmallTextRenderer.DrawClipped(canvas, "KEYBOARD AND MOUSE",
                     contentX + 46, contentY + 28, System.Math.Max(1, contentWidth - 54), Muted);
             }
 
@@ -192,7 +192,7 @@ namespace ZonderqOS.GUI.Apps
                 // A 7-row grid cannot fit without obscuring the display.
                 // Keyboard shortcuts still perform every calculator action.
                 if (Window.Height >= 270)
-                    SmallTextRenderer.DrawClipped(canvas, "Zwieksz okno, aby pokazac przyciski",
+                    SmallTextRenderer.DrawClipped(canvas, "Enlarge window to show buttons",
                         contentX + 8, contentY + 193, System.Math.Max(1, contentWidth - 16), Muted);
                 return;
             }
@@ -476,7 +476,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (value == 0.0)
                 {
-                    SetError("DZIELENIE PRZEZ ZERO");
+                    SetError("DIVISION BY ZERO");
                     return;
                 }
                 result = 1.0 / value;
@@ -491,7 +491,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (value < 0.0)
                 {
-                    SetError("UJEMNY PIERWIASTEK");
+                    SetError("NEGATIVE SQUARE ROOT");
                     return;
                 }
                 result = System.Math.Sqrt(value);
@@ -576,7 +576,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (right == 0.0)
                 {
-                    SetError("DZIELENIE PRZEZ ZERO");
+                    SetError("DIVISION BY ZERO");
                     return false;
                 }
                 result = left / right;
