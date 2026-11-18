@@ -83,7 +83,7 @@ namespace ZonderqOS.GUI.Apps
             }
 
             openEditor?.Invoke(path);
-            SetStatus("OTWARTO " + path, Accent);
+            SetStatus("OPENED " + path, Accent);
         }
 
         protected override void OnKeyboard(KeyEvent key)
