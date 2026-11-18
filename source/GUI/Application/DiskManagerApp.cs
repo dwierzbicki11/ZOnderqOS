@@ -314,7 +314,7 @@ namespace ZonderqOS.GUI.Apps
         {
             if (tab == 0)
             {
-                SmallTextRenderer.DrawClipped(canvas, deviceNames[index] ?? "DYSK", x, y + 15, width - 150, Text);
+                SmallTextRenderer.DrawClipped(canvas, deviceNames[index] ?? "DISK", x, y + 15, width - 150, Text);
                 SmallTextRenderer.DrawClipped(canvas, deviceDetails[index] ?? string.Empty, x, y + 35, width - 150, Muted);
                 DrawSizeChip(canvas, x + width - 135, y + 12, 125, deviceSizeMb[index], selected ? SystemTheme.Accent : Text);
             }
@@ -376,7 +376,7 @@ namespace ZonderqOS.GUI.Apps
         private void RenderDeviceDetails(Canvas canvas, int x, int y, int width)
         {
             int index = selection;
-            DrawDetailLine(canvas, x, y + 58, width, "NAZWA", deviceNames[index], Text);
+            DrawDetailLine(canvas, x, y + 58, width, "NAME", deviceNames[index], Text);
             DrawDetailLine(canvas, x, y + 88, width, "INDEKS", deviceIndexText[index], Text);
             DrawDetailLine(canvas, x, y + 118, width, "ROZMIAR", deviceSizeText[index], Text);
             DrawDetailLine(canvas, x, y + 148, width, "PARAMETRY", deviceDetails[index], Muted);
@@ -405,7 +405,7 @@ namespace ZonderqOS.GUI.Apps
             int index = selection;
             DrawDetailLine(canvas, x, y + 58, width, "PUNKT", mountNames[index], Text);
             DrawDetailLine(canvas, x, y + 88, width, "SYSTEM", mountDetails[index], Text);
-            DrawDetailLine(canvas, x, y + 118, width, "ZRODLO", mountSources[index], Good);
+            DrawDetailLine(canvas, x, y + 118, width, "SOURCE", mountSources[index], Good);
             DrawInfoBox(canvas, x + 14, y + 185, width - 28,
                 "Widok VFS jest tylko informacyjny. Montowanie wykonuj w zakladce PARTYCJE.", Muted);
         }
@@ -586,7 +586,7 @@ namespace ZonderqOS.GUI.Apps
                     ulong sizeMb = ToMegabytes(device.BlockCount, device.BlockSize);
                     deviceSourceIndex[slot] = source;
                     deviceIndexText[slot] = source.ToString();
-                    deviceNames[slot] = string.IsNullOrEmpty(device.Name) ? "DYSK " + source : device.Name;
+                    deviceNames[slot] = string.IsNullOrEmpty(device.Name) ? "DISK " + source : device.Name;
                     deviceDetails[slot] = "BLOCK " + device.BlockSize + " B  |  " + device.BlockCount + " BLOKOW";
                     deviceSizeMb[slot] = sizeMb;
                     deviceSizeText[slot] = sizeMb + " MB";
