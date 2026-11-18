@@ -762,9 +762,9 @@ namespace ZonderqOS.GUI.Apps
             int tabH = 26;
 
             DrawTab(canvas, "⚡ BENCHMARK", wx + 12, tabY, tabW, tabH, activeTab == 0);
-            DrawTab(canvas, "💻 SPECYFIKACJA", wx + 12 + tabW + 6, tabY, tabW, tabH, activeTab == 1);
+            DrawTab(canvas, "💻 SYSTEM SPECS", wx + 12 + tabW + 6, tabY, tabW, tabH, activeTab == 1);
             DrawTab(canvas, "📊 RANKING", wx + 12 + (tabW + 6) * 2, tabY, tabW, tabH, activeTab == 2);
-            DrawTab(canvas, "🩺 DIAGNOSTYKA", wx + 12 + (tabW + 6) * 3, tabY, tabW, tabH, activeTab == 3);
+            DrawTab(canvas, "🩺 DIAGNOSTICS", wx + 12 + (tabW + 6) * 3, tabY, tabW, tabH, activeTab == 3);
 
             canvas.DrawLine(Border, wx + 10, tabY + tabH + 6, wx + ww - 10, tabY + tabH + 6);
 
@@ -825,7 +825,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.DrawClipped(canvas, "Rozpocznij szybki test", wx + 24, btnY + 8, 175, TextColor);
 
             canvas.DrawFilledRectangle(runner.IsRunning ? RedColor : Panel, wx + 220, btnY, 110, 30);
-            SmallTextRenderer.DrawClipped(canvas, "Przerwij", wx + 245, btnY + 8, 80, TextColor);
+            SmallTextRenderer.DrawClipped(canvas, "Abort", wx + 245, btnY + 8, 80, TextColor);
         }
 
         private void DrawTab(Canvas canvas, string title, int x, int y, int w, int h, bool selected)

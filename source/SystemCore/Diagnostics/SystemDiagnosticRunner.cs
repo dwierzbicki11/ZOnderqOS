@@ -32,7 +32,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
         public bool IsRunning { get; private set; }
         public bool IsAborted { get; private set; }
         public int ProgressPercent { get; private set; }
-        public string CurrentScenario { get; private set; } = "Gotowy";
+        public string CurrentScenario { get; private set; } = "Ready";
         public string LastReportPath { get; private set; } = string.Empty;
         public List<DiagnosticResult> Results { get; } = new List<DiagnosticResult>();
 
@@ -47,7 +47,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
             if (IsRunning)
             {
                 IsAborted = true;
-                CurrentScenario = "Przerwano przez uzytkownika";
+                CurrentScenario = "Aborted by user";
             }
         }
 
@@ -62,7 +62,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
             this.includeRebootTest = includeRebootTest;
             startRamBytes = GC.GetTotalMemory(false);
             peakRamBytes = startRamBytes;
-            CurrentScenario = "Inicjalizacja diagnostyki...";
+            CurrentScenario = "Initializing diagnostics...";
             LastReportPath = string.Empty;
         }
 
@@ -77,7 +77,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
                 {
                     Name = CurrentScenario,
                     Status = DiagnosticStatus.Skipped,
-                    Reason = "Przerwano przez uzytkownika",
+                    Reason = "Aborted by user",
                     DurationMs = 0,
                     Metrics = "aborted"
                 });
@@ -123,10 +123,10 @@ namespace ZonderqOS.SystemCore.Diagnostics
                     ProgressPercent = 95;
                     break;
                 case 7:
-                    CurrentScenario = "Eksport raportow (MD/CSV/JSON)";
+                    CurrentScenario = "Exporting reports (MD/CSV/JSON)";
                     SaveReports();
                     ProgressPercent = 100;
-                    CurrentScenario = "Zakonczono";
+                    CurrentScenario = "Completed";
                     IsRunning = false;
                     return false;
             }
@@ -149,7 +149,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
             {
                 Name = "RAM & OrionGC",
                 Status = DiagnosticStatus.Pass,
-                Reason = "Telemetria RAM i OrionGC OK",
+                Reason = "RAM & OrionGC telemetry OK",
                 DurationMs = sw.ElapsedMilliseconds,
                 Metrics = $"heapKB={curBytes / 1024}"
             });
@@ -174,7 +174,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
             {
                 Name = "CPU & Scheduler",
                 Status = primes == 669 ? DiagnosticStatus.Pass : DiagnosticStatus.Fail,
-                Reason = primes == 669 ? "Obliczenia CPU i scheduler poprawne" : $"Bledna liczba pierwsza: {primes}",
+                Reason = primes == 669 ? "CPU & scheduler checks passed" : $"Invalid prime count: {primes}",
                 DurationMs = sw.ElapsedMilliseconds,
                 Metrics = $"primes={primes}"
             });
@@ -211,7 +211,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
                 {
                     Name = "FAT32 ZONDERQDATA",
                     Status = DiagnosticStatus.Skipped,
-                    Reason = "Brak zamontowanej partycji ZONDERQDATA",
+                    Reason = "ZONDERQDATA partition not mounted",
                     DurationMs = sw.ElapsedMilliseconds,
                     Metrics = "no_partition"
                 });
@@ -254,7 +254,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
             {
                 Name = "Hardware & Boot",
                 Status = DiagnosticStatus.Pass,
-                Reason = "Podstawowa diagnostyka sprzetu i rozruchu OK",
+                Reason = "Basic hardware & boot diagnostics OK",
                 DurationMs = sw.ElapsedMilliseconds,
                 Metrics = $"vcpu={cpu},uptimeMs={Environment.TickCount64}"
             });
@@ -266,7 +266,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
             {
                 Name = "RAM Soak 60 min",
                 Status = includeSoak60Min ? DiagnosticStatus.NotTested : DiagnosticStatus.Skipped,
-                Reason = includeSoak60Min ? "Nie wykonano pomiaru 3600s: wymagany osobny test rzeczywisty" : "Tryb szybki (--quick); pominieto soak 60 min",
+                Reason = includeSoak60Min ? "Nie wykonano pomiaru 3600s: wymagany osobny test rzeczywisty" : "Quick mode (--quick); 60-min soak skipped",
                 DurationMs = 0,
                 Metrics = $"startKB={startRamBytes / 1024},peakKB={peakRamBytes / 1024}"
             });
@@ -332,7 +332,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
                 " (state flag only; not EFI execution attestation)");
             sb.AppendLine("Report status: observed tests only; NotTested/Skipped are not PASS.");
             sb.AppendLine();
-            sb.AppendLine("| Test | Status | Czas (ms) | Metryki | Uzasadnienie |");
+            sb.AppendLine("| Test | Status | Duration (ms) | Metrics | Reason |");
             sb.AppendLine("|------|--------|-----------|---------|--------------|");
             for (int i = 0; i < Results.Count; i++)
             {
