@@ -366,7 +366,7 @@ namespace ZonderqOS.GUI.Apps
             scrollY = 0;
             dirty = false;
             documentVersion++;
-            status = "Nowy dokument";
+            status = "New document";
             UpdateWindowTitle();
             UpdatePositionText();
         }
@@ -430,7 +430,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     dialogMode = 0;
                     pendingAction = 0;
-                    status = "Anulowano";
+                    status = "Cancelled";
                     return;
                 }
 
@@ -463,7 +463,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 dialogMode = 0;
                 dialogText = "";
-                status = "Anulowano";
+                status = "Cancelled";
                 return;
             }
 
@@ -505,7 +505,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 dialogMode = 0;
                 openSelectedIndex = -1;
-                status = "Anulowano";
+                status = "Cancelled";
                 return;
             }
 
@@ -606,7 +606,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     dialogMode = 0;
                     openSelectedIndex = -1;
-                    status = "Anulowano";
+                    status = "Cancelled";
                 }
             }
         }
