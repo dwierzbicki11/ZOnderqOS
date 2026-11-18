@@ -22,7 +22,7 @@ namespace ZonderqOS.Commands
         {
             if (ProcessManager.IsRunning("sysmond"))
             {
-                CommandIO.WriteLine("[INFO] Demon sysmond już działa (próbki: " + SampleCount + ", wolny RAM: " + LastFreeRamMiB + " MB).");
+                CommandIO.WriteLine("[INFO] sysmond daemon is already running (samples: " + SampleCount + ", free RAM: " + LastFreeRamMiB + " MB).");
                 CommandIO.LastCommandSuccess = true;
                 return;
             }
@@ -48,7 +48,7 @@ namespace ZonderqOS.Commands
                 }
             });
 
-            CommandIO.WriteLine($"[OK] Demon sysmond uruchomiony pomyślnie (PID {pid}).");
+            CommandIO.WriteLine($"[OK] sysmond daemon started successfully (PID {pid}).");
             CommandIO.LastCommandSuccess = true;
         }
     }
