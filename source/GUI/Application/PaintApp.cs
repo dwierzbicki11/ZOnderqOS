@@ -131,7 +131,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 if (!saved)
                 {
-                    statusMessage = "Error generowania pliku";
+                    statusMessage = "File generation error";
                     return;
                 }
                 statusMessage = "Saved: " + Path.GetFileName(filePath);
@@ -141,7 +141,7 @@ namespace ZonderqOS.GUI.Apps
                     global::ZonderqOS.NotificationKind.Info,
                     "PAINT",
                     "Saved rysunek",
-                    "Plik: " + filePath);
+                    "File: " + filePath);
             }
             catch (Exception ex)
             {
@@ -517,7 +517,7 @@ namespace ZonderqOS.GUI.Apps
 
             // Action buttons
             curX += 16;
-            DrawButton(canvas, curX, tbY + 2, 66, 24, "NOWY", TextColor);
+            DrawButton(canvas, curX, tbY + 2, 66, 24, "NEW", TextColor);
             curX += 72;
             DrawButton(canvas, curX, tbY + 2, 66, 24, "SAVE", AccentColor);
 
