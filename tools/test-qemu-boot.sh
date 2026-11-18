@@ -20,7 +20,7 @@ printf 'label: dos\nunit: sectors\nstart=2048, type=c\n' | sfdisk "$DISK" >/dev/
 mkfs.vfat -I -F 32 -n ZONDERQDATA -h 2048 --offset 2048 "$DISK" >/dev/null 2>&1
 
 SERIAL_LOG="$OUT_DIR/serial.log"
-printf '[QEMU-TEST] Uruchamianie ZonderqOS w QEMU (SMP: %s vCPU, Czas: %ss)...\n' "$SMP" "$BOOT_TIME"
+printf '[QEMU-TEST] Starting ZonderqOS in QEMU (SMP: %s vCPU, Duration: %ss)...\n' "$SMP" "$BOOT_TIME"
 
 python3 - <<PY
 from pyfatfs.PyFatFS import PyFatFS
@@ -76,10 +76,10 @@ if fs.exists("/var/log/system.log"):
 fs.close()
 PY
 
-printf '[QEMU-TEST] Zakonczono bieg QEMU. Log systemowy z dysku ZONDERQDATA:\n'
+printf '[QEMU-TEST] QEMU run completed. System log from ZONDERQDATA:\n'
 cat "$SERIAL_LOG"
 
-printf '\n[QEMU-TEST] Weryfikacja kluczowych kryteriow sukcesu:\n'
-grep -q "Mounted dedicated ZONDERQDATA at '/'" "$SERIAL_LOG" && printf '  [PASS] Partycja ZONDERQDATA pomyslnie zamontowana w / \n' || printf '  [FAIL] Brak montowania ZONDERQDATA\n'
-grep -q "ZonderqOS kernel successfully booted" "$SERIAL_LOG" && printf '  [PASS] Kernel ZonderqOS pomyslnie uruchomiony w pamieci RAM\n' || printf '  [FAIL] Kernel nie zglosil udanego bootowania\n'
-grep -q "PERF_BOOT_INIT_MS=" "$SERIAL_LOG" && printf '  [PASS] Inicjalizacja uslug zakonczona pomyslnie\n' || printf '  [FAIL] Brak pomiaru PERF_BOOT_INIT_MS\n'
+printf '\n[QEMU-TEST] Checking critical success criteria:\n'
+grep -q "Mounted dedicated ZONDERQDATA at '/'" "$SERIAL_LOG" && printf '  [PASS] ZONDERQDATA partition mounted successfully at / \n' || printf '  [FAIL] ZONDERQDATA mount missing\n'
+grep -q "ZonderqOS kernel successfully booted" "$SERIAL_LOG" && printf '  [PASS] ZonderqOS kernel booted successfully in RAM\n' || printf '  [FAIL] Kernel did not report successful boot\n'
+grep -q "PERF_BOOT_INIT_MS=" "$SERIAL_LOG" && printf '  [PASS] Service initialization completed successfully\n' || printf '  [FAIL] PERF_BOOT_INIT_MS measurement missing\n'
