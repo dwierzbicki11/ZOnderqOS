@@ -1,0 +1,15 @@
+name: Alpha 1 linguistic second-pass diagnostic
+on:
+  push:
+    branches:
+      - audit/alpha1-lexical-second-pass
+jobs:
+  detect-hidden-polish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install wordfreq==3.1.1
+      - run: python tools/experimental-polish-wordfreq-audit.py
