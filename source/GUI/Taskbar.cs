@@ -407,7 +407,7 @@ namespace ZonderqOS.GUI
                         global::ZonderqOS.NotificationKind.Storage,
                         "MAGAZYN",
                         "Zmiana woluminow",
-                        "System wykryl zmiane listy partycji lub woluminow.");
+                        "System detected a change in partitions or volumes.");
                 }
                 cachedVolumeCount = volumeCount;
                 cachedVolumeLabel = (uint)volumeCount < (uint)VolumeLabels.Length
