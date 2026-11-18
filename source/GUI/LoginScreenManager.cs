@@ -170,7 +170,7 @@ namespace ZonderqOS.GUI
                     else
                     {
                         username = string.Empty;
-                        SetStatus("WPISZ NAZWE UZYTKOWNIKA", Muted);
+                        SetStatus("ENTER USERNAME", Muted);
                     }
                     return;
                 }
@@ -525,7 +525,7 @@ namespace ZonderqOS.GUI
                 }
 
                 canvas.DrawString("Logowanie", PCScreenFont.DefaultFont, Text, layout.InputX, layout.TitleY);
-                SmallTextRenderer.DrawClipped(canvas, "AUTORYZACJA WYMAGANA PRZED URUCHOMIENIEM PULPITU",
+                SmallTextRenderer.DrawClipped(canvas, "AUTHENTICATION REQUIRED BEFORE STARTING DESKTOP",
                     layout.InputX + 2, layout.SubtitleY, layout.InputWidth, Muted);
 
                 RenderUsers(canvas, layout);
@@ -620,7 +620,7 @@ namespace ZonderqOS.GUI
                 if (!passwordInput)
                 {
                     if (string.IsNullOrEmpty(username))
-                        SmallTextRenderer.Draw(canvas, "nazwa uzytkownika", x + 15, textY, Muted);
+                        SmallTextRenderer.Draw(canvas, "username", x + 15, textY, Muted);
                     else
                         SmallTextRenderer.DrawClipped(canvas, username, x + 15, textY, width - 30, Text);
                 }
@@ -746,7 +746,7 @@ namespace ZonderqOS.GUI
             {
                 SetStatus(userCount > 0
                     ? "ACCOUNT SELECTED - ENTER PASSWORD"
-                    : "WPISZ NAZWE UZYTKOWNIKA", Muted);
+                    : "ENTER USERNAME", Muted);
             }
 
             private void Authenticate()
@@ -769,7 +769,7 @@ namespace ZonderqOS.GUI
                 if (!AuthenticationGuard.CanAttempt(username, out retryAfter))
                 {
                     ClearPassword();
-                    SetStatus("ZA DUZO PROB - ODCZEKAJ " + retryAfter + " S", Danger);
+                    SetStatus("TOO MANY ATTEMPTS - WAIT " + retryAfter + " S", Danger);
                     return;
                 }
 
@@ -803,7 +803,7 @@ namespace ZonderqOS.GUI
                 {
                     AuthenticationGuard.RecordSuccess(username);
                     SecurityLogger.LogEvent("INFO", "User '" + username + "' logged in.");
-                    SetStatus("ZALOGOWANO", Good);
+                    SetStatus("LOGGED IN", Good);
                     return;
                 }
 
