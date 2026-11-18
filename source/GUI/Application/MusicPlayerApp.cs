@@ -236,7 +236,7 @@ namespace ZonderqOS.GUI.Apps
             }
             else
             {
-                string freqStr = player.IsPlaying ? "Pauza" : "Zatrzymany";
+                string freqStr = player.IsPlaying ? "Pauza" : "Stopped";
                 int fw = SmallTextRenderer.Width(freqStr);
                 SmallTextRenderer.Draw(canvas, freqStr, rightX + rightWidth - fw - 14, cardY + 18, MutedColor);
             }
