@@ -27,7 +27,7 @@ namespace ZonderqOS.GUI.Apps
         private int hoveredTrack = -1;
         private int hoveredBtn = -1; // 0: Prev, 1: Play/Pause, 2: Stop, 3: Next, 4: Mute
 
-        public MusicPlayerApp(int x, int y, Action onClose) : base("Muzyka")
+        public MusicPlayerApp(int x, int y, Action onClose) : base("Music")
         {
             closeCallback = onClose;
             Window = new Window(x, y, 560, 380, "Music Player");
@@ -184,7 +184,7 @@ namespace ZonderqOS.GUI.Apps
             // Tracklist Header
             canvas.DrawFilledRectangle(HeaderBg, contentX, contentY, listWidth, 30);
             canvas.DrawFilledRectangle(Border, contentX, contentY + 29, listWidth, 1);
-            SmallTextRenderer.Draw(canvas, "UTWORY CHIPTUNE", contentX + 10, contentY + 11, TextColor);
+            SmallTextRenderer.Draw(canvas, "CHIPTUNE TRACKS", contentX + 10, contentY + 11, TextColor);
 
             int trackY = contentY + 34;
             for (int i = 0; i < Melodies.Playlist.Length; i++)
@@ -221,7 +221,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, curTitle, rightX + 14, cardY + 12, TextColor);
             if (cur != null)
             {
-                SmallTextRenderer.Draw(canvas, "Kompozytor: ", rightX + 14, cardY + 28, MutedColor);
+                SmallTextRenderer.Draw(canvas, "Composer: ", rightX + 14, cardY + 28, MutedColor);
                 SmallTextRenderer.Draw(canvas, cur.Author, rightX + 86, cardY + 28, MutedColor);
             }
 
