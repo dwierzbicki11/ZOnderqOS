@@ -535,8 +535,8 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawLine(BorderColor, contentX, contentY + 26, contentX + contentWidth, contentY + 26);
 
             string scoreStr = "SCORE: " + score.ToString("00000");
-            string highStr = "REKORD: " + highScore.ToString("00000");
-            string waveStr = "FALA " + wave;
+            string highStr = "BEST: " + highScore.ToString("00000");
+            string waveStr = "WAVE " + wave;
             SmallTextRenderer.Draw(canvas, scoreStr, contentX + 12, contentY + 9, TextColor);
             SmallTextRenderer.Draw(canvas, highStr, contentX + 160, contentY + 9, AccentColor);
             SmallTextRenderer.Draw(canvas, waveStr, contentX + 310, contentY + 9, AlienYellow);
@@ -634,8 +634,8 @@ namespace ZonderqOS.GUI.Apps
 
                 canvas.DrawFilledRectangle(Color.FromArgb(14, 24, 18), boxX, boxY, boxW, boxH);
                 canvas.DrawRectangle(PlayerColor, boxX, boxY, boxW, boxH);
-                SmallTextRenderer.DrawCentered(canvas, "FALA " + wave + " UKONCZONA!", boxX, boxY + 18, boxW, PlayerColor);
-                SmallTextRenderer.DrawCentered(canvas, "Przygotuj sie na nastepna fale...", boxX, boxY + 40, boxW, TextColor);
+                SmallTextRenderer.DrawCentered(canvas, "WAVE " + wave + " COMPLETED!", boxX, boxY + 18, boxW, PlayerColor);
+                SmallTextRenderer.DrawCentered(canvas, "Get ready for the next wave...", boxX, boxY + 40, boxW, TextColor);
             }
             else if (gameState == 3) // Paused
             {
