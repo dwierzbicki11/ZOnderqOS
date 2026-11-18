@@ -345,7 +345,7 @@ namespace ZonderqOS.GUI.Apps
             if (selectedDay > daysInMonth)
                 selectedDay = daysInMonth;
             RebuildMonth();
-            statusMessage = delta < 0 ? "POPRZEDNI MIESIAC" : "NASTEPNY MIESIAC";
+            statusMessage = delta < 0 ? "PREVIOUS MONTH" : "NEXT MONTH";
         }
 
         private void RebuildMonth()
