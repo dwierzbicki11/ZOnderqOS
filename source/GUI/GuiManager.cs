@@ -70,10 +70,10 @@ namespace ZonderqOS.GUI
             Failed = false;
             try
             {
-                Console.WriteLine("[GUI] Inicjalizacja trybu graficznego...");
+                Console.WriteLine("[GUI] Initializing graphical mode...");
                 canvas = DisplayModeSelector.OpenNativeOrBest();
                 Console.WriteLine($"[GUI] Actual Canvas resolution: {canvas.Width}x{canvas.Height}");
-                Console.WriteLine("[GUI] Uruchamiam pulpit...");
+                Console.WriteLine("[GUI] Starting desktop...");
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
                 cursorDamageRenderer = new CursorDamageRenderer(canvas);
 
@@ -813,188 +813,188 @@ namespace ZonderqOS.GUI
                 StartMenuPlacement.Pinned, 1, 0, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.Notepad, "Notatnik", "Notatnik", "Notatnik",
-                "Lekki edytor tekstu i plikow konfiguracyjnych",
+                AppIds.Notepad, "Notepad", "Notepad", "Notepad",
+                "Lightweight text and configuration file editor",
                 AppCategory.Files, IconType.File, () => LaunchNotepad(150, 105, null),
                 StartMenuPlacement.Pinned, 2, 2, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.ImageViewer, "Zdjecia", "Zdjecia", "Zdjecia",
-                "Przegladarka obrazow PNG i BMP",
+                AppIds.ImageViewer, "Image Viewer", "Image Viewer", "Image Viewer",
+                "PNG and BMP image viewer",
                 AppCategory.Files, IconType.ImageViewer, () => LaunchImageViewer(155, 92, null),
                 StartMenuPlacement.Pinned, 5, 4, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.Calculator, "Kalkulator", "Kalkulator", "Kalkulator",
-                "Kalkulator standardowy z pamiecia i historia",
+                AppIds.Calculator, "Calculator", "Calculator", "Calculator",
+                "Standard calculator with memory and history",
                 AppCategory.Tools, IconType.Calculator, () => LaunchCalculator(185, 96),
                 StartMenuPlacement.Tool, 0, 5, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.Calendar, "Kalendarz", "Kalendarz", "Kalendarz",
-                "Miesieczny kalendarz systemowy",
+                AppIds.Calendar, "Calendar", "Calendar", "Calendar",
+                "Monthly system calendar",
                 AppCategory.Tools, IconType.Calendar, () => LaunchCalendar(170, 88),
                 StartMenuPlacement.Tool, 1, 9, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.NetworkCenter, "Centrum sieci", "Network", "Network",
-                "Interfejsy, DHCP, IPv4, DNS i test polaczenia",
+                AppIds.NetworkCenter, "Network Center", "Network", "Network",
+                "Network interfaces, DHCP, IPv4, DNS and connection testing",
                 AppCategory.System, IconType.Network, () => LaunchNetworkCenter(150, 84),
                 StartMenuPlacement.Tool, 5, 6, true));
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.DiskManager, "Disk Manager", "Disks", "Disks",
-                "Diski, partycje i punkty montowania VFS",
+                "Disks, partitions and VFS mount points",
                 AppCategory.System, IconType.DiskManager, () => LaunchDiskManager(135, 78),
                 StartMenuPlacement.Tool, 4, 7, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.TaskManager, "Manager zadan", "Manager zadan", "Manager zadan",
+                AppIds.TaskManager, "Task Manager", "Task Manager", "Task Manager",
                 "Processes, CPU, memory and kernel telemetry",
                 AppCategory.System, IconType.Settings, () => LaunchTaskManager(165, 110),
                 StartMenuPlacement.Pinned, 3, -1, true));
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.Settings, "Settings", "Settings", "Settings",
-                "Konfiguracja systemu, GUI, sieci i kont",
+                "System, GUI, network and account configuration",
                 AppCategory.System, IconType.Settings, () => LaunchSettings(125, 82),
                 StartMenuPlacement.Pinned, 4, 3, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.ConfigManager, "Konfiguracja /etc", "Konfiguracja", "Konfiguracja",
+                AppIds.ConfigManager, "/etc Configuration", "Configuration", "Configuration",
                 "Configuration in /etc, hostname and background services",
                 AppCategory.System, IconType.Settings, () => LaunchConfigManager(130, 85),
                 StartMenuPlacement.None, -1, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.Diagnostics, "Diagnostyka", "Diagnostyka", "Diagnostyka",
-                "Szybki podglad stanu komponentow systemowych",
+                AppIds.Diagnostics, "Diagnostics", "Diagnostics", "Diagnostics",
+                "Quick overview of system component health",
                 AppCategory.System, IconType.About, () => LaunchDiagnostics(150, 120),
                 StartMenuPlacement.Tool, 2, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.About, "O Systemie", "O Systemie", "About",
-                "Informacje o ZOnderqOS i platformie Cosmos Gen3",
+                AppIds.About, "About System", "About System", "About",
+                "Information about ZOnderqOS and Cosmos Gen3",
                 AppCategory.System, IconType.About, () => LaunchAbout(210, 160),
                 StartMenuPlacement.None, -1, 8, true));
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.AppCenter, "App Center", "App Center", "App Center",
-                "Katalog wbudowanych aplikacji ZOnderqOS",
+                "Catalog of built-in ZOnderqOS applications",
                 AppCategory.System, IconType.AppCenter, () => LaunchAppCenter(145, 76),
                 StartMenuPlacement.Tool, 3, 10, false));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.Minesweeper, "Saper", "Saper", "Saper",
-                "Klasyczna gra logiczna Saper",
+                AppIds.Minesweeper, "Minesweeper", "Minesweeper", "Minesweeper",
+                "Classic Minesweeper puzzle game",
                 AppCategory.Games, IconType.Play, () => LaunchMinesweeper(160, 90),
                 StartMenuPlacement.Tool, 6, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.Snake, "Waz", "Waz", "Waz",
-                "Klasyczna gra zrecznosciowa Snake",
+                AppIds.Snake, "Snake", "Snake", "Snake",
+                "Classic Snake arcade game",
                 AppCategory.Games, IconType.Play, () => LaunchSnake(170, 95),
                 StartMenuPlacement.Tool, 7, -1, true));
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.Tetris, "Tetris", "Tetris", "Tetris",
-                "Klasyczna ukladanka klockow Tetris",
+                "Classic Tetris block puzzle game",
                 AppCategory.Games, IconType.Play, () => LaunchTetris(180, 85),
                 StartMenuPlacement.Tool, 8, -1, true));
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.Paint, "Paint", "Paint", "Paint",
-                "Program graficzny do rysowania i tworzenia obrazow",
+                "Drawing and image creation application",
                 AppCategory.Tools, IconType.Paint, () => LaunchPaint(165, 80),
                 StartMenuPlacement.Tool, 9, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.Screenshot, "Zrzut ekranu", "Zrzut ekranu", "Zrzut ekranu",
-                "Narzedzie do przechwytywania ekranu pulpitu",
+                AppIds.Screenshot, "Screenshot", "Screenshot", "Screenshot",
+                "Desktop screenshot capture tool",
                 AppCategory.Tools, IconType.ImageViewer, () => LaunchScreenshot(175, 90),
                 StartMenuPlacement.Tool, 10, -1, true));
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.HexViewer, "Hex Viewer", "Hex Viewer", "Hex Viewer",
-                "Podglad plikow w formacie szesnastkowym i ASCII",
+                "Hexadecimal and ASCII file viewer",
                 AppCategory.Tools, IconType.HexViewer, () => LaunchHexViewer(185, 85),
                 StartMenuPlacement.Tool, 11, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.MusicPlayer, "Muzyka", "Muzyka", "Muzyka",
-                "Odtwarzacz muzyki chiptune z wizualizatorem",
+                AppIds.MusicPlayer, "Music Player", "Music Player", "Music Player",
+                "Chiptune music player with visualizer",
                 AppCategory.Tools, IconType.Play, () => LaunchMusicPlayer(160, 75),
                 StartMenuPlacement.Tool, 12, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.Breakout, "Arkanoid", "Arkanoid", "Arkanoid",
-                "Klasyczna gra zrecznosciowa Arkanoid / Breakout",
+                AppIds.Breakout, "Breakout", "Breakout", "Breakout",
+                "Classic Breakout arcade game",
                 AppCategory.Games, IconType.Play, () => LaunchBreakout(170, 65),
                 StartMenuPlacement.Tool, 13, -1, true));
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.Game2048, "2048", "2048", "2048",
-                "Kultowa gra logiczna polegajaca na laczeniu liczb",
+                "Number-merging puzzle game",
                 AppCategory.Games, IconType.Play, () => LaunchGame2048(180, 60),
                 StartMenuPlacement.Tool, 14, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.ThemeStudio, "Studio Motywow", "Studio Motywow", "Motywy",
-                "Personalizacja motywow kolorystycznych i tla pulpitu",
+                AppIds.ThemeStudio, "Theme Studio", "Theme Studio", "Themes",
+                "Customize color themes and desktop background",
                 AppCategory.Tools, IconType.Settings, () => LaunchThemeStudio(150, 70),
                 StartMenuPlacement.Tool, 15, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.Solitaire, "Pasjans", "Pasjans", "Pasjans",
-                "Klasyczna gra karciana Pasjans Klondike",
+                AppIds.Solitaire, "Solitaire", "Solitaire", "Solitaire",
+                "Classic Klondike solitaire card game",
                 AppCategory.Games, IconType.Play, () => LaunchSolitaire(140, 50),
                 StartMenuPlacement.Tool, 16, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.Demo3D, "Demoscena 3D", "Demoscena 3D", "Demoscena 3D",
-                "Programowy silnik i demonstracja grafiki trojwymiarowej",
+                AppIds.Demo3D, "3D Demo", "3D Demo", "3D Demo",
+                "Software-based 3D graphics engine demonstration",
                 AppCategory.Tools, IconType.Rotate, () => LaunchDemo3D(160, 55),
                 StartMenuPlacement.Tool, 17, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.Timer, "Zegar i Czas", "Zegar i Czas", "Zegar",
-                "Zegar analogowy, stoper z okrazeniami i minutnik z alarmem",
+                AppIds.Timer, "Clock and Timer", "Clock and Timer", "Clock",
+                "Analog clock, lap stopwatch and alarm timer",
                 AppCategory.Tools, IconType.Calendar, () => LaunchTimer(170, 75),
                 StartMenuPlacement.Tool, 18, -1, true));
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.BasicIde, "Zonderq BASIC", "Zonderq BASIC", "BASIC",
-                "Zintegrowane srodowisko programistyczne i interpreter BASIC",
+                "Integrated development environment and BASIC interpreter",
                 AppCategory.Tools, IconType.Terminal, () => LaunchBasicIde(130, 60),
                 StartMenuPlacement.Tool, 19, -1, true));
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.SpaceInvaders, "Space Invaders", "Space Invaders", "Space Invaders",
-                "Retro zrecznosciowa gra kosmiczna z bunkrami i dzwiekami",
+                "Retro space arcade game with bunkers and sounds",
                 AppCategory.Games, IconType.Play, () => LaunchSpaceInvaders(150, 60),
                 StartMenuPlacement.Tool, 20, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.PassVault, "Sejf Hasel", "Sejf Hasel", "Sejf Hasel",
+                AppIds.PassVault, "Password Vault", "Password Vault", "Password Vault",
                 "Password manager, generator and secure PIN-protected notes",
                 AppCategory.Tools, IconType.Settings, () => LaunchPassVault(160, 65),
                 StartMenuPlacement.Tool, 21, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.SysBenchmark, "Benchmark Systemu", "Benchmark Systemu", "Benchmark",
-                "Kompleksowy test wydajnosci CPU, RAM, grafiki VESA oraz specyfikacja sprzetu",
+                AppIds.SysBenchmark, "System Benchmark", "System Benchmark", "Benchmark",
+                "CPU, RAM and VESA graphics benchmarks and hardware details",
                 AppCategory.Tools, IconType.About, () => LaunchSysBenchmark(140, 55),
                 StartMenuPlacement.Tool, 22, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.SpriteStudio, "Studio Sprite'ow", "Studio Sprite'ow", "Sprite Studio",
-                "Edytor pixel-art 16x16 z paleta VGA i eksportem do C# oraz BASIC DATA",
+                AppIds.SpriteStudio, "Sprite Studio", "Sprite Studio", "Sprite Studio",
+                "16x16 pixel art editor with VGA palette and C#/BASIC DATA export",
                 AppCategory.Tools, IconType.Paint, () => LaunchSpriteStudio(150, 60),
                 StartMenuPlacement.Tool, 23, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.SecurityCenter, "Centrum Bezpieczenstwa", "Centrum Bezpieczenstwa", "Security",
-                "Ochrona anty-tamper, integralnosc plikow, zapora sieciowa i audyt",
+                AppIds.SecurityCenter, "Security Center", "Security Center", "Security",
+                "Tamper protection, file integrity, firewall and audit",
                 AppCategory.System, IconType.Settings, () => LaunchSecurityCenter(135, 50),
                 StartMenuPlacement.Tool, 24, -1, true));
 
@@ -1005,26 +1005,26 @@ namespace ZonderqOS.GUI
                 StartMenuPlacement.Tool, 25, 11, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.QuickNotes, "Szybkie Notatki", "Szybkie Notatki", "Notatki",
-                "Podreczny notatnik i zolte karteczki na pulpicie z autozapisem",
+                AppIds.QuickNotes, "Quick Notes", "Quick Notes", "Notes",
+                "Auto-saved notes and sticky notes for the desktop",
                 AppCategory.Tools, IconType.FileDoc, () => LaunchQuickNotes(160, 90),
                 StartMenuPlacement.Tool, 26, 12, true));
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.Chiptune, "Chiptune Studio", "Chiptune Studio", "Chiptune",
-                "Syntezator audio 8-bit, pianino retro i kompozytor melodii PC Speaker",
+                "8-bit audio synthesizer, retro piano and PC speaker composer",
                 AppCategory.Tools, IconType.Play, () => LaunchChiptune(150, 60),
                 StartMenuPlacement.Tool, 27, 13, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.Battleship, "Statki", "Statki", "Statki",
-                "Klasyczna strategiczna gra w bitwe morska z taktycznym komputerowym AI",
+                AppIds.Battleship, "Battleship", "Battleship", "Battleship",
+                "Classic naval strategy game against computer AI",
                 AppCategory.Games, IconType.Play, () => LaunchBattleship(140, 50),
                 StartMenuPlacement.Tool, 28, 14, true));
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.Welcome, "Welcome", "Welcome", "Welcome",
-                "Centrum powitalne i przewodnik po wydaniu ZOnderqOS 1.0 Alpha",
+                "Welcome center and ZOnderqOS Alpha 1 release guide",
                 AppCategory.System, IconType.About, () => LaunchWelcome(120, 35),
                 StartMenuPlacement.Tool, 29, 15, true));
         }
