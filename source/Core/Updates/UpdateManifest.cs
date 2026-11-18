@@ -210,7 +210,7 @@ namespace ZonderqOS.SystemCore.Updates
                         }
                         if (parsed.Files.Count >= 1024)
                         {
-                            error = "Za duzo wpisow FILE w manifeście.";
+                            error = "Too many FILE entries in manifest.";
                             return false;
                         }
                         parsed.Files.Add(new UpdateFileEntry
@@ -252,7 +252,7 @@ namespace ZonderqOS.SystemCore.Updates
                 (!string.Equals(parsed.SignatureAlgorithm, "ED25519", StringComparison.Ordinal) ||
                  !string.IsNullOrEmpty(parsed.Signature)))
             {
-                error = "Format 2 wymaga SIGNATURE_ALG=ED25519 i pliku .sig zamiast HMAC.";
+                error = "Format 2 requires SIGNATURE_ALG=ED25519 and a .sig file instead of HMAC.";
                 return false;
             }
 
