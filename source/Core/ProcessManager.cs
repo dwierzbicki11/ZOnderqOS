@@ -80,7 +80,7 @@ namespace ZonderqOS.SystemCore
                     }
                     catch (Exception ex)
                     {
-                        WriteMessage.WriteError($"Proces {processName} (PID {pid}) zakończył się błędem: {ex.Message}", "PROC");
+                        WriteMessage.WriteError($"Process {processName} (PID {pid}) failed: {ex.Message}", "PROC");
                     }
                     finally
                     {
