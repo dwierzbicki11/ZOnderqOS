@@ -185,10 +185,10 @@ namespace ZonderqOS.GUI.Apps
                 int actX = wx + 440;
                 int actY = wy + 16;
                 int actW = 125;
-                if (Hit(mouseX, mouseY, actX, actY, actW, toolH)) { FlipHorizontal(); statusMessage = "Odbito w poziomie (Flip X)."; return; }
+                if (Hit(mouseX, mouseY, actX, actY, actW, toolH)) { FlipHorizontal(); statusMessage = "Flipped horizontally (Flip X)."; return; }
                 if (Hit(mouseX, mouseY, actX, actY + 28, actW, toolH)) { FlipVertical(); statusMessage = "Odbito w pionie (Flip Y)."; return; }
                 if (Hit(mouseX, mouseY, actX, actY + 56, actW, toolH)) { InvertColors(); statusMessage = "Colors inverted."; return; }
-                if (Hit(mouseX, mouseY, actX, actY + 84, actW, toolH)) { ClearCanvas(); statusMessage = "Wyczyszczono siatke robocza."; return; }
+                if (Hit(mouseX, mouseY, actX, actY + 84, actW, toolH)) { ClearCanvas(); statusMessage = "Canvas cleared."; return; }
 
                 // Export and File Operations
                 int expY = wy + 260;
@@ -330,7 +330,7 @@ namespace ZonderqOS.GUI.Apps
             fullPath = dir + "/" + fileName;
             if (!global::ZonderqOS.PermissionManager.CanCreate(fullPath, user))
             {
-                statusMessage = "Permission denied do zapisu: " + fullPath;
+                statusMessage = "Write permission denied: " + fullPath;
                 return false;
             }
 
@@ -368,7 +368,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                statusMessage = "Error zapisu C#: " + ex.Message;
+                statusMessage = "C# save error: " + ex.Message;
             }
         }
 
@@ -403,7 +403,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                statusMessage = "Error zapisu BASIC: " + ex.Message;
+                statusMessage = "BASIC save error: " + ex.Message;
             }
         }
 
@@ -428,11 +428,11 @@ namespace ZonderqOS.GUI.Apps
                 File.WriteAllBytes(path, raw);
                 if (!existed)
                     global::ZonderqOS.PermissionManager.SetPermission(path, global::ZonderqOS.SecurityContext.CurrentUser, 644);
-                statusMessage = "Saved plik binarny: " + path + " (256 bajtow)";
+                statusMessage = "Saved binary file: " + path + " (256 bytes)";
             }
             catch (Exception ex)
             {
-                statusMessage = "Error zapisu .spr: " + ex.Message;
+                statusMessage = ".spr save error: " + ex.Message;
             }
         }
 
@@ -449,7 +449,7 @@ namespace ZonderqOS.GUI.Apps
                 string path = GetUserDataDirectory() + "/icon.spr";
                 if (!global::ZonderqOS.PermissionManager.CanRead(path, global::ZonderqOS.SecurityContext.CurrentUser))
                 {
-                    statusMessage = "Permission denied do odczytu: " + path;
+                    statusMessage = "Read permission denied: " + path;
                     return;
                 }
 
@@ -469,12 +469,12 @@ namespace ZonderqOS.GUI.Apps
                             pixels[r, c] = (byte)(raw[idx++] % 16);
                         }
                     }
-                    statusMessage = "Wczytano pomyslnie: " + path;
+                    statusMessage = "Loaded successfully: " + path;
                 }
             }
             catch (Exception ex)
             {
-                statusMessage = "Error odczytu: " + ex.Message;
+                statusMessage = "Read error: " + ex.Message;
             }
         }
 
@@ -555,7 +555,7 @@ namespace ZonderqOS.GUI.Apps
             DrawToolBtn(canvas, "⇄ Odbij Poz.", actX, actY, actW, toolH, false);
             DrawToolBtn(canvas, "⇅ Odbij Pion.", actX, actY + 28, actW, toolH, false);
             DrawToolBtn(canvas, "◐ Inwertuj", actX, actY + 56, actW, toolH, false);
-            DrawToolBtn(canvas, "🗑 Wyczysc", actX, actY + 84, actW, toolH, false);
+            DrawToolBtn(canvas, "🗑 Clear", actX, actY + 84, actW, toolH, false);
 
             // 5. Live Sprite Previews (1x, 2x, 3x)
             int prevX = wx + 330;
@@ -583,7 +583,7 @@ namespace ZonderqOS.GUI.Apps
             DrawToolBtn(canvas, "💾 Eksport C#", wx + 16, expY, 130, 28, false);
             DrawToolBtn(canvas, "📜 Eksport BASIC", wx + 154, expY, 130, 28, false);
             DrawToolBtn(canvas, "⬆ Save .SPR", wx + 292, expY, 135, 28, false);
-            DrawToolBtn(canvas, "⬇ Wczytaj .SPR", wx + 434, expY, 135, 28, false);
+            DrawToolBtn(canvas, "⬇ Load .SPR", wx + 434, expY, 135, 28, false);
 
             // 7. Status Footer
             int footerY = wy + 300;
