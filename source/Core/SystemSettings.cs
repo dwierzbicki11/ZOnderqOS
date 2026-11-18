@@ -131,7 +131,7 @@ namespace ZonderqOS
             {
                 switch (AutoLockMinutes)
                 {
-                    case 0: return "WYLACZONA";
+                    case 0: return "DISABLED";
                     case 1: return "1 MIN";
                     case 15: return "15 MIN";
                     case 30: return "30 MIN";
