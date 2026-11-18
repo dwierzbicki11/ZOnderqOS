@@ -178,7 +178,7 @@ namespace ZonderqOS.GUI.Apps
                 tab = hoveredTab;
                 selection = 0;
                 offset = 0;
-                SetStatus("ZMIENIONO WIDOK", SystemTheme.Accent);
+                SetStatus("VIEW CHANGED", SystemTheme.Accent);
                 return;
             }
 
@@ -721,7 +721,7 @@ namespace ZonderqOS.GUI.Apps
             selection = 0;
             offset = 0;
             ClampSelection();
-            SetStatus("ZMIENIONO WIDOK", SystemTheme.Accent);
+            SetStatus("VIEW CHANGED", SystemTheme.Accent);
         }
 
         private void MoveSelection(int delta)
