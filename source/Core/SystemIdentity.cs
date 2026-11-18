@@ -31,7 +31,7 @@ namespace ZonderqOS.SystemCore
                 if (!File.Exists(IssuePath))
                     File.WriteAllText(IssuePath, "ZOnderqOS 1.0 Alpha (Cosmos 3.0.95 x64 Native Core)\n");
                 if (!File.Exists(MotdPath))
-                    File.WriteAllText(MotdPath, "Witaj w ZOnderqOS 1.0 Alpha! Wpisz 'help' dla listy polecen, lub 'gui' aby uruchomic pulpit.\n");
+                    File.WriteAllText(MotdPath, "Welcome to ZOnderqOS 1.0 Alpha! Type 'help' for commands or 'gui' to start the desktop.\n");
                 if (!File.Exists(OsReleasePath))
                 {
                     File.WriteAllText(OsReleasePath,
