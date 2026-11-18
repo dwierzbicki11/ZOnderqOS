@@ -26,7 +26,7 @@ namespace ZonderqOS
             _commands.Clear();
             _commandLookup.Clear();
             Register(new CmdPwd()); Register(new CmdCd()); Register(new CmdLs());
-            Register(new CmdLspci()); Register(new CmdNicDiag()); Register(new CmdDisplayInfo()); Register(new CmdInputScan()); Register(new CmdMkdir()); Register(new CmdRmdir());
+            Register(new CmdLspci()); Register(new CmdNicDiag()); Register(new CmdAudioDiag()); Register(new CmdDisplayInfo()); Register(new CmdInputScan()); Register(new CmdMkdir()); Register(new CmdRmdir());
             Register(new CmdCat()); Register(new CmdWrite()); Register(new CmdTouch());
             Register(new CmdAppend()); Register(new CmdCp()); Register(new CmdMv());
             Register(new CmdRm()); Register(new CmdSpace()); Register(new CmdFormat());

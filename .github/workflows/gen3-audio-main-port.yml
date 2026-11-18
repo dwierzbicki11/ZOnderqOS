@@ -1,0 +1,19 @@
+name: Gen3 Audio 3.0.97 main-port host smoke
+on:
+  push:
+    branches: [feat/3097-audio-main-port]
+  pull_request:
+    paths:
+      - 'source/Core/Audio*.cs'
+      - 'source/Shell/Commands/CmdAudioDiag.cs'
+      - 'tests/Gen3AudioMainSmoke/**'
+      - '.github/workflows/gen3-audio-main-port.yml'
+jobs:
+  host-audio:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project tests/Gen3AudioMainSmoke/Gen3AudioMainSmoke.csproj -c Release
