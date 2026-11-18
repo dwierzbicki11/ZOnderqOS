@@ -203,7 +203,7 @@ namespace ZonderqOS.GUI.Apps
                     if (mouseX >= px && mouseX < px + 18)
                     {
                         currentColor = PaletteColors[c];
-                        statusMessage = "Wybrano kolor";
+                        statusMessage = "Color selected";
                         return;
                     }
                     px += 22;
