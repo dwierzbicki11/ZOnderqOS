@@ -58,18 +58,16 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_p0_release_signing.py' -v
           dotnet run --project tests/UpdateEngineSmoke/UpdateEngineSmoke.csproj -c Release
 
-      - name: Build full disk-backed GUI ISO from exact Cosmos 3.0.95 upstream tag
-        env:
-          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/zonderqos-cosmos-3095
+      - name: Build full x64 ISO with Cosmos 3.0.97
         run: |
           set -euo pipefail
-          bash tools/build-cosmos-3095-local.sh disk
-          test -s output-3095/ZonderqOS-3095-disk.iso
+          cosmos build -a x64
+          test -s output-x64/ZonderqOS.iso
 
       - name: Check hybrid ISO and protected ZONDERQDATA partition boundary
         run: |
           set -euo pipefail
-          ISO=output-3095/ZonderqOS-3095-disk.iso
+          ISO=output-x64/ZonderqOS.iso
           python3 - "$ISO" <<'PY'
           import os
           import sys
@@ -98,25 +96,25 @@ jobs:
         run: |
           set -euo pipefail
           bash tools/smoke-services-qemu.sh \
-            output-3095/ZonderqOS-3095-disk.iso alpha-usb-qemu-output \
+            output-x64/ZonderqOS.iso alpha-usb-qemu-output \
             2>&1 | tee alpha-usb-qemu.log
 
       - name: Create checksums for the exact tested ISO
         run: |
           set -euo pipefail
-          cd output-3095
-          sha256sum ZonderqOS-3095-disk.iso > ZonderqOS-3095-disk.iso.sha256
+          cd output-x64
+          sha256sum ZonderqOS.iso > ZonderqOS.iso.sha256
 
       - name: Upload flashable ISO only after every gate succeeded
         uses: actions/upload-artifact@v4
         with:
-          name: ZonderqOS-3095-Alpha-USB-${{ github.sha }}
+          name: ZonderqOS-3097-Alpha-USB-${{ github.sha }}
           retention-days: 7
           if-no-files-found: error
           compression-level: 0
           path: |
-            output-3095/ZonderqOS-3095-disk.iso
-            output-3095/ZonderqOS-3095-disk.iso.sha256
+            output-x64/ZonderqOS.iso
+            output-x64/ZonderqOS.iso.sha256
             alpha-usb-source-sha.txt
 
       - name: Upload QEMU diagnostics even after failure
