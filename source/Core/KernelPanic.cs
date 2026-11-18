@@ -49,7 +49,7 @@ namespace ZonderqOS
                         !string.IsNullOrEmpty(BootSlotManager.PendingSlot))
                     {
                         SystemLogger.Log(SystemLogLevel.Critical, "PANIC",
-                            $"Wykryto awarie rozruchu niezatwierdzonego slotu {BootSlotManager.PendingSlot}. Wycofywanie do slotu awaryjnego {BootSlotManager.FallbackSlot}...");
+                            $"Boot failure detected for unconfirmed slot {BootSlotManager.PendingSlot}. Rolling back to fallback slot {BootSlotManager.FallbackSlot}...");
                         BootSlotManager.ManualRollback(out _);
                     }
                 }
