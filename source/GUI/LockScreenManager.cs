@@ -152,7 +152,7 @@ namespace ZonderqOS.GUI
             private readonly char[] password = new char[MaxPasswordLength];
 
             private int passwordLength;
-            private string status = "SESJA ZABLOKOWANA";
+            private string status = "SESSION LOCKED";
             private Color statusColor = Muted;
             private string cachedUserForLogs = string.Empty;
             private string cachedSwitchLog = "Switch-user requested from lock screen.";
@@ -175,7 +175,7 @@ namespace ZonderqOS.GUI
                 username = currentUser ?? string.Empty;
                 ClearPassword();
                 Unlocked = false;
-                status = "SESJA ZABLOKOWANA";
+                status = "SESSION LOCKED";
                 statusColor = Muted;
             }
 
@@ -436,7 +436,7 @@ namespace ZonderqOS.GUI
 
                 IconManager.DrawScaled(canvas, IconType.Start,
                     layout.HeaderIconX, layout.HeaderIconY, layout.HeaderIconSize, layout.HeaderIconSize);
-                canvas.DrawString("Sesja zablokowana", PCScreenFont.DefaultFont, Text,
+                canvas.DrawString("Session locked", PCScreenFont.DefaultFont, Text,
                     layout.HeaderTitleX, layout.HeaderTitleY);
                 SmallTextRenderer.DrawClipped(canvas, "OPEN APPLICATIONS REMAIN IN MEMORY",
                     layout.HeaderSubX, layout.HeaderSubY,
@@ -502,7 +502,7 @@ namespace ZonderqOS.GUI
                     layout.FieldX + 29, statusTextY, layout.FieldWidth - 44, statusColor);
 
                 SmallTextRenderer.DrawClipped(canvas,
-                    "Ctrl+Alt+L blokuje pulpit bez zamykania uruchomionych aplikacji.",
+                    "Ctrl+Alt+L locks the desktop without closing running applications.",
                     layout.HintX, layout.HintY, layout.HintMaxWidth, Muted);
                 RenderPowerButton(canvas, layout.RebootX, layout.PowerBtnY,
                     layout.RebootWidth, layout.PowerBtnHeight, "REBOOT", IconType.Reboot, false);
@@ -544,7 +544,7 @@ namespace ZonderqOS.GUI
                 {
                     AuthenticationGuard.RecordSuccess(username);
                     Unlocked = true;
-                    SetStatus("ODBLOKOWANO", Good);
+                    SetStatus("UNLOCKED", Good);
                     return;
                 }
 
