@@ -849,7 +849,7 @@ namespace ZonderqOS.GUI.Apps
                         string deleted = entries[selectedIndex].Title;
                         entries.RemoveAt(selectedIndex);
                         selectedIndex = Math.Max(0, selectedIndex - 1);
-                        statusMessage = "Deleteieto wpis: " + deleted;
+                        statusMessage = "Entry deleted: " + deleted;
                         statusColor = YellowColor;
                         SaveEncryptedVault(unlockedPin);
                     }
@@ -1045,11 +1045,11 @@ namespace ZonderqOS.GUI.Apps
             VaultEntry entry = entries[selectedIndex];
 
             // Header title
-            SmallTextRenderer.Draw(canvas, "WPIS: " + entry.Title, x + 14, y + 14, AccentColor);
+            SmallTextRenderer.Draw(canvas, "ENTRY: " + entry.Title, x + 14, y + 14, AccentColor);
             canvas.DrawLine(Border, x + 14, y + 32, x + w - 14, y + 32);
 
             // Username
-            SmallTextRenderer.Draw(canvas, "LOGIN / IDENTYFIKATOR:", x + 14, y + 42, MutedColor);
+            SmallTextRenderer.Draw(canvas, "LOGIN / IDENTIFIER:", x + 14, y + 42, MutedColor);
             SmallTextRenderer.Draw(canvas, entry.Username, x + 14, y + 56, TextColor);
 
             // Password
@@ -1059,11 +1059,11 @@ namespace ZonderqOS.GUI.Apps
 
             // Buttons: [KOPIUJ], [POKAZ]
             DrawBtn(canvas, "COPY", x + 150, y + 86, 75, 24, AccentColor);
-            DrawBtn(canvas, showPassword ? "UKRYJ" : "POKAZ", x + 235, y + 86, 80, 24, TextColor);
+            DrawBtn(canvas, showPassword ? "UKRYJ" : "SHOW", x + 235, y + 86, 80, 24, TextColor);
 
             // Entropy strength meter
             int strengthScore = CalculateStrength(entry.Password);
-            string strengthLabel = strengthScore >= 80 ? "PANCERNE / BARDZO SILNE" : (strengthScore >= 50 ? "DOBRE" : "SLABE");
+            string strengthLabel = strengthScore >= 80 ? "EXCELLENT / VERY STRONG" : (strengthScore >= 50 ? "GOOD" : "WEAK");
             Color strengthColor = strengthScore >= 80 ? GreenColor : (strengthScore >= 50 ? YellowColor : RedColor);
 
             SmallTextRenderer.Draw(canvas, "ENTROPIA & SILA: " + strengthLabel + " (" + strengthScore + "%)", x + 14, y + 120, strengthColor);
