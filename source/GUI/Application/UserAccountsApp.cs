@@ -282,7 +282,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (string.IsNullOrEmpty(inputText) || global::ZonderqOS.UserManager.UserExists(inputText))
                 {
-                    SetStatus("NAZWA PUSTA LUB KONTO JUZ ISTNIEJE", Danger);
+                    SetStatus("EMPTY NAME OR ACCOUNT ALREADY EXISTS", Danger);
                     return;
                 }
 
