@@ -25,15 +25,15 @@ namespace ZonderqOS.GUI.Apps
 
         protected override void RenderContent(Canvas canvas)
         {
-            DrawRow(canvas, 0, IconType.Settings, "HOSTNAME", "/etc/hostname - nazwa komputera", hostname, Accent);
+            DrawRow(canvas, 0, IconType.Settings, "HOSTNAME", "/etc/hostname - computer name", hostname, Accent);
             DrawRow(canvas, 1, IconType.File, "ISSUE", "/etc/issue - login banner", "OPEN", Text);
             DrawRow(canvas, 2, IconType.File, "MOTD", "/etc/motd - login message", "OPEN", Text);
             DrawRow(canvas, 3, IconType.File, "PROFILE", "/etc/profile - shell variables", "OPEN", Text);
             DrawRow(canvas, 4, IconType.File, "OS RELEASE", "/etc/os-release - system information", "OPEN", Text);
-            DrawRow(canvas, 5, IconType.Settings, "USLUGI", "/etc/zservices - strzalki lewo/prawo zmieniaja plik",
+            DrawRow(canvas, 5, IconType.Settings, "SERVICES", "/etc/zservices - use left/right arrows to select a file",
                 serviceCount > 0 ? Path.GetFileName(serviceFiles[selectedService]) : "NONE", Warning);
-            DrawRow(canvas, 6, IconType.Settings, "ZASTOSUJ", "Hostname, profil i uslugi (wymaga root)",
-                "WCZYTAJ", Good);
+            DrawRow(canvas, 6, IconType.Settings, "APPLY", "Hostname, profile and services (root required)",
+                "RELOAD", Good);
         }
 
         protected override void RefreshData()
