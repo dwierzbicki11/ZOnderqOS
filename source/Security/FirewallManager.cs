@@ -55,7 +55,7 @@ namespace ZonderqOS.Security
         public static ulong BlockedPacketsCount { get; private set; } = 0;
         public static int LastBlockedPort { get; private set; } = 0;
         public static string LastBlockedProtocol { get; private set; } = "NONE";
-        public static string LastBlockedTime { get; private set; } = "Brak";
+        public static string LastBlockedTime { get; private set; } = "None";
 
         private static readonly List<FirewallRule> rules = new List<FirewallRule>(16);
         private static int nextRuleId = 1;
@@ -173,7 +173,7 @@ namespace ZonderqOS.Security
             {
                 if (Mode == FirewallMode.Disabled)
                 {
-                    matchReason = "Zapora jest wyłączona (ruch dozwolony)";
+                    matchReason = "Firewall is disabled (traffic allowed)";
                     AllowedPacketsCount++;
                     return true;
                 }
@@ -182,7 +182,7 @@ namespace ZonderqOS.Security
                 if (Mode == FirewallMode.Strict && proto == RuleProtocol.ICMP && dir == RuleDirection.Inbound)
                 {
                     RecordBlock(port, proto.ToString());
-                    matchReason = "Tryb ścisły (Stealth) - zablokowano zapytanie ICMP Echo";
+                    matchReason = "Stealth mode: ICMP Echo request blocked";
                     return false;
                 }
 
@@ -201,13 +201,13 @@ namespace ZonderqOS.Security
                     {
                         if (r.Action == RuleAction.Allow)
                         {
-                            matchReason = "Reguła #" + r.Id + " (" + r.Description + ")";
+                            matchReason = "Rule #" + r.Id + " (" + r.Description + ")";
                             AllowedPacketsCount++;
                             return true;
                         }
                         else
                         {
-                            matchReason = "Zablokowano przez regułę #" + r.Id + ": " + r.Description;
+                            matchReason = "Blocked by rule #" + r.Id + ": " + r.Description;
                             RecordBlock(port, proto.ToString());
                             return false;
                         }
@@ -218,14 +218,14 @@ namespace ZonderqOS.Security
                 if (dir == RuleDirection.Outbound)
                 {
                     // Outbound standard policy: Allow
-                    matchReason = "Domyślna polityka ruchu wychodzącego: ALLOW";
+                    matchReason = "Default outbound traffic policy: ALLOW";
                     AllowedPacketsCount++;
                     return true;
                 }
                 else
                 {
                     // Inbound standard policy: Drop unsolicited traffic
-                    matchReason = "Domyślna polityka ruchu przychodzącego: DROP";
+                    matchReason = "Default inbound traffic policy: DROP";
                     RecordBlock(port, proto.ToString());
                     return false;
                 }
