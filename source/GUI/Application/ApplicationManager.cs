@@ -626,14 +626,14 @@ namespace ZonderqOS.GUI.Apps
                 return;
 
             string appName = application.Name ?? "Aplikacja";
-            string errorMsg = ex != null ? ex.Message : "Nieznany blad";
+            string errorMsg = ex != null ? ex.Message : "Unknown error";
 
             try
             {
                 global::ZonderqOS.SystemLogger.Log(
                     global::ZonderqOS.SystemLogLevel.Warning,
                     "APP",
-                    $"Aplikacja '{appName}' napotkala blad w fazie {phase}: {errorMsg}");
+                    $"Application '{appName}' encountered an error during {phase}: {errorMsg}");
 
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Warning,
