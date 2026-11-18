@@ -14,26 +14,26 @@ echo "      ZONDERQOS CLOUD UPDATE SYNC (INTERNET OTA GATEWAY)    "
 echo "============================================================"
 
 # 1. Sprawdzenie połączenia internetowego
-echo "[1/4] Sprawdzanie polaczenia internetowego..."
+echo "[1/4] Checking internet connection..."
 if ! ping -c 1 -W 2 github.com >/dev/null 2>&1; then
-    echo "[UWAGA] Brak bezposredniego pingu do github.com, sprawdzam polaczenie HTTP..."
+    echo "[WARNING] github.com does not respond to ping; checking HTTP connection..."
 fi
 
 # 2. Pobieranie najnowszych informacji z chmury
-echo "[2/4] Odpytywanie chmury o najnowsze wydanie ($REPO)..."
+echo "[2/4] Checking cloud for the latest release ($REPO)..."
 LATEST_COMMIT=$(git ls-remote "https://github.com/$REPO.git" HEAD | cut -f1 | head -c 8 || echo "latest")
 DATE_NOW=$(date +%Y-%m-%d)
 BUILD_ID=$(date +%Y%m%d)
 VERSION="2026.12.0"
 
-echo "  * Wykryto wersje w chmurze: $VERSION (Commit: $LATEST_COMMIT, Build: $BUILD_ID)"
-echo "  * Tytul: Aktualizacja Chmurowa ZOnderqOS (Windows Update OTA)"
+echo "  * Cloud version found: $VERSION (Commit: $LATEST_COMMIT, Build: $BUILD_ID)"
+echo "  * Title: ZOnderqOS Cloud Update (OTA)"
 
 # 3. Montowanie partycji danych pendrive'a
-echo "[3/4] Przygotowywanie partycji danych pendrive'a ($TARGET_DEVICE)..."
+echo "[3/4] Preparing USB drive data partition ($TARGET_DEVICE)..."
 if [[ ! -b "$TARGET_DEVICE" ]]; then
-    echo "[STOP] Nie znaleziono partycji: $TARGET_DEVICE"
-    echo "Upewnij sie, ze pendrive jest podlaczony. Dysk danych to np. /dev/sdb4 (ZONDERQDATA)."
+    echo "[STOP] Partition not found: $TARGET_DEVICE"
+    echo "Make sure the USB drive is connected. Example data partition: /dev/sdb4 (ZONDERQDATA)."
     exit 1
 fi
 
@@ -47,7 +47,7 @@ else
 fi
 
 # 4. Zapisywanie pakietu aktualizacyjnego na pendrive
-echo "[4/4] Zapisywanie manifestu i ladunku w $MOUNT_DIR/updates/..."
+echo "[4/4] Writing manifest and payload to $MOUNT_DIR/updates/..."
 sudo mkdir -p "$MOUNT_DIR/updates"
 sudo mkdir -p "$MOUNT_DIR/updates/payload"
 
@@ -84,8 +84,8 @@ fi
 
 echo ""
 echo "============================================================"
-echo "[SUKCES] Aktualizacja z Internetu zostala pobrana na pendrive!"
-echo "Wepnij pendrive do komputera i uruchom ZOnderqOS."
-echo "System w ciagu 10 sekund automatycznie wykryje pobrana aktualizacje"
-echo "i wyswietli powiadomienie z prosba o instalacje."
+echo "[SUCCESS] Internet update downloaded to USB drive!"
+echo "Connect the USB drive to your computer and boot ZOnderqOS."
+echo "The system will automatically detect the downloaded update within 10 seconds"
+echo "and display a notification asking to install it."
 echo "============================================================"
