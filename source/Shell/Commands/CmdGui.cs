@@ -6,16 +6,16 @@ namespace ZonderqOS.Commands
     public class CmdGui : ICommand
     {
         public string Name => "gui";
-        public string Description => "Uruchamia interaktywne środowisko okienkowe z obsługą myszy";
+        public string Description => "Starts the interactive desktop environment with mouse support";
 
         public void Execute(string[] args, ref string currentPath)
         {
             try
             {
-                CommandIO.WriteLine("[GUI] Starting menedżera okien...");
+                CommandIO.WriteLine("[GUI] Starting window manager...");
                 GuiManager manager = new GuiManager();
                 manager.Run();
-                CommandIO.WriteLine("[GUI] Powrót do powłoki tekstowej.");
+                CommandIO.WriteLine("[GUI] Returned to text shell.");
                 CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
