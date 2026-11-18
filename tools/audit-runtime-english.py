@@ -57,7 +57,7 @@ POLISH_STEMS = (
 ACCENTS = re.compile(r"[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]")
 POLISH_WORD = re.compile(r"(?<![a-zA-Z])(?:" + "|".join(POLISH_STEMS) + r")[a-zA-Z]*\b", re.I)
 # Single and double quotes on one line (includes shell and Python messages).
-STRING = re.compile(r'(?<![\\w])(?:@|\\$@|@\\$|\\$)?(?:"(?:\\\\.|[^"\\\\\\n])*"|\\x27(?:\\\\.|[^\\x27\\\\\\n])*\\x27)')
+STRING = re.compile(r"""(?<![A-Za-z0-9_])(?:\$@|@\$|\$|@)?(?:"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')""")
 TRANSLATION_BEGIN = "private static void RegisterPolishStrings()"
 TRANSLATION_END = "private static void RegisterEnglishStrings()"
 
@@ -65,7 +65,7 @@ TRANSLATION_END = "private static void RegisterEnglishStrings()"
 def inventory() -> list[str]:
     p = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, check=True,
                        stdout=subprocess.PIPE)
-    return [x.decode("utf-8") for x in p.stdout.split(b"\\0") if x]
+    return [x.decode("utf-8") for x in p.stdout.split(b"\0") if x]
 
 
 def file_group(path: str) -> str:
@@ -92,13 +92,13 @@ def mask_polish_dictionary(content: str, path: str) -> str:
     if start < 0 or end < 0:
         raise RuntimeError("Localization dictionary boundaries not found")
     # Preserve line numbers. Never discard the English catalog.
-    return content[:start] + re.sub(r"[^\\n]", " ", content[start:end]) + content[end:]
+    return content[:start] + re.sub(r"[^\n]", " ", content[start:end]) + content[end:]
 
 
 def extract_candidates(text: str, path: str):
     for line_no, line in enumerate(text.splitlines(), 1):
         trimmed = line.lstrip()
-        if trimmed.startswith(("//", "*", "/*", "# ", "#\\t")):
+        if trimmed.startswith(("//", "*", "/*", "# ", "#\t")):
             continue
         for m in STRING.finditer(line):
             literal = m.group()
