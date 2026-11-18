@@ -54,7 +54,7 @@ namespace ZonderqOS
                 ZonderqOS.Platform.SpeakerInitializer.Initialize();
                 UserManager.Initialize();
                 Command.Initialize();
-                BootSplash.Advance(43, "URUCHAMIANIE POWLOKI");
+                BootSplash.Advance(43, "STARTING SHELL");
                 EnvironmentManager.Initialize();
                 SecurityLogger.Initialize();
                 PermissionManager.Initialize();
