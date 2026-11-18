@@ -43,25 +43,25 @@ namespace ZonderqOS.GUI.Apps
         private static readonly string[] PageNames =
         {
             "SYSTEM",
-            "PERSONALIZACJA",
-            "EKRAN I GUI",
-            "SIEC",
-            "PAMIEC I DYSKI",
-            "KONTA I OCHRONA",
-            "ZASILANIE",
-            "INFORMACJE"
+            "PERSONALIZATION",
+            "DISPLAY AND GUI",
+            "NETWORK",
+            "MEMORY AND DISKS",
+            "ACCOUNTS AND SECURITY",
+            "POWER",
+            "ABOUT"
         };
 
         private static readonly string[] PageSubtitles =
         {
-            "Wydajnosc, narzedzia i urzadzenia systemowe",
-            "Tapeta, motyw, pulpit oraz elementy paska zadan",
-            "Framebuffer, strefa czasu i czestotliwosc renderowania",
-            "DHCP, statyczne IPv4, DNS i interfejsy sieciowe",
-            "Memory fizyczna, OrionGC, dyski, partycje i VFS",
-            "Sesja, konta lokalne, audyt oraz dzienniki systemowe",
-            "Profil pracy oraz kontrola restartu i wylaczenia",
-            "Wersje, procesor, scheduler i zaawansowany panel kernela"
+            "Performance, tools and system devices",
+            "Wallpaper, theme, desktop and taskbar options",
+            "Framebuffer, time zone and rendering frequency",
+            "DHCP, static IPv4, DNS and network interfaces",
+            "Physical memory, OrionGC, disks, partitions and VFS",
+            "Session, local accounts, audit and system logs",
+            "Performance profile, restart and shutdown controls",
+            "Versions, CPU, scheduler and advanced kernel panel"
         };
 
         private static readonly IconType[] PageIcons =
@@ -111,7 +111,7 @@ namespace ZonderqOS.GUI.Apps
 
         private bool networkReady;
         private int networkDeviceCount;
-        private string activeNetworkName = "BRAK";
+        private string activeNetworkName = "NONE";
         private string ipAddress = "0.0.0.0";
 
         private string currentUser = "root";
@@ -136,7 +136,7 @@ namespace ZonderqOS.GUI.Apps
         {
             closeCallback = onClose;
             applicationManager = manager;
-            Window = new Window(x, y, 1080, 720, "Settings systemowe - ZOnderqOS");
+            Window = new Window(x, y, 1080, 720, "System Settings - ZOnderqOS");
             Window.CloseAction = Close;
 
             global::ZonderqOS.SystemSettings.Load();
@@ -158,7 +158,7 @@ namespace ZonderqOS.GUI.Apps
             if (key.Key == ConsoleKeyEx.F5)
             {
                 RefreshSnapshot();
-                SetStatus("ODSWIEZONO DANE SYSTEMOWE", Good);
+                SetStatus("SYSTEM INFORMATION REFRESHED", Good);
                 return;
             }
 
@@ -198,7 +198,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 selectedPage = page;
                 RefreshSnapshot();
-                SetStatus("WYBRANO SEKCJE USTAWIEN", Accent);
+                SetStatus("SETTINGS SECTION SELECTED", Accent);
                 return;
             }
 
@@ -255,8 +255,8 @@ namespace ZonderqOS.GUI.Apps
         private void RenderSidebar(Canvas canvas, int sidebarWidth)
         {
             int x = Window.X + 1;
-            SmallTextRenderer.Draw(canvas, "USTAWIENIA", x + 16, Window.Y + 55, Text);
-            SmallTextRenderer.Draw(canvas, "SYSTEMOWE", x + 16, Window.Y + 68, Muted);
+            SmallTextRenderer.Draw(canvas, "SETTINGS", x + 16, Window.Y + 55, Text);
+            SmallTextRenderer.Draw(canvas, "SYSTEM", x + 16, Window.Y + 68, Muted);
 
             for (int i = 0; i < PageNames.Length; i++)
             {
@@ -281,7 +281,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 UiPainter.RoundedPanel(canvas, x + 10, cardY, sidebarWidth - 20, 66,
                     UiMetrics.ButtonRadius, UiPalette.SurfaceRaised, Border);
-                SmallTextRenderer.Draw(canvas, "PROFIL GUI", x + 22, cardY + 14, Muted);
+                SmallTextRenderer.Draw(canvas, "GUI PROFILE", x + 22, cardY + 14, Muted);
                 SmallTextRenderer.DrawClipped(canvas, global::ZonderqOS.SystemSettings.PerformanceProfileName,
                     x + 22, cardY + 34, System.Math.Max(40, sidebarWidth - 44), Text);
             }
@@ -295,50 +295,50 @@ namespace ZonderqOS.GUI.Apps
                 maxWidth, UiPalette.Text);
             SmallTextRenderer.DrawClipped(canvas, PageSubtitles[selectedPage], x, Window.Y + 88, maxWidth, Muted);
             canvas.DrawLine(Border, x, Window.Y + 112, Window.X + Window.Width - 24, Window.Y + 112);
-            SmallTextRenderer.Draw(canvas, "F5 ODSWIEZ  |  ESC ZAMKNIJ  |  STRZALKI: SEKCJE",
+            SmallTextRenderer.Draw(canvas, "F5 REFRESH  |  ESC CLOSE  |  ARROWS: SECTIONS",
                 x, Window.Y + 121, Color.FromArgb(102, 122, 139));
         }
 
         private void RenderSystem(Canvas canvas, int contentX, int contentWidth)
         {
             DrawRow(canvas, contentX, contentWidth, 0, IconType.Settings,
-                "PROFIL WYDAJNOSCI", "Steruje odswiezaniem GUI i telemetrii",
+                "PERFORMANCE PROFILE", "Controls GUI and telemetry refresh",
                 global::ZonderqOS.SystemSettings.PerformanceProfileName, Accent);
             DrawNumericRow(canvas, contentX, contentWidth, 1, IconType.Settings,
-                "WATKI SCHEDULERA", "Aktywne watki raportowane przez Cosmos Gen3",
+                "SCHEDULER THREADS", "Active threads reported by Cosmos Gen3",
                 (ulong)System.Math.Max(0, schedulerThreadCount), "");
             DrawRow(canvas, contentX, contentWidth, 2, IconType.Settings,
-                "MENEDZER URZADZEN", "Karty sieciowe, dyski, aktywny interfejs i rescan partycji",
-                "OTWORZ", Good);
+                "DEVICE MANAGER", "Network cards, disks, active interface and partition rescan",
+                "OPEN", Good);
             DrawRow(canvas, contentX, contentWidth, 3, IconType.Settings,
-                "MANAGER ZADAN", "Procesy, CPU, pamiec, scheduler i telemetria", "OTWORZ", Good);
+                "TASK MANAGER", "Processes, CPU, memory, scheduler and telemetry", "OPEN", Good);
             DrawRow(canvas, contentX, contentWidth, 4, IconType.About,
-                "DIAGNOSTYKA", "Szybki test GUI, klawiatury, myszy i grafiki", "OTWORZ", Good);
+                "DIAGNOSTICS", "Quick GUI, keyboard, mouse and graphics test", "OPEN", Good);
             DrawRow(canvas, contentX, contentWidth, 5, IconType.Refresh,
-                "PRZYWROC DOMYSLNE", "Reset preferencji GUI, motywu i profilu sieciowego", "RESET", Warning);
+                "RESTORE DEFAULTS", "Reset GUI, theme and network profile preferences", "RESET", Warning);
         }
 
         private void RenderPersonalization(Canvas canvas, int contentX, int contentWidth)
         {
             DrawRow(canvas, contentX, contentWidth, 0, IconType.About,
-                "JEZYK SYSTEMU / LANGUAGE", "Przelacz miedzy polskim i angielskim interfejsem",
+                "SYSTEM LANGUAGE", "English (en-US) only in Alpha 1",
                 global::ZonderqOS.Localization.LocalizationManager.CurrentLanguageDisplayName, Accent);
             DrawRow(canvas, contentX, contentWidth, 1, IconType.Start,
-                "TLO PULPITU", "Tapeta PNG, czysty grafit lub ciemny Cosmos navy",
+                "DESKTOP BACKGROUND", "PNG wallpaper, graphite or dark Cosmos navy",
                 global::ZonderqOS.SystemSettings.DesktopBackgroundName, Accent);
             DrawRow(canvas, contentX, contentWidth, 2, IconType.Settings,
-                "MOTYW AKCENTU", "Kolor aktywnych okien, Start i powloki systemowej",
+                "ACCENT THEME", "Colors of active windows, Start and system shell",
                 global::ZonderqOS.SystemSettings.AccentThemeName, Accent);
             DrawRow(canvas, contentX, contentWidth, 3, IconType.Folder,
-                "IKONY PULPITU", "Pokazuj skroty aplikacji na pulpicie",
+                "DESKTOP ICONS", "Show application shortcuts on the desktop",
                 BoolLabel(global::ZonderqOS.SystemSettings.ShowDesktopIcons),
                 global::ZonderqOS.SystemSettings.ShowDesktopIcons ? Good : Muted);
             DrawRow(canvas, contentX, contentWidth, 4, IconType.Settings,
-                "DATA NA PASKU", "Pokazuj dzien i miesiac pod zegarem",
+                "TASKBAR DATE", "Show day and month below the clock",
                 BoolLabel(global::ZonderqOS.SystemSettings.ShowTaskbarDate),
                 global::ZonderqOS.SystemSettings.ShowTaskbarDate ? Good : Muted);
             DrawRow(canvas, contentX, contentWidth, 5, IconType.Settings,
-                "STATUS NET / VOL", "Pokazuj stan sieci i liczbe wolumenow w zasobniku",
+                "NETWORK / VOLUME STATUS", "Show network state and volume count in the tray",
                 BoolLabel(global::ZonderqOS.SystemSettings.ShowTrayStatus),
                 global::ZonderqOS.SystemSettings.ShowTrayStatus ? Good : Muted);
         }
@@ -347,53 +347,53 @@ namespace ZonderqOS.GUI.Apps
         {
             DrawResolutionRow(canvas, contentX, contentWidth, 0);
             DrawRow(canvas, contentX, contentWidth, 1, IconType.Settings,
-                "FRAMEBUFFER", "Pelny bufor ekranu Cosmos Canvas", "32-BIT", Good);
+                "FRAMEBUFFER", "Full Cosmos Canvas framebuffer", "32-BIT", Good);
             DrawRow(canvas, contentX, contentWidth, 2, IconType.Refresh,
-                "TRYB RENDEROWANIA", "Normalne okna sa odswiezane zdarzeniowo", "EVENT-DRIVEN", Good);
+                "RENDER MODE", "Normal windows update on demand", "EVENT-DRIVEN", Good);
             DrawTimeZoneRow(canvas, contentX, contentWidth, 3);
             DrawNumericRow(canvas, contentX, contentWidth, 4, IconType.Refresh,
-                "IDLE HEARTBEAT", "Okres awaryjnego odswiezenia pulpitu",
+                "IDLE HEARTBEAT", "Fallback desktop refresh interval",
                 (ulong)global::ZonderqOS.SystemSettings.IdleHeartbeatFrames * 15UL, " MS");
             DrawRow(canvas, contentX, contentWidth, 5, IconType.Settings,
-                "PROFIL GUI", "Oszczedny / zrownowazony / responsywny",
+                "GUI PROFILE", "Power saving / balanced / responsive",
                 global::ZonderqOS.SystemSettings.PerformanceProfileName, Accent);
         }
 
         private void RenderNetwork(Canvas canvas, int contentX, int contentWidth)
         {
             DrawRow(canvas, contentX, contentWidth, 0, IconType.Settings,
-                "STAN SIECI", "Stan stosu TCP/IP ZOnderqOS",
+                "NETWORK STATUS", "ZOnderqOS TCP/IP stack status",
                 networkReady ? "GOTOWA" : "OFFLINE", networkReady ? Good : Danger);
             DrawRow(canvas, contentX, contentWidth, 1, IconType.Settings,
-                "TRYB IPv4", "DHCP lub zapisany profil statyczny",
+                "IPv4 MODE", "DHCP or saved static profile",
                 global::ZonderqOS.SystemSettings.NetworkModeName, Accent);
             DrawRow(canvas, contentX, contentWidth, 2, IconType.Settings,
-                "AKTYWNY INTERFEJS", "Karta uzywana przez stos sieciowy", activeNetworkName, Text);
+                "ACTIVE INTERFACE", "Network card used by the network stack", activeNetworkName, Text);
             DrawRow(canvas, contentX, contentWidth, 3, IconType.Settings,
-                "AKTUALNY ADRES IPv4", "Adres aktywnego interfejsu", ipAddress, Text);
+                "CURRENT IPv4 ADDRESS", "Address of the active interface", ipAddress, Text);
             DrawRow(canvas, contentX, contentWidth, 4, IconType.Settings,
-                "STATYCZNE IPv4 I DNS", "Edytor IP, maski, gateway i serwera DNS", "OTWORZ", Good);
+                "STATIC IPv4 AND DNS", "IP, subnet mask, gateway and DNS editor", "OPEN", Good);
             DrawRow(canvas, contentX, contentWidth, 5, IconType.Settings,
-                "INTERFEJSY SIECIOWE", "Wybierz aktywna karte w Menedzerze urzadzen",
-                networkDeviceCount > 0 ? "OTWORZ" : "BRAK", networkDeviceCount > 0 ? Good : Muted);
+                "NETWORK INTERFACES", "Choose an active adapter in Device Manager",
+                networkDeviceCount > 0 ? "OPEN" : "NONE", networkDeviceCount > 0 ? Good : Muted);
         }
 
         private void RenderMemory(Canvas canvas, int contentX, int contentWidth)
         {
             DrawNumericRow(canvas, contentX, contentWidth, 0, IconType.Settings,
-                "RAM WIDOCZNY", "RAM z mapy Limine (zainstalowany: nieznany, brak SMBIOS)", physicalRamMb > 0 ? physicalRamMb : PagesToMb(totalPages), " MB");
+                "DETECTED RAM", "RAM from Limine map (installed total unknown; no SMBIOS)", physicalRamMb > 0 ? physicalRamMb : PagesToMb(totalPages), " MB");
             DrawNumericRow(canvas, contentX, contentWidth, 1, IconType.Settings,
-                "RAM WOLNY", "Aktualnie wolne strony fizyczne", PagesToMb(freePages), " MB");
+                "FREE RAM", "Currently available physical pages", PagesToMb(freePages), " MB");
             DrawNumericRow(canvas, contentX, contentWidth, 2, IconType.Settings,
-                "STERTA KERNELA", "Zakres sterty przydzielony dla PageAllocator", PagesToMb(totalPages), " MB");
+                "KERNEL HEAP", "Heap range allocated for PageAllocator", PagesToMb(totalPages), " MB");
             DrawNumericRow(canvas, contentX, contentWidth, 3, IconType.Settings,
-                "GC COMMITTED", "Memory zatwierdzona dla zarzadzanej sterty",
+                "GC COMMITTED", "Committed managed-heap memory",
                 gcCommittedBytes / 1024UL / 1024UL, " MB");
             DrawRow(canvas, contentX, contentWidth, 4, IconType.Folder,
-                "DYSKI / PARTYCJE / VFS", "Szczegoly urzadzen blokowych, partycji i punktow montowania",
-                "OTWORZ", Good);
+                "DISKS / PARTITIONS / VFS", "Block devices, partitions and mount point details",
+                "OPEN", Good);
             DrawRow(canvas, contentX, contentWidth, 5, IconType.Refresh,
-                "ODSWIEZ POMIARY", "Ponownie pobierz RAM, GC i dane magazynowe", "ODSWIEZ", Good);
+                "REFRESH METRICS", "Refresh RAM, GC and storage metrics", "REFRESH", Good);
 
             int x = GetRowX(contentX);
             int y = GetRowY(4) + 42;
@@ -406,63 +406,63 @@ namespace ZonderqOS.GUI.Apps
         private void RenderSecurity(Canvas canvas, int contentX, int contentWidth)
         {
             DrawRow(canvas, contentX, contentWidth, 0, IconType.About,
-                "BIEZACA SESJA", "Uzytkownik przypisany do SecurityContext", currentUser, Accent);
+                "CURRENT SESSION", "User assigned to SecurityContext", currentUser, Accent);
             DrawNumericRow(canvas, contentX, contentWidth, 1, IconType.About,
-                "UID", "Identyfikator biezacego uzytkownika", (ulong)System.Math.Max(0, currentUid), "");
+                "UID", "Current user identifier", (ulong)System.Math.Max(0, currentUid), "");
             DrawRow(canvas, contentX, contentWidth, 2, IconType.Settings,
-                "KONTA LOKALNE", "Lista kont, tworzenie kont i bezpieczne przelaczanie sesji",
-                userCount > 0 ? "OTWORZ" : "BRAK", userCount > 0 ? Good : Warning);
+                "LOCAL ACCOUNTS", "List accounts, create accounts and switch sessions safely",
+                userCount > 0 ? "OPEN" : "NONE", userCount > 0 ? Good : Warning);
             DrawRow(canvas, contentX, contentWidth, 3, IconType.File,
-                "DZIENNIKI SYSTEMOWE", "auth.log i sysmon.log z przewijaniem oraz kontrolowanym czyszczeniem",
-                "OTWORZ", Good);
+                "SYSTEM LOGS", "Scrollable auth.log and sysmon.log with controlled clearing",
+                "OPEN", Good);
             DrawRow(canvas, contentX, contentWidth, 4, IconType.Settings,
-                "SECURITY LOGGER", "Rotowany dziennik zdarzen uwierzytelniania i uprawnien",
-                auditLogPresent ? "AKTYWNY" : "BRAK LOGU", auditLogPresent ? Good : Warning);
+                "SECURITY LOGGER", "Rotated authentication and permission event log",
+                auditLogPresent ? "ACTIVE" : "NO LOG", auditLogPresent ? Good : Warning);
             DrawNumericRow(canvas, contentX, contentWidth, 5, IconType.Refresh,
-                "ROZMIAR AUDYTU", "Kliknij aby odswiezyc dane ochrony",
+                "AUDIT LOG SIZE", "Click to refresh security information",
                 auditLogBytes > 0 ? (ulong)auditLogBytes / 1024UL : 0UL, " KB");
         }
 
         private void RenderPower(Canvas canvas, int contentX, int contentWidth)
         {
             DrawRow(canvas, contentX, contentWidth, 0, IconType.Settings,
-                "PROFIL PRACY", "Profil GUI ma wplyw na czestotliwosc odswiezania",
+                "PERFORMANCE PROFILE", "GUI profile affects refresh frequency",
                 global::ZonderqOS.SystemSettings.PerformanceProfileName, Accent);
             DrawNumericRow(canvas, contentX, contentWidth, 1, IconType.Refresh,
-                "TELEMETRIA GUI", "Biezacy okres odswiezania danych dynamicznych",
+                "GUI TELEMETRY", "Current dynamic-data refresh interval",
                 (ulong)global::ZonderqOS.SystemSettings.TelemetryHeartbeatFrames * 15UL, " MS");
 
             bool rebootArmed = IsPowerArmed(1);
             bool shutdownArmed = IsPowerArmed(2);
             DrawRow(canvas, contentX, contentWidth, 2, IconType.Reboot,
-                "RESTART SYSTEMU", "Pierwsze klikniecie uzbraja akcje, drugie wykonuje restart",
-                rebootArmed ? "POTWIERDZ" : "REBOOT", rebootArmed ? Warning : Accent);
+                "RESTART SYSTEM", "First click arms the action; second click restarts",
+                rebootArmed ? "CONFIRM" : "REBOOT", rebootArmed ? Warning : Accent);
             DrawRow(canvas, contentX, contentWidth, 3, IconType.Shutdown,
-                "WYLACZ SYSTEM", "Pierwsze klikniecie uzbraja akcje, drugie wykonuje shutdown",
-                shutdownArmed ? "POTWIERDZ" : "WYLACZ", shutdownArmed ? Danger : Warning);
+                "SHUT DOWN SYSTEM", "First click arms the action; second click shuts down",
+                shutdownArmed ? "CONFIRM" : "SHUT DOWN", shutdownArmed ? Danger : Warning);
             DrawRow(canvas, contentX, contentWidth, 4, IconType.Close,
-                "ZAMKNIECIE GUI", "X zamyka tylko okno; Start > GUI konczy cala sesje graficzna",
-                "BEZPIECZNE", Good);
+                "CLOSING THE GUI", "X closes this window; Start > GUI ends the desktop session",
+                "SAFE", Good);
             DrawRow(canvas, contentX, contentWidth, 5, IconType.Settings,
-                "COSMOS POWER API", "Reboot i shutdown sa kierowane przez platform HAL",
-                "AKTYWNE", Good);
+                "COSMOS POWER API", "Restart and shutdown are handled by platform HAL",
+                "ACTIVE", Good);
         }
 
         private void RenderAbout(Canvas canvas, int contentX, int contentWidth)
         {
             DrawRow(canvas, contentX, contentWidth, 0, IconType.Start,
-                "SYSTEM", "Nazwa i generacja srodowiska", "ZONDERQOS GEN3", Accent);
+                "SYSTEM", "System name and generation", "ZONDERQOS GEN3", Accent);
             DrawRow(canvas, contentX, contentWidth, 1, IconType.About,
-                "COSMOS SDK", "Version pakietow kernel i kernel.system", "3.0.95", Good);
+                "COSMOS SDK", "Version of kernel and kernel.system packages", "3.0.97", Good);
             DrawRow(canvas, contentX, contentWidth, 2, IconType.Settings,
-                "ARCHITEKTURA", "Architektura wykryta przez CPUID", cpuInfo.Architecture, Text);
+                "ARCHITECTURE", "Architecture detected by CPUID", cpuInfo.Architecture, Text);
             DrawRow(canvas, contentX, contentWidth, 3, IconType.Settings,
-                "PROCESOR", "Nazwa procesora lub procesora wirtualnego", cpuInfo.Brand, Text);
+                "PROCESSOR", "CPU or virtual processor name", cpuInfo.Brand, Text);
             DrawRow(canvas, contentX, contentWidth, 4, IconType.Settings,
-                "SCHEDULER", "Aktywny scheduler Cosmos Gen3", schedulerName, Text);
+                "SCHEDULER", "Active Cosmos Gen3 scheduler", schedulerName, Text);
             DrawRow(canvas, contentX, contentWidth, 5, IconType.Settings,
-                "ZAAWANSOWANY PANEL KERNELA", "Scheduler, CPU time, RAM, OrionGC i uptime",
-                "OTWORZ", Warning);
+                "ADVANCED KERNEL PANEL", "Scheduler, CPU time, RAM, OrionGC and uptime",
+                "OPEN", Warning);
         }
 
         private void DrawRow(Canvas canvas, int contentX, int contentWidth, int index, IconType icon,
@@ -514,7 +514,7 @@ namespace ZonderqOS.GUI.Apps
         private void DrawTimeZoneRow(Canvas canvas, int contentX, int contentWidth, int index)
         {
             DrawRow(canvas, contentX, contentWidth, index, IconType.Settings,
-                "STREFA CZASOWA", "Kliknij aby przesunac UTC o +1h; zakres od -12 do +14",
+                "TIME ZONE", "Click to shift UTC by +1h; range -12 to +14",
                 string.Empty, Text);
 
             int x = GetRowX(contentX);
@@ -540,7 +540,7 @@ namespace ZonderqOS.GUI.Apps
         private void DrawResolutionRow(Canvas canvas, int contentX, int contentWidth, int index)
         {
             DrawRow(canvas, contentX, contentWidth, index, IconType.Settings,
-                "ROZDZIELCZOSC", "Rzeczywisty rozmiar aktywnego Canvas/framebuffer",
+                "RESOLUTION", "Actual active Canvas/framebuffer dimensions",
                 string.Empty, Text);
 
             int x = GetRowX(contentX);
@@ -585,31 +585,29 @@ namespace ZonderqOS.GUI.Apps
                     else if (row == 5)
                     {
                         global::ZonderqOS.SystemSettings.RestoreDefaults();
-                        SetStatus("PRZYWROCONO USTAWIENIA DOMYSLNE", Warning);
+                        SetStatus("DEFAULT SETTINGS RESTORED", Warning);
                     }
                     break;
 
                 case PagePersonalization:
                     if (row == 0)
                     {
-                        if (global::ZonderqOS.Localization.LocalizationManager.CurrentLanguage == global::ZonderqOS.Localization.Language.Polish)
-                            global::ZonderqOS.Localization.LocalizationManager.SetLanguage(global::ZonderqOS.Localization.Language.English);
-                        else
-                            global::ZonderqOS.Localization.LocalizationManager.SetLanguage(global::ZonderqOS.Localization.Language.Polish);
-                        SetStatus("ZMIENIONO JEZYK / LANGUAGE CHANGED", Good);
+                        // Alpha 1 is English-only. Language switching returns in Beta 1.
+                        global::ZonderqOS.Localization.LocalizationManager.SetLanguage(global::ZonderqOS.Localization.Language.English, false);
+                        SetStatus("ENGLISH (en-US) ONLY IN ALPHA 1", Good);
                     }
-                    else if (row == 1) { global::ZonderqOS.SystemSettings.CycleDesktopBackground(); SetStatus("ZMIENIONO TLO PULPITU", Accent); }
-                    else if (row == 2) { global::ZonderqOS.SystemSettings.CycleAccentTheme(); SetStatus("ZMIENIONO MOTYW AKCENTU", Accent); }
-                    else if (row == 3) { global::ZonderqOS.SystemSettings.ToggleDesktopIcons(); SetStatus("PRZELACZONO IKONY PULPITU", Accent); }
-                    else if (row == 4) { global::ZonderqOS.SystemSettings.ToggleTaskbarDate(); SetStatus("PRZELACZONO DATE NA PASKU", Accent); }
-                    else if (row == 5) { global::ZonderqOS.SystemSettings.ToggleTrayStatus(); SetStatus("PRZELACZONO STATUS W ZASOBNIKU", Accent); }
+                    else if (row == 1) { global::ZonderqOS.SystemSettings.CycleDesktopBackground(); SetStatus("DESKTOP BACKGROUND CHANGED", Accent); }
+                    else if (row == 2) { global::ZonderqOS.SystemSettings.CycleAccentTheme(); SetStatus("ACCENT THEME CHANGED", Accent); }
+                    else if (row == 3) { global::ZonderqOS.SystemSettings.ToggleDesktopIcons(); SetStatus("DESKTOP ICONS TOGGLED", Accent); }
+                    else if (row == 4) { global::ZonderqOS.SystemSettings.ToggleTaskbarDate(); SetStatus("TASKBAR DATE TOGGLED", Accent); }
+                    else if (row == 5) { global::ZonderqOS.SystemSettings.ToggleTrayStatus(); SetStatus("TRAY STATUS TOGGLED", Accent); }
                     break;
 
                 case PageDisplay:
                     if (row == 3)
                     {
                         global::ZonderqOS.SystemSettings.ShiftTimeZone(1);
-                        SetStatus("ZMIENIONO STREFE CZASOWA", Good);
+                        SetStatus("TIME ZONE CHANGED", Good);
                     }
                     else if (row == 5)
                         CycleProfile();
@@ -628,7 +626,7 @@ namespace ZonderqOS.GUI.Apps
                     else if (row == 5)
                     {
                         RefreshSnapshot();
-                        SetStatus("ODSWIEZONO POMIARY PAMIECI I DYSKOW", Good);
+                        SetStatus("MEMORY AND DISK METRICS REFRESHED", Good);
                     }
                     break;
 
@@ -640,7 +638,7 @@ namespace ZonderqOS.GUI.Apps
                     else if (row == 5)
                     {
                         RefreshSnapshot();
-                        SetStatus("ODSWIEZONO DANE OCHRONY", Good);
+                        SetStatus("SECURITY INFORMATION REFRESHED", Good);
                     }
                     break;
 
@@ -661,11 +659,11 @@ namespace ZonderqOS.GUI.Apps
         {
             if (applicationManager == null || app == null)
             {
-                SetStatus("BRAK MENEDZERA APLIKACJI", Danger);
+                SetStatus("APPLICATION MANAGER UNAVAILABLE", Danger);
                 return;
             }
             applicationManager.Launch(app);
-            SetStatus("OTWARTO PANEL ZAAWANSOWANY", Good);
+            SetStatus("ADVANCED PANEL OPENED", Good);
         }
 
         private void LaunchTaskManager()
@@ -678,19 +676,19 @@ namespace ZonderqOS.GUI.Apps
                 if (applicationManager.Applications[i] is TaskManagerModernApp existing && existing.IsRunning)
                 {
                     applicationManager.Activate(existing);
-                    SetStatus("OTWARTO MANAGER ZADAN", Good);
+                    SetStatus("TASK MANAGER OPENED", Good);
                     return;
                 }
             }
 
             applicationManager.Launch(new TaskManagerModernApp(Window.X + 40, Window.Y + 30, applicationManager, null));
-            SetStatus("OTWARTO MANAGER ZADAN", Good);
+            SetStatus("TASK MANAGER OPENED", Good);
         }
 
         private void CycleProfile()
         {
             global::ZonderqOS.SystemSettings.CyclePerformanceProfile();
-            SetStatus("ZMIENIONO PROFIL WYDAJNOSCI", Accent);
+            SetStatus("PERFORMANCE PROFILE CHANGED", Accent);
         }
 
         private void RequestPowerAction(int action)
@@ -707,8 +705,8 @@ namespace ZonderqOS.GUI.Apps
             armedPowerAction = action;
             armedPowerTimestamp = Stopwatch.GetTimestamp();
             SetStatus(action == 1
-                ? "REBOOT UZBROJONY - KLIKNIJ PONOWNIE ABY POTWIERDZIC"
-                : "WYLACZENIE UZBROJONE - KLIKNIJ PONOWNIE ABY POTWIERDZIC",
+                ? "RESTART ARMED - CLICK AGAIN TO CONFIRM"
+                : "SHUTDOWN ARMED - CLICK AGAIN TO CONFIRM",
                 action == 1 ? Warning : Danger);
         }
 
@@ -797,7 +795,7 @@ namespace ZonderqOS.GUI.Apps
                 networkDeviceCount = global::ZonderqOS.Network.Devices.Count;
                 activeNetworkName = global::ZonderqOS.Network.ActiveDevice != null &&
                                     !string.IsNullOrEmpty(global::ZonderqOS.Network.ActiveDevice.Name)
-                    ? global::ZonderqOS.Network.ActiveDevice.Name : "BRAK";
+                    ? global::ZonderqOS.Network.ActiveDevice.Name : "NONE";
                 var address = NetworkConfigManager.CurrentAddress;
                 ipAddress = address != null ? address.ToString() : "0.0.0.0";
             }
@@ -805,7 +803,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 networkReady = false;
                 networkDeviceCount = 0;
-                activeNetworkName = "BRAK";
+                activeNetworkName = "NONE";
                 ipAddress = "0.0.0.0";
             }
 
