@@ -40,7 +40,7 @@ namespace ZonderqOS.GUI.Apps
         private bool isPaused;
         private long resumeTimestamp;
         private long toneEndTimestamp;
-        private string statusMessage = "Gotowy do uruchomienia";
+        private string statusMessage = "Ready do uruchomienia";
         private Color statusColor = MutedColor;
 
         private readonly Action closeCallback;
@@ -429,7 +429,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 else
                 {
-                    Error("Błąd GOTO: brak linii " + targetLine);
+                    Error("Error GOTO: brak linii " + targetLine);
                 }
                 return;
             }
@@ -446,7 +446,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 else
                 {
-                    Error("Błąd GOSUB: brak linii " + targetLine);
+                    Error("Error GOSUB: brak linii " + targetLine);
                 }
                 return;
             }
@@ -460,7 +460,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 else
                 {
-                    Error("Błąd: RETURN bez GOSUB");
+                    Error("Error: RETURN bez GOSUB");
                 }
                 return;
             }
@@ -582,7 +582,7 @@ namespace ZonderqOS.GUI.Apps
             int thenIdx = text.IndexOf(" THEN ", StringComparison.OrdinalIgnoreCase);
             if (thenIdx < 0)
             {
-                Error("Błąd IF: brak THEN");
+                Error("Error IF: brak THEN");
                 return;
             }
 
@@ -607,7 +607,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (opIdx < 0)
             {
-                Error("Błąd IF: brak operatora");
+                Error("Error IF: brak operatora");
                 return;
             }
 
@@ -630,7 +630,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     int idx = FindProgramIndex(targetLine);
                     if (idx >= 0) pc = idx;
-                    else Error("Błąd IF: brak linii " + targetLine);
+                    else Error("Error IF: brak linii " + targetLine);
                 }
                 else
                 {
@@ -647,7 +647,7 @@ namespace ZonderqOS.GUI.Apps
             int toIdx = text.IndexOf(" TO ", StringComparison.OrdinalIgnoreCase);
             if (eqIdx < 0 || toIdx < eqIdx)
             {
-                Error("Błąd składni FOR");
+                Error("Error składni FOR");
                 return;
             }
 
@@ -681,7 +681,7 @@ namespace ZonderqOS.GUI.Apps
         {
             if (forStack.Count == 0)
             {
-                Error("Błąd: NEXT bez FOR");
+                Error("Error: NEXT bez FOR");
                 return;
             }
 

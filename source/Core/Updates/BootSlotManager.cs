@@ -111,7 +111,7 @@ namespace ZonderqOS.SystemCore.Updates
             {
                 EmergencyRecoveryNeeded = true;
                 SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT",
-                    "Blad inicjalizacji BootSlotManager: " + ex.Message);
+                    "Error inicjalizacji BootSlotManager: " + ex.Message);
             }
         }
 
@@ -596,7 +596,7 @@ namespace ZonderqOS.SystemCore.Updates
                     throw new IOException("Obraz nie jest poprawnym ELF64 z tablica program headers.");
                 string actualHash = ComputeFileSha256(tempPath);
                 if (!Crypto.FixedTimeEquals(actualHash.ToLowerInvariant(), expectedSha256.ToLowerInvariant()))
-                    throw new IOException("Blad SHA-256 tymczasowego obrazu kernela.");
+                    throw new IOException("Error SHA-256 tymczasowego obrazu kernela.");
 
                 // Preserve the former inactive image until the replacement has
                 // passed readback. Never touch the running/fallback slot.
@@ -610,7 +610,7 @@ namespace ZonderqOS.SystemCore.Updates
 
                 string readback = ComputeFileSha256(targetPath);
                 if (!Crypto.FixedTimeEquals(readback.ToLowerInvariant(), expectedSha256.ToLowerInvariant()))
-                    throw new IOException("Blad SHA-256 po przeniesieniu do slotu.");
+                    throw new IOException("Error SHA-256 po przeniesieniu do slotu.");
 
                 // Metadata must be written before changing in-memory status.
                 File.WriteAllText(Path.Combine(targetDir, "kernel.sha256"), readback + "\n");
@@ -647,7 +647,7 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
-                error = "Blad bezpiecznego stagingu slotu " + targetSlot + ": " + ex.Message;
+                error = "Error bezpiecznego stagingu slotu " + targetSlot + ": " + ex.Message;
                 if (slotMetaMutated)
                 {
                     if (targetSlot == SlotA)
@@ -758,7 +758,7 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
-                error = "Blad podczas aktywacji slotu: " + ex.Message;
+                error = "Error podczas aktywacji slotu: " + ex.Message;
                 if (stateWasMutated)
                 {
                     ActiveSlot = previousActive;
@@ -835,7 +835,7 @@ namespace ZonderqOS.SystemCore.Updates
                     if (expectedHash.Length != 64 ||
                         !Crypto.FixedTimeEquals(ComputeFileSha256(kernelPath).ToLowerInvariant(), expectedHash.ToLowerInvariant()))
                     {
-                        error = $"Blad sumy SHA-256 obrazu kernela w slocie przywracania {previousSlot}.";
+                        error = $"Error sumy SHA-256 obrazu kernela w slocie przywracania {previousSlot}.";
                         return false;
                     }
                 }
@@ -865,7 +865,7 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
-                error = "Blad manualnego rollbacku: " + ex.Message;
+                error = "Error manualnego rollbacku: " + ex.Message;
                 if (stateWasMutated)
                 {
                     ActiveSlot = previousActive;

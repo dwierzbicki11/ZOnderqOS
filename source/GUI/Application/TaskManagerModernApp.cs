@@ -113,7 +113,7 @@ namespace ZonderqOS.GUI.Apps
         private int previousVisibleRows = -1;
         private long lastRefreshTicks = -1;
         private bool samplingPaused;
-        private string status = "Gotowy";
+        private string status = "Ready";
 
         private int guiAppCount;
         private int kernelProcessCount;
@@ -421,7 +421,7 @@ namespace ZonderqOS.GUI.Apps
             if (toolbar == 1)
             {
                 RefreshSnapshot();
-                status = "Odswiezono";
+                status = "Refreshono";
                 return;
             }
             if (toolbar == 2)
@@ -496,7 +496,7 @@ namespace ZonderqOS.GUI.Apps
             if (key.Key == ConsoleKeyEx.F5)
             {
                 RefreshSnapshot();
-                status = "Odswiezono";
+                status = "Refreshono";
                 return;
             }
             // The left/right arrows switch Task Manager pages without a mouse.
@@ -529,7 +529,7 @@ namespace ZonderqOS.GUI.Apps
                         OnTelemetrySelectionChanged();
                     }
                     status = performanceResource == PerfCpu ? "CPU" :
-                        performanceResource == PerfMemory ? "Pamiec" : "System";
+                        performanceResource == PerfMemory ? "Memory" : "System";
                     return;
                 }
 
@@ -655,7 +655,7 @@ namespace ZonderqOS.GUI.Apps
                     applicationManager.Close(row.GuiApplication);
                 else
                     row.GuiApplication.Close();
-                status = "Zakonczono aplikacje";
+                status = "Completed aplikacje";
                 RefreshSnapshot();
                 return;
             }

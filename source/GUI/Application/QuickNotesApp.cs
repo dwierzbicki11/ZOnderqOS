@@ -137,7 +137,7 @@ namespace ZonderqOS.GUI.Apps
 
                 if (!global::ZonderqOS.PermissionManager.CanCreate(notesFilePath, user))
                 {
-                    statusMessage = "Brak uprawnien";
+                    statusMessage = "Permission denied";
                     isDirty = false;
                     return;
                 }
@@ -148,11 +148,11 @@ namespace ZonderqOS.GUI.Apps
                     global::ZonderqOS.PermissionManager.SetPermission(notesFilePath, user, 600);
                 isDirty = false;
                 lastSaveTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-                statusMessage = "Zapisano " + DateTime.Now.ToString("HH:mm:ss");
+                statusMessage = "Saved " + DateTime.Now.ToString("HH:mm:ss");
             }
             catch
             {
-                statusMessage = "Blad zapisu";
+                statusMessage = "Error zapisu";
             }
         }
 

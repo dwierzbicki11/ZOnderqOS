@@ -10,9 +10,9 @@ namespace ZonderqOS.GUI.Apps
     /// </summary>
     public sealed class NetworkAdvancedApp : Application
     {
-        public NetworkAdvancedApp(int x, int y) : base("Siec niedostepna")
+        public NetworkAdvancedApp(int x, int y) : base("Network niedostepna")
         {
-            Window = new Window(x, y, 620, 260, "Siec - funkcja usunieta");
+            Window = new Window(x, y, 620, 260, "Network - funkcja usunieta");
             Window.CloseAction = Close;
         }
 

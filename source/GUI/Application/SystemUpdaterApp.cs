@@ -27,7 +27,7 @@ namespace ZonderqOS.GUI.Apps
         private int activeTab = 0; // 0 = Changelog, 1 = Files/Payload, 2 = Storage/Slots, 3 = History
         private readonly Action closeCallback;
 
-        private string statusMessage = "Gotowy do instalacji aktualizacji z nosnika USB.";
+        private string statusMessage = "Ready do instalacji aktualizacji z nosnika USB.";
         private Color statusColor = MutedColor;
 
         private enum UpdateOp { None, Checking, Installing, RollingBack }
@@ -199,7 +199,7 @@ namespace ZonderqOS.GUI.Apps
             if (IsRootAuthorized())
                 return true;
 
-            statusMessage = "Brak uprawnien administratora (wymagany root).";
+            statusMessage = "Permission denied administratora (wymagany root).";
             statusColor = RedColor;
             SecurityLogger.LogEvent("WARN",
                 "Unauthorized SystemUpdater action (" + actionDescription + ") by " +
@@ -272,7 +272,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     isBusy = false;
                     currentOp = UpdateOp.None;
-                    statusMessage = "Brak uprawnien administratora (wymagany root).";
+                    statusMessage = "Permission denied administratora (wymagany root).";
                     statusColor = RedColor;
                     return;
                 }
@@ -299,7 +299,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     isBusy = false;
                     currentOp = UpdateOp.None;
-                    statusMessage = "Blad instalacji: " + err;
+                    statusMessage = "Error instalacji: " + err;
                     statusColor = RedColor;
                     RefreshCachedState();
                 }
@@ -320,7 +320,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     isBusy = false;
                     currentOp = UpdateOp.None;
-                    statusMessage = "Brak uprawnien administratora (wymagany root).";
+                    statusMessage = "Permission denied administratora (wymagany root).";
                     statusColor = RedColor;
                     return;
                 }
@@ -337,7 +337,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     isBusy = false;
                     currentOp = UpdateOp.None;
-                    statusMessage = "Blad wycofywania: " + err;
+                    statusMessage = "Error wycofywania: " + err;
                     statusColor = RedColor;
                     RefreshCachedState();
                 }
@@ -460,7 +460,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 title = "Wymagany restart komputera";
                 titleCol = GoldColor;
-                subtitle = $"Nowy kernel oczekuje w slocie {BootSlotManager.ActiveSlot}. Uruchom ponownie system.";
+                subtitle = $"Nowy kernel oczekuje w slocie {BootSlotManager.ActiveSlot}. Reboot system.";
                 bannerBorder = GoldColor;
             }
             else if (UpdateManager.Status == UpdateStatus.Available && UpdateManager.AvailablePackage != null)
@@ -632,13 +632,13 @@ namespace ZonderqOS.GUI.Apps
                 // Slot A
                 Color ca = BootSlotManager.ActiveSlot == BootSlotManager.SlotA ? GreenColor : MutedColor;
                 canvas.DrawFilledRectangle(ca, x + 16, lineY + 4, 6, 6);
-                SmallTextRenderer.Draw(canvas, $"SLOT A: {BootSlotManager.SlotAPath} [Wersja: {BootSlotManager.SlotAVersion}, Stan: {BootSlotManager.SlotAStatus}]", x + 30, lineY, TextColor);
+                SmallTextRenderer.Draw(canvas, $"SLOT A: {BootSlotManager.SlotAPath} [Version: {BootSlotManager.SlotAVersion}, Stan: {BootSlotManager.SlotAStatus}]", x + 30, lineY, TextColor);
                 lineY += 23;
 
                 // Slot B
                 Color cb = BootSlotManager.ActiveSlot == BootSlotManager.SlotB ? GreenColor : MutedColor;
                 canvas.DrawFilledRectangle(cb, x + 16, lineY + 4, 6, 6);
-                SmallTextRenderer.Draw(canvas, $"SLOT B: {BootSlotManager.SlotBPath} [Wersja: {BootSlotManager.SlotBVersion}, Stan: {BootSlotManager.SlotBStatus}]", x + 30, lineY, TextColor);
+                SmallTextRenderer.Draw(canvas, $"SLOT B: {BootSlotManager.SlotBPath} [Version: {BootSlotManager.SlotBVersion}, Stan: {BootSlotManager.SlotBStatus}]", x + 30, lineY, TextColor);
                 lineY += 23;
 
                 // Watchdog state
@@ -659,7 +659,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 // Tab 3: History & Snapshots
                 SmallTextRenderer.Draw(canvas, "Historia instalacji i wycofywania aktualizacji (/var/log/update.log):", x + 14, y + 10, AccentColor);
-                SmallTextRenderer.Draw(canvas, "Punkt przywrocenia: " + (cachedHasRollback ? "AKTYWNY (Zapisano migawke /var/updates/backup)" : "BRAK"), x + 14, y + 26, MutedColor);
+                SmallTextRenderer.Draw(canvas, "Punkt przywrocenia: " + (cachedHasRollback ? "AKTYWNY (Saved migawke /var/updates/backup)" : "BRAK"), x + 14, y + 26, MutedColor);
                 canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
 
                 List<string> history = cachedHistory;

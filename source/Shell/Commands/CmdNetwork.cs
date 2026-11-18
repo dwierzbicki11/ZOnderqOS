@@ -46,7 +46,7 @@ namespace ZonderqOS.Commands
                     string ip = Network.ResolveDns(domain);
                     if (string.IsNullOrEmpty(ip))
                     {
-                        CommandIO.WriteLine("[DNS] Nie udalo sie rozwiazac nazwy (Timeout/Blad).");
+                        CommandIO.WriteLine("[DNS] Nie udalo sie rozwiazac nazwy (Timeout/Error).");
                         CommandIO.LastCommandSuccess = false;
                         return;
                     }

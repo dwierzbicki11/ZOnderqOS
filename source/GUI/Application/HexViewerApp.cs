@@ -110,7 +110,7 @@ namespace ZonderqOS.GUI.Apps
                         "WARN",
                         "Unauthorized HexViewer read attempt on " + normalized + " by " +
                         (global::ZonderqOS.SecurityContext.CurrentUser ?? "?"));
-                    SetStatusBuffer("Brak uprawnien", "Brak uprawnien do odczytu", "Brak uprawnien do odczytu pliku.");
+                    SetStatusBuffer("Permission denied", "Permission denied do odczytu", "Permission denied do odczytu pliku.");
                     return;
                 }
 
@@ -149,7 +149,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                string err = "Blad odczytu: " + ex.Message;
+                string err = "Error odczytu: " + ex.Message;
                 fileBuffer.Allocate(err.Length);
                 for (int i = 0; i < err.Length; i++)
                     fileBuffer[i] = (byte)err[i];

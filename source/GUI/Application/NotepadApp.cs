@@ -18,7 +18,7 @@ namespace ZonderqOS.GUI.Apps
         private readonly NotepadView view;
 
         private string filePath;
-        private string status = "Gotowy";
+        private string status = "Ready";
         private string positionText = "LN 1  COL 1";
         private int cursorX;
         private int cursorY;
@@ -630,7 +630,7 @@ namespace ZonderqOS.GUI.Apps
                 if (!global::ZonderqOS.SecurityContext.IsAuthenticated ||
                     !global::ZonderqOS.PermissionManager.CanRead(openDirectory, currentUser))
                 {
-                    status = "Brak uprawnien do odczytu: " + openDirectory;
+                    status = "Permission denied do odczytu: " + openDirectory;
                     return;
                 }
 
@@ -662,7 +662,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                status = "Blad katalogu: " + ex.Message;
+                status = "Error katalogu: " + ex.Message;
             }
         }
 
@@ -708,7 +708,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                status = "Blad katalogu: " + ex.Message;
+                status = "Error katalogu: " + ex.Message;
             }
         }
 
@@ -823,13 +823,13 @@ namespace ZonderqOS.GUI.Apps
                     !global::ZonderqOS.PermissionManager.CanRead(normalized,
                         global::ZonderqOS.SecurityContext.CurrentUser))
                 {
-                    status = "Brak uprawnien do odczytu: " + normalized;
+                    status = "Permission denied do odczytu: " + normalized;
                     return false;
                 }
 
                 if (!File.Exists(normalized))
                 {
-                    status = "Nie znaleziono pliku: " + normalized;
+                    status = "File not found: " + normalized;
                     return false;
                 }
 
@@ -856,7 +856,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                status = "Blad odczytu: " + ex.Message;
+                status = "Error odczytu: " + ex.Message;
                 return false;
             }
         }
@@ -893,7 +893,7 @@ namespace ZonderqOS.GUI.Apps
                 if (!global::ZonderqOS.SecurityContext.IsAuthenticated ||
                     !global::ZonderqOS.PermissionManager.CanCreate(normalized, currentUser))
                 {
-                    status = "Brak uprawnien do zapisu: " + normalized;
+                    status = "Permission denied do zapisu: " + normalized;
                     return false;
                 }
 
@@ -905,13 +905,13 @@ namespace ZonderqOS.GUI.Apps
                     global::ZonderqOS.PermissionManager.SetPermission(normalized, currentUser, 644);
                 filePath = normalized;
                 dirty = false;
-                status = "Zapisano: " + normalized;
+                status = "Saved: " + normalized;
                 UpdateWindowTitle();
                 return true;
             }
             catch (Exception ex)
             {
-                status = "Blad zapisu: " + ex.Message;
+                status = "Error zapisu: " + ex.Message;
                 return false;
             }
         }
@@ -1406,7 +1406,7 @@ namespace ZonderqOS.GUI.Apps
             UiPainter.RoundedPanel(canvas, x, y, width, height, UiMetrics.MenuRadius,
                 UiPalette.SurfaceRaised, Accent);
 
-            canvas.DrawString("Otworz plik", font, Color.WhiteSmoke, x + 14, y + 10);
+            canvas.DrawString("Open plik", font, Color.WhiteSmoke, x + 14, y + 10);
 
             int upX = x + 14;
             int upY = y + 48;

@@ -54,7 +54,7 @@ namespace ZonderqOS.Commands
                     WriteMessage.WriteOK("Znaleziono zweryfikowana aktualizacje USB!", "UPDATE");
                     CommandIO.WriteLine("");
                     CommandIO.WriteLine("  Tytul:         " + pkg.Title);
-                    CommandIO.WriteLine("  Wersja celu:   " + pkg.Version + " (Build " + pkg.BuildNumber + ")");
+                    CommandIO.WriteLine("  Version celu:   " + pkg.Version + " (Build " + pkg.BuildNumber + ")");
                     CommandIO.WriteLine("  Architektura:  " + pkg.Architecture);
                     CommandIO.WriteLine("  Waznosc:       " + pkg.Severity);
                     CommandIO.WriteLine("  Data wydania:  " + pkg.ReleaseDate);
@@ -261,7 +261,7 @@ namespace ZonderqOS.Commands
             CommandIO.WriteLine("  Data kompilacji:     " + KernelBuildInfo.CompileTimestamp);
             CommandIO.WriteLine("  Aktywny slot:        Slot " + BootSlotManager.ActiveSlot + " (" + KernelBuildInfo.RunningSlotPath + ")");
             CommandIO.WriteLine("  Stan biezacego slotu:" + (KernelBuildInfo.IsHealthyAndConfirmed ? "ZATWIERDZONY (HEALTHY)" : "OCZEKUJE NA POTWIERDZENIE"));
-            CommandIO.WriteLine("  Wersja w /etc:       " + UpdateManager.CurrentVersion + " (Build " + UpdateManager.CurrentBuild + ")");
+            CommandIO.WriteLine("  Version w /etc:       " + UpdateManager.CurrentVersion + " (Build " + UpdateManager.CurrentBuild + ")");
 
             // Detection of mismatch between booted kernel and disk version
             if (!string.Equals(KernelBuildInfo.KernelVersion, UpdateManager.CurrentVersion, StringComparison.OrdinalIgnoreCase))
@@ -299,13 +299,13 @@ namespace ZonderqOS.Commands
             CommandIO.WriteLine("  Sciezka:          " + BootSlotManager.SlotAPath);
             CommandIO.WriteLine("  Obecnosc pliku:   " + (File.Exists(BootSlotManager.SlotAPath) ? "TAK" : "BRAK"));
             CommandIO.WriteLine("  Stan zdrowia:     " + BootSlotManager.SlotAStatus);
-            CommandIO.WriteLine("  Wersja kernela:   " + BootSlotManager.SlotAVersion + " (Build " + BootSlotManager.SlotABuild + ")");
+            CommandIO.WriteLine("  Version kernela:   " + BootSlotManager.SlotAVersion + " (Build " + BootSlotManager.SlotABuild + ")");
             CommandIO.WriteLine("");
             CommandIO.WriteLine("SLOT B:");
             CommandIO.WriteLine("  Sciezka:          " + BootSlotManager.SlotBPath);
             CommandIO.WriteLine("  Obecnosc pliku:   " + (File.Exists(BootSlotManager.SlotBPath) ? "TAK" : "BRAK"));
             CommandIO.WriteLine("  Stan zdrowia:     " + BootSlotManager.SlotBStatus);
-            CommandIO.WriteLine("  Wersja kernela:   " + (string.IsNullOrEmpty(BootSlotManager.SlotBVersion) ? "Pusty" : BootSlotManager.SlotBVersion + " (Build " + BootSlotManager.SlotBBuild + ")"));
+            CommandIO.WriteLine("  Version kernela:   " + (string.IsNullOrEmpty(BootSlotManager.SlotBVersion) ? "Pusty" : BootSlotManager.SlotBVersion + " (Build " + BootSlotManager.SlotBBuild + ")"));
             CommandIO.WriteLine("");
             CommandIO.WriteLine("Konfiguracja Limine:");
             CommandIO.WriteLine("  Plik w /boot:     " + (File.Exists(BootSlotManager.LimineBootConfig) ? "ZSYNCHRONIZOWANY" : "Brak"));

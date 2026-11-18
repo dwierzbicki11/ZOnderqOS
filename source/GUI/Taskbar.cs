@@ -375,7 +375,7 @@ namespace ZonderqOS.GUI
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Network,
                     "SIEC",
-                    networkReady ? "Siec polaczona" : "Siec rozlaczona",
+                    networkReady ? "Network polaczona" : "Network rozlaczona",
                     networkReady ? "Interfejs sieciowy jest gotowy do pracy." : "Polaczenie sieciowe nie jest obecnie gotowe.");
             }
 

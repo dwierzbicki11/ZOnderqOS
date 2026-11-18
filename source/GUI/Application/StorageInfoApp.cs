@@ -17,7 +17,7 @@ namespace ZonderqOS.GUI.Apps
         private int offset;
 
         public StorageInfoApp(int x, int y)
-            : base("Dyski i partycje", "Magazyn danych - ZOnderqOS", x, y, 940, 620)
+            : base("Diski i partycje", "Magazyn danych - ZOnderqOS", x, y, 940, 620)
         {
             RefreshData();
         }

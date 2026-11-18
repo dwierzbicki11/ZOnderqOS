@@ -61,7 +61,7 @@ namespace ZonderqOS.GUI.Apps
         private int lastCanvasY = -1;
         private int dragStartX = -1;
         private int dragStartY = -1;
-        private string statusMessage = "Gotowy";
+        private string statusMessage = "Ready";
         private int saveCounter = 1;
         private readonly Action closeCallback;
 
@@ -131,21 +131,21 @@ namespace ZonderqOS.GUI.Apps
                 }
                 if (!saved)
                 {
-                    statusMessage = "Blad generowania pliku";
+                    statusMessage = "Error generowania pliku";
                     return;
                 }
-                statusMessage = "Zapisano: " + Path.GetFileName(filePath);
+                statusMessage = "Saved: " + Path.GetFileName(filePath);
                 saveCounter++;
 
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Info,
                     "PAINT",
-                    "Zapisano rysunek",
+                    "Saved rysunek",
                     "Plik: " + filePath);
             }
             catch (Exception ex)
             {
-                statusMessage = "Blad zapisu: " + ex.Message;
+                statusMessage = "Error zapisu: " + ex.Message;
             }
         }
 

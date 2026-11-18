@@ -55,12 +55,12 @@ namespace ZonderqOS.GUI.Apps
         // Real VFS / Storage Results
         private int vfsWriteSpeedKb = 0;
         private int vfsReadSpeedKb = 0;
-        private string vfsIntegrity = "Oczekuje na test";
+        private string vfsIntegrity = "Waiting na test";
         private bool vfsTestPerformed = false;
 
         // Overall
         private int totalZScore = 0;
-        private string testStatus = "Gotowy do uruchomienia realnego testu wydajnosci.";
+        private string testStatus = "Ready do uruchomienia realnego testu wydajnosci.";
 
         // Lazy-allocated memory buffers backed by NativeScratchBuffer (allocated on test run,
         // physically returned via PageAllocator.Free on Close / CPU test completion).
@@ -99,7 +99,7 @@ namespace ZonderqOS.GUI.Apps
             closeCallback = onClose;
             benchmarkDir = ResolveBenchmarkDirectory();
             benchmarkTestPath = benchmarkDir + "/benchmark_io.tmp";
-            cachedVfsLine = "• Dysk VFS: Tworzenie pliku testowego " + benchmarkTestPath + " i weryfikacja danych - oczekuje";
+            cachedVfsLine = "• Disk VFS: Tworzenie pliku testowego " + benchmarkTestPath + " i weryfikacja danych - oczekuje";
             Window = new Window(x, y, 600, 440, "Benchmark & Diagnostyka Wydajności Sprzętowej");
             Window.CloseAction = Close;
 
@@ -497,7 +497,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     vfsWriteSpeedKb = 0;
                     vfsReadSpeedKb = 0;
-                    vfsIntegrity = "Brak uprawnien zapisu VFS";
+                    vfsIntegrity = "Permission denied zapisu VFS";
                     return;
                 }
             }
@@ -505,7 +505,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 vfsWriteSpeedKb = 0;
                 vfsReadSpeedKb = 0;
-                vfsIntegrity = "Blad katalogu VFS";
+                vfsIntegrity = "Error katalogu VFS";
                 return;
             }
 
@@ -611,7 +611,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 vfsWriteSpeedKb = (int)(((long)totalWritten * freq) / (writeElapsed * 1024L));
                 vfsReadSpeedKb = (int)(((long)totalRead * freq) / (readElapsed * 1024L));
-                vfsIntegrity = integrityOk ? "Integralność: 100% Zgodna" : "Ostrzeżenie: Niezgodność sumy";
+                vfsIntegrity = integrityOk ? "Integralność: 100% Zgodna" : "Warning: Niezgodność sumy";
                 vfsTestPerformed = integrityOk;
             }
             else
@@ -725,7 +725,7 @@ namespace ZonderqOS.GUI.Apps
                         isGpuBenchmarking = true;
                         return;
                     }
-                    // [ Test Dysku ]
+                    // [ Test Disku ]
                     if (Hit(mouseX, mouseY, wx + 494, btnY, 92, 30))
                     {
                         isRunningAll = false;
@@ -940,8 +940,8 @@ namespace ZonderqOS.GUI.Apps
                     cachedVfsWriteLine = vfsWriteSpeedKb;
                     cachedVfsReadLine = vfsReadSpeedKb;
                     cachedVfsLine = vfsTestPerformed
-                        ? "✓ Dysk VFS: Zapis: " + (vfsWriteSpeedKb / 1024) + " MB/s | Odczyt: " + (vfsReadSpeedKb / 1024) + " MB/s | " + vfsIntegrity
-                        : "• Dysk VFS: Tworzenie pliku testowego " + benchmarkTestPath + " i weryfikacja danych - oczekuje";
+                        ? "✓ Disk VFS: Zapis: " + (vfsWriteSpeedKb / 1024) + " MB/s | Odczyt: " + (vfsReadSpeedKb / 1024) + " MB/s | " + vfsIntegrity
+                        : "• Disk VFS: Tworzenie pliku testowego " + benchmarkTestPath + " i weryfikacja danych - oczekuje";
                 }
                 SmallTextRenderer.Draw(canvas, cachedVfsLine, wx + 26, dy, vfsTestPerformed ? OrangeColor : TextColor);
                 dy += lineH;
@@ -972,7 +972,7 @@ namespace ZonderqOS.GUI.Apps
             DrawButton(canvas, "Test CPU", wx + 206, btnY, 90, 30, PanelHover, testStep == 0);
             DrawButton(canvas, "Test RAM", wx + 302, btnY, 90, 30, PanelHover, testStep == 1);
             DrawButton(canvas, "Test GPU", wx + 398, btnY, 90, 30, PanelHover, isGpuBenchmarking || testStep == 2);
-            DrawButton(canvas, "Test Dysku", wx + 494, btnY, 92, 30, PanelHover, testStep == 3);
+            DrawButton(canvas, "Test Disku", wx + 494, btnY, 92, 30, PanelHover, testStep == 3);
         }
 
         private void DrawMetricCard(Canvas canvas, int x, int y, int w, int h, string title, string val, string sub, Color valColor)
@@ -1039,7 +1039,7 @@ namespace ZonderqOS.GUI.Apps
             sy += lineH;
             int drives = hardware != null ? hardware.StorageDeviceCount : 1;
             int parts = hardware != null ? hardware.StoragePartitionCount : 2;
-            SmallTextRenderer.Draw(canvas, "  Pamiec masowa:" + drives + " naped(ow), " + parts + " partycji (VFS FAT32 / ZONDERQDATA)", sx, sy, TextColor);
+            SmallTextRenderer.Draw(canvas, "  Memory masowa:" + drives + " naped(ow), " + parts + " partycji (VFS FAT32 / ZONDERQDATA)", sx, sy, TextColor);
             sy += lineH;
             SmallTextRenderer.Draw(canvas, "  Jadro:        Cosmos C# Kernel v3.0.95 Upstream (Single-vCPU)", sx, sy, TextColor);
         }
