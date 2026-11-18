@@ -599,7 +599,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (!double.TryParse(entry, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
             {
-                SetError("NIEPRAWIDLOWA LICZBA");
+                SetError("INVALID NUMBER");
                 return false;
             }
             return true;
