@@ -35,7 +35,7 @@ namespace ZonderqOS.GUI.Apps
         };
 
         private string currentPath;
-        private string cachedTitleText = "Brak pliku (0 B)";
+        private string cachedTitleText = "No file (0 B)";
         private string cachedPosText = "Poz: 0x0000 / 0x0000";
         private int cachedPosOffset = -1;
         private int cachedPosTotal = -1;
@@ -144,7 +144,7 @@ namespace ZonderqOS.GUI.Apps
                 string fileName = Path.GetFileName(normalized);
                 Window.Title = "Hex Viewer - " + (string.IsNullOrEmpty(fileName) ? normalized : fileName);
                 int len = fileBuffer.Length;
-                cachedTitleText = (currentPath ?? "Brak pliku") + " (" + len + " B)";
+                cachedTitleText = (currentPath ?? "No file") + " (" + len + " B)";
                 cachedPosOffset = -1;
             }
             catch (Exception ex)
@@ -154,7 +154,7 @@ namespace ZonderqOS.GUI.Apps
                 for (int i = 0; i < err.Length; i++)
                     fileBuffer[i] = (byte)err[i];
                 int len = fileBuffer.Length;
-                cachedTitleText = (currentPath ?? "Brak pliku") + " (" + len + " B)";
+                cachedTitleText = (currentPath ?? "No file") + " (" + len + " B)";
                 cachedPosOffset = -1;
             }
         }

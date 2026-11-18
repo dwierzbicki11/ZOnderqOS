@@ -18,6 +18,7 @@ namespace ZonderqOS.Localization
     {
         public const string LangPolish = "pl-PL";
         public const string LangEnglish = "en-US";
+        public const bool EnglishOnlyAlpha = true;
 
         private static readonly Dictionary<string, string> StringsPl = new Dictionary<string, string>(StringComparer.Ordinal);
         private static readonly Dictionary<string, string> StringsEn = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -44,6 +45,12 @@ namespace ZonderqOS.Localization
 
         public static bool SetLanguage(Language newLang, bool persist = true)
         {
+            // Do not overwrite saved user preferences; Alpha 1 renders in English only.
+            if (EnglishOnlyAlpha)
+            {
+                CurrentLanguage = Language.English;
+                return newLang == Language.English;
+            }
             if (CurrentLanguage == newLang)
                 return true;
 
@@ -88,8 +95,8 @@ namespace ZonderqOS.Localization
             if (dict.TryGetValue(key, out string val))
                 return val;
 
-            // Fallback to Polish if missing in English
-            if (CurrentLanguage == Language.English && StringsPl.TryGetValue(key, out val))
+            // Never display Polish fallbacks in the English-only Alpha 1 build.
+            if (!EnglishOnlyAlpha && CurrentLanguage == Language.English && StringsPl.TryGetValue(key, out val))
                 return val;
 
             return key;
@@ -242,11 +249,11 @@ namespace ZonderqOS.Localization
             d["welcome.tab.overview"] = "Overview";
             d["welcome.tab.alpha"] = "Alpha Highlights";
             d["welcome.tab.shortcuts"] = "Shortcuts";
-            d["welcome.tab.language"] = "Language / Jezyk";
+            d["welcome.tab.language"] = "Language";
             d["welcome.tab.about"] = "About System";
-            d["welcome.select_lang"] = "Select system language / Wybierz jezyk systemu:";
+            d["welcome.select_lang"] = "System language: English (en-US)";
             d["welcome.lang_desc"] = "Language changes take effect immediately and are saved to persistent settings.";
-            d["welcome.alpha_stage"] = "Pre-Alpha Release (targeting Alpha 1.0 Release Candidate)";
+            d["welcome.alpha_stage"] = "Alpha 1 Test Release";
             d["welcome.quick_launch"] = "Quick Launch:";
 
             // Settings App

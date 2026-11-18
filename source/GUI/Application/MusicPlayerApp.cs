@@ -217,7 +217,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Border, rightX, cardY, rightWidth, cardH);
 
             Track cur = player.CurrentTrack;
-            string curTitle = cur != null ? cur.Title : "Brak utworu";
+            string curTitle = cur != null ? cur.Title : "No track";
             SmallTextRenderer.Draw(canvas, curTitle, rightX + 14, cardY + 12, TextColor);
             if (cur != null)
             {

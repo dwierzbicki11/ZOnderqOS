@@ -48,17 +48,17 @@ namespace ZonderqOS.GUI.Apps
 
         private byte selectedColor = 15; // White by default
         private int currentTool = 0; // 0 = Pencil, 1 = Eraser, 2 = Bucket Fill
-        private string statusMessage = "Ready do rysowania. Kliknij siatke aby dodac piksel.";
+        private string statusMessage = "Ready to draw. Click the grid to place a pixel.";
         private readonly Action closeCallback;
 
         // Flood fill queue
         private readonly int[] fillQueueX = new int[GridSize * GridSize];
         private readonly int[] fillQueueY = new int[GridSize * GridSize];
 
-        public SpriteStudioApp(int x, int y, Action onClose) : base("Studio Sprite'ów")
+        public SpriteStudioApp(int x, int y, Action onClose) : base("Sprite Studio")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 590, 425, "Studio Sprite'ów i Ikon 16x16");
+            Window = new Window(x, y, 590, 425, "Sprite and Icon Studio 16x16");
             Window.CloseAction = Close;
 
             // Load an initial demo smiley/star sprite
@@ -177,9 +177,9 @@ namespace ZonderqOS.GUI.Apps
                 int toolW = 100;
                 int toolH = 24;
 
-                if (Hit(mouseX, mouseY, toolX, toolY, toolW, toolH)) { currentTool = 0; statusMessage = "Narzedzie: Ołówek"; return; }
+                if (Hit(mouseX, mouseY, toolX, toolY, toolW, toolH)) { currentTool = 0; statusMessage = "Tool: Pencil"; return; }
                 if (Hit(mouseX, mouseY, toolX, toolY + 28, toolW, toolH)) { currentTool = 1; statusMessage = "Narzedzie: Gumka"; return; }
-                if (Hit(mouseX, mouseY, toolX, toolY + 56, toolW, toolH)) { currentTool = 2; statusMessage = "Narzedzie: Wypełnienie"; return; }
+                if (Hit(mouseX, mouseY, toolX, toolY + 56, toolW, toolH)) { currentTool = 2; statusMessage = "Tool: Fill"; return; }
 
                 // Canvas transformations
                 int actX = wx + 440;
@@ -187,7 +187,7 @@ namespace ZonderqOS.GUI.Apps
                 int actW = 125;
                 if (Hit(mouseX, mouseY, actX, actY, actW, toolH)) { FlipHorizontal(); statusMessage = "Odbito w poziomie (Flip X)."; return; }
                 if (Hit(mouseX, mouseY, actX, actY + 28, actW, toolH)) { FlipVertical(); statusMessage = "Odbito w pionie (Flip Y)."; return; }
-                if (Hit(mouseX, mouseY, actX, actY + 56, actW, toolH)) { InvertColors(); statusMessage = "Odwrócono kolory."; return; }
+                if (Hit(mouseX, mouseY, actX, actY + 56, actW, toolH)) { InvertColors(); statusMessage = "Colors inverted."; return; }
                 if (Hit(mouseX, mouseY, actX, actY + 84, actW, toolH)) { ClearCanvas(); statusMessage = "Wyczyszczono siatke robocza."; return; }
 
                 // Export and File Operations
@@ -314,7 +314,7 @@ namespace ZonderqOS.GUI.Apps
             fullPath = string.Empty;
             if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
             {
-                statusMessage = "Brak autoryzacji uzytkownika.";
+                statusMessage = "User not authorized.";
                 return false;
             }
 
@@ -442,7 +442,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
                 {
-                    statusMessage = "Brak autoryzacji uzytkownika.";
+                    statusMessage = "User not authorized.";
                     return;
                 }
 
@@ -455,7 +455,7 @@ namespace ZonderqOS.GUI.Apps
 
                 if (!File.Exists(path))
                 {
-                    statusMessage = "Brak pliku " + path + " do wczytania.";
+                    statusMessage = "File not found: " + path + " (cannot load).";
                     return;
                 }
                 byte[] raw = File.ReadAllBytes(path);
@@ -582,7 +582,7 @@ namespace ZonderqOS.GUI.Apps
             int expY = wy + 260;
             DrawToolBtn(canvas, "💾 Eksport C#", wx + 16, expY, 130, 28, false);
             DrawToolBtn(canvas, "📜 Eksport BASIC", wx + 154, expY, 130, 28, false);
-            DrawToolBtn(canvas, "⬆ Zapisz .SPR", wx + 292, expY, 135, 28, false);
+            DrawToolBtn(canvas, "⬆ Save .SPR", wx + 292, expY, 135, 28, false);
             DrawToolBtn(canvas, "⬇ Wczytaj .SPR", wx + 434, expY, 135, 28, false);
 
             // 7. Status Footer

@@ -16,7 +16,7 @@ namespace ZonderqOS.GUI.Apps
         private int selectedIndex;
 
         public DeviceManagerApp(int x, int y)
-            : base("Device Manager", "Urządzenia systemowe - ZOnderqOS", x, y, 940, 620)
+            : base("Device Manager", "System devices - ZOnderqOS", x, y, 940, 620)
         {
             RefreshData();
         }
@@ -24,8 +24,8 @@ namespace ZonderqOS.GUI.Apps
         protected override void RenderContent(Canvas canvas)
         {
             DrawRow(canvas, 0, IconType.Settings,
-                "KATEGORIA", "Kliknij aby przelaczyc urzadzenia sieciowe / magazynowe",
-                viewMode == 0 ? "SIEC" : "MAGAZYN", Accent);
+                "CATEGORY", "Click to switch between network and storage devices",
+                viewMode == 0 ? "NETWORK" : "STORAGE", Accent);
 
             for (int row = 1; row <= 5; row++)
             {
@@ -39,7 +39,7 @@ namespace ZonderqOS.GUI.Apps
                 else
                 {
                     DrawRow(canvas, row, IconType.File,
-                        index == 0 && itemCount == 0 ? "BRAK URZADZEN" : "-",
+                        index == 0 && itemCount == 0 ? "NO DEVICES" : "-",
                         string.Empty, string.Empty, Muted);
                 }
             }
@@ -47,7 +47,7 @@ namespace ZonderqOS.GUI.Apps
             DrawRow(canvas, 6, IconType.Refresh,
                 viewMode == 0 ? "USTAW AKTYWNY INTERFEJS" : "PONOWNIE SKANUJ PARTYCJE",
                 viewMode == 0 ? "Zastosuj zapisany profil IPv4 na wybranej karcie" : "Bez formatowania; tylko ponowny odczyt tablicy partycji",
-                itemCount > 0 ? "WYKONAJ" : "BRAK", itemCount > 0 ? Warning : Muted);
+                itemCount > 0 ? "EXECUTE" : "NONE", itemCount > 0 ? Warning : Muted);
         }
 
         protected override void RefreshData()
@@ -144,7 +144,7 @@ namespace ZonderqOS.GUI.Apps
                     ok = false;
                 }
                 RefreshData();
-                SetStatus(ok ? "AKTYWNY INTERFEJS ZMIENIONY" : "NIE UDALO SIE SKONFIGUROWAC KARTY",
+                SetStatus(ok ? "ACTIVE INTERFACE CHANGED" : "FAILED TO CONFIGURE ADAPTER",
                     ok ? Good : Danger);
             }
             else
@@ -154,7 +154,7 @@ namespace ZonderqOS.GUI.Apps
                     var device = StorageManager.GetDevice(selectedIndex);
                     if (device == null)
                     {
-                        SetStatus("BRAK WYBRANEGO DYSKU", Danger);
+                        SetStatus("NO DISK SELECTED", Danger);
                         return;
                     }
                     StorageManager.RescanPartitions(device);
@@ -163,7 +163,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 catch
                 {
-                    SetStatus("BLAD PONOWNEGO SKANOWANIA DYSKU", Danger);
+                    SetStatus("DISK RESCAN FAILED", Danger);
                 }
             }
         }

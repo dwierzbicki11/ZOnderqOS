@@ -533,11 +533,11 @@ namespace ZonderqOS.GUI
             if (lockButton != null && lockButton.Visible)
                 RenderPowerButton(canvas, lockButton, IconType.Settings, "BLOKUJ", false);
             if (exitButton != null && exitButton.Visible)
-                RenderPowerButton(canvas, exitButton, IconType.Close, "WYLOGUJ", false);
+                RenderPowerButton(canvas, exitButton, IconType.Close, "LOG OUT", false);
             if (rebootButton != null && rebootButton.Visible)
                 RenderPowerButton(canvas, rebootButton, IconType.Reboot, "REBOOT", false);
             if (shutdownButton != null && shutdownButton.Visible)
-                RenderPowerButton(canvas, shutdownButton, IconType.Shutdown, "WYLACZ", true);
+                RenderPowerButton(canvas, shutdownButton, IconType.Shutdown, "SHUT DOWN", true);
         }
 
         private void RenderHeader(Canvas canvas)
@@ -616,7 +616,7 @@ namespace ZonderqOS.GUI
             }
 
             if (visibleCount == 0)
-                SmallTextRenderer.Draw(canvas, "BRAK WYNIKOW", X + Padding, Y + PinnedCardsY + 18, Muted);
+                SmallTextRenderer.Draw(canvas, "NO RESULTS", X + Padding, Y + PinnedCardsY + 18, Muted);
         }
 
         private void RenderTools(Canvas canvas)
@@ -713,11 +713,11 @@ namespace ZonderqOS.GUI
             if (lockButton != null)
                 RenderPowerButton(canvas, lockButton, IconType.Settings, "BLOKUJ", false);
             if (exitButton != null)
-                RenderPowerButton(canvas, exitButton, IconType.Close, "WYLOGUJ", false);
+                RenderPowerButton(canvas, exitButton, IconType.Close, "LOG OUT", false);
             if (rebootButton != null)
                 RenderPowerButton(canvas, rebootButton, IconType.Reboot, "REBOOT", false);
             if (shutdownButton != null)
-                RenderPowerButton(canvas, shutdownButton, IconType.Shutdown, "WYLACZ", true);
+                RenderPowerButton(canvas, shutdownButton, IconType.Shutdown, "SHUT DOWN", true);
         }
 
         private static void RenderPowerButton(Canvas canvas, Button button, IconType icon, string label, bool danger)

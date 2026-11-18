@@ -11,12 +11,12 @@ namespace ZonderqOS.Commands
         {
             if (args.Length < 2)
             {
-                CommandIO.WriteLine("Uzycie:");
-                CommandIO.WriteLine("  net info                         - Wyswietl stan interfejsow");
+                CommandIO.WriteLine("Usage:");
+                CommandIO.WriteLine("  net info                         - Show network interface status");
                 CommandIO.WriteLine("  net dhcp                         - Konfiguracja DHCP dla aktywnej karty");
                 CommandIO.WriteLine("  net dns <domena>                 - Rozwiaz nazwe domeny");
                 CommandIO.WriteLine("  net udp <ip> <port> <wiadomosc>  - Wyslij pakiet UDP");
-                CommandIO.WriteLine("  net device <id>                  - Przelacz aktywna karte sieciowa");
+                CommandIO.WriteLine("  net device <id>                  - Switch active network adapter");
                 CommandIO.LastCommandSuccess = false;
                 return;
             }
@@ -36,7 +36,7 @@ namespace ZonderqOS.Commands
                 case "dns":
                     if (args.Length < 3)
                     {
-                        CommandIO.WriteLine("Uzycie: net dns <domena>");
+                        CommandIO.WriteLine("Usage: net dns <domain>");
                         CommandIO.LastCommandSuccess = false;
                         return;
                     }
@@ -46,7 +46,7 @@ namespace ZonderqOS.Commands
                     string ip = Network.ResolveDns(domain);
                     if (string.IsNullOrEmpty(ip))
                     {
-                        CommandIO.WriteLine("[DNS] Nie udalo sie rozwiazac nazwy (Timeout/Error).");
+                        CommandIO.WriteLine("[DNS] Failed to resolve host name (timeout/error).");
                         CommandIO.LastCommandSuccess = false;
                         return;
                     }
@@ -58,14 +58,14 @@ namespace ZonderqOS.Commands
                 case "udp":
                     if (args.Length < 5)
                     {
-                        CommandIO.WriteLine("Uzycie: net udp <ip> <port> <wiadomosc>");
+                        CommandIO.WriteLine("Usage: net udp <ip> <port> <message>");
                         CommandIO.LastCommandSuccess = false;
                         return;
                     }
 
                     if (!int.TryParse(args[3], out int port) || port < 1 || port > 65535)
                     {
-                        CommandIO.WriteLine("[ERROR] Nieprawidlowy numer portu.");
+                        CommandIO.WriteLine("[ERROR] Invalid port number.");
                         CommandIO.LastCommandSuccess = false;
                         return;
                     }
@@ -77,7 +77,7 @@ namespace ZonderqOS.Commands
                 case "device":
                     if (args.Length < 3 || !int.TryParse(args[2], out int devIndex))
                     {
-                        CommandIO.WriteLine("Uzycie: net device <indeks_karty>");
+                        CommandIO.WriteLine("Usage: net device <adapter_index>");
                         CommandIO.LastCommandSuccess = false;
                         return;
                     }

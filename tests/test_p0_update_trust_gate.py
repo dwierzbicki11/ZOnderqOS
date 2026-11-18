@@ -64,7 +64,7 @@ class UpdateTrustGateTests(unittest.TestCase):
         self.assertIn("ActiveSlot = previousActive;", activate)
         self.assertIn("FallbackSlot = previousFallback;", activate)
         self.assertIn("SyncLimineConfig();\n                        SaveBootState();", activate)
-        self.assertIn("NIE UDALO SIE ODTWORZYC KONFIGURACJI ROZRUCHU", activate)
+        self.assertIn("FAILED TO RESTORE BOOT CONFIGURATION", activate)
 
     def test_backup_cleanup_does_not_rollback_committed_kernel(self):
         boot = (ROOT / "source/Core/Updates/BootSlotManager.cs").read_text(encoding="utf-8")

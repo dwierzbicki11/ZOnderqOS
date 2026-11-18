@@ -116,7 +116,7 @@ namespace ZonderqOS.GUI
             private int passwordLength;
             private int confirmationLength;
             private int activeField;
-            private string status = "USTAW NOWE HASLO DLA KONTA ROOT";
+            private string status = "SET A NEW PASSWORD FOR ROOT";
             private Color statusColor = Warning;
 
             public bool Completed { get; private set; }
@@ -168,7 +168,7 @@ namespace ZonderqOS.GUI
                     if (activeField == 0)
                     {
                         activeField = 1;
-                        SetStatus("POWTORZ NOWE HASLO", Muted);
+                        SetStatus("REPEAT THE NEW PASSWORD", Muted);
                     }
                     else
                     {
@@ -453,7 +453,7 @@ namespace ZonderqOS.GUI
                 canvas.DrawString("Pierwsza konfiguracja", PCScreenFont.DefaultFont, Text,
                     layout.HeaderTitleX, layout.HeaderTitleY);
                 SmallTextRenderer.DrawClipped(canvas,
-                    "FABRYCZNE HASLO ROOT MUSI ZOSTAC ZMIENIONE PRZED URUCHOMIENIEM PULPITU",
+                    "DEFAULT ROOT PASSWORD MUST BE CHANGED BEFORE STARTING THE DESKTOP",
                     layout.HeaderSubX, layout.HeaderSubY,
                     layout.CardX + layout.CardWidth - 20 - layout.HeaderSubX, Warning);
 
@@ -467,11 +467,11 @@ namespace ZonderqOS.GUI
                     layout.AccountPolicyX, accountTextY,
                     layout.InnerX + layout.InnerWidth - 12 - layout.AccountPolicyX, Muted);
 
-                SmallTextRenderer.Draw(canvas, "NOWE HASLO", layout.InnerX, layout.PassLabelY, Muted);
+                SmallTextRenderer.Draw(canvas, "NEW PASSWORD", layout.InnerX, layout.PassLabelY, Muted);
                 RenderPasswordField(canvas, layout.InnerX, layout.PassInputY,
                     layout.InnerWidth, layout.InputHeight, 0, password, passwordLength);
 
-                SmallTextRenderer.Draw(canvas, "POWTORZ HASLO", layout.InnerX, layout.ConfirmLabelY, Muted);
+                SmallTextRenderer.Draw(canvas, "REPEAT PASSWORD", layout.InnerX, layout.ConfirmLabelY, Muted);
                 RenderPasswordField(canvas, layout.InnerX, layout.ConfirmInputY,
                     layout.InnerWidth, layout.InputHeight, 1, confirmation, confirmationLength);
 
@@ -484,7 +484,7 @@ namespace ZonderqOS.GUI
                 IconManager.DrawScaled(canvas, IconType.Save,
                     layout.InnerX + 18, layout.SubmitBtnY + (layout.SubmitBtnHeight - submitIconSize) / 2,
                     submitIconSize, submitIconSize);
-                SmallTextRenderer.DrawCentered(canvas, "ZAPISZ HASLO I PRZEJDZ DO LOGOWANIA",
+                SmallTextRenderer.DrawCentered(canvas, "SAVE PASSWORD AND CONTINUE TO LOGIN",
                     layout.InnerX + 56, layout.SubmitBtnY + (layout.SubmitBtnHeight - 7) / 2,
                     layout.InnerWidth - 86, Text);
 
@@ -497,14 +497,14 @@ namespace ZonderqOS.GUI
                     layout.InnerX + 33, statusTextY, layout.InnerWidth - 54, statusColor);
 
                 string hintText = layout.Compact
-                    ? "GORA/DOL ZMIENIA POLE | ENTER DALEJ/ZAPISZ | ESC CZYSCI POLE"
-                    : "GORA/DOL ZMIENIA POLE  |  ENTER DALEJ/ZAPISZ  |  ESC CZYSCI POLE";
+                    ? "UP/DOWN CHANGES FIELD | ENTER NEXT/SAVE | ESC CLEARS FIELD"
+                    : "UP/DOWN CHANGES FIELD  |  ENTER NEXT/SAVE  |  ESC CLEARS FIELD";
                 SmallTextRenderer.DrawClipped(canvas, hintText,
                     layout.HintX, layout.HintY, layout.HintMaxWidth, Muted);
                 RenderPowerButton(canvas, layout.RebootX, layout.PowerBtnY,
                     layout.RebootWidth, layout.PowerBtnHeight, "REBOOT", IconType.Reboot, false);
                 RenderPowerButton(canvas, layout.ShutdownX, layout.PowerBtnY,
-                    layout.ShutdownWidth, layout.PowerBtnHeight, "WYLACZ", IconType.Shutdown, true);
+                    layout.ShutdownWidth, layout.PowerBtnHeight, "SHUT DOWN", IconType.Shutdown, true);
             }
 
             private void RenderPasswordField(Canvas canvas, int x, int y, int width, int height,
@@ -520,7 +520,7 @@ namespace ZonderqOS.GUI
                 int textY = y + (height - 7) / 2;
                 if (length <= 0)
                 {
-                    SmallTextRenderer.Draw(canvas, "haslo", x + 15, textY, Muted);
+                    SmallTextRenderer.Draw(canvas, "password", x + 15, textY, Muted);
                     return;
                 }
 
@@ -533,7 +533,7 @@ namespace ZonderqOS.GUI
             {
                 if (passwordLength <= 0 || confirmationLength <= 0)
                 {
-                    SetStatus("UZUPELNIJ OBA POLA HASLA", Danger);
+                    SetStatus("FILL IN BOTH PASSWORD FIELDS", Danger);
                     return;
                 }
 
@@ -541,7 +541,7 @@ namespace ZonderqOS.GUI
                 {
                     ClearBuffer(confirmation, ref confirmationLength);
                     activeField = 1;
-                    SetStatus("HASLA NIE SA IDENTYCZNE", Danger);
+                    SetStatus("PASSWORDS DO NOT MATCH", Danger);
                     return;
                 }
 
@@ -553,7 +553,7 @@ namespace ZonderqOS.GUI
                 {
                     ClearBuffer(confirmation, ref confirmationLength);
                     activeField = 1;
-                    SetStatus("HASLA NIE SA IDENTYCZNE", Danger);
+                    SetStatus("PASSWORDS DO NOT MATCH", Danger);
                     return;
                 }
 
@@ -582,11 +582,11 @@ namespace ZonderqOS.GUI
                 if (!ok)
                 {
                     activeField = 0;
-                    SetStatus("NIE UDALO SIE ZAPISAC NOWEGO HASLA ROOT", Danger);
+                    SetStatus("FAILED TO SAVE NEW ROOT PASSWORD", Danger);
                     return;
                 }
 
-                SetStatus("HASLO ROOT ZMIENIONE - URUCHAMIAM LOGOWANIE", Good);
+                SetStatus("ROOT PASSWORD CHANGED - STARTING LOGIN", Good);
                 Completed = true;
             }
 
@@ -594,19 +594,19 @@ namespace ZonderqOS.GUI
             {
                 if (buffer == null || length <= 0)
                 {
-                    reason = "HASLO JEST WYMAGANE";
+                    reason = "PASSWORD IS REQUIRED";
                     return false;
                 }
 
                 if (length < PasswordPolicy.MinLength)
                 {
-                    reason = "HASLO MUSI MIEC MINIMUM 8 ZNAKOW";
+                    reason = "PASSWORD MUST HAVE AT LEAST 8 CHARACTERS";
                     return false;
                 }
 
                 if (length > PasswordPolicy.MaxLength || length > buffer.Length)
                 {
-                    reason = "HASLO JEST ZA DLUGIE";
+                    reason = "PASSWORD IS TOO LONG";
                     return false;
                 }
 
@@ -618,7 +618,7 @@ namespace ZonderqOS.GUI
                     char ch = buffer[i];
                     if (ch < 32 || ch > 126)
                     {
-                        reason = "HASLO MOZE UZYWAC TYLKO DRUKOWALNYCH ZNAKOW ASCII";
+                        reason = "PASSWORD MAY CONTAIN ONLY PRINTABLE ASCII CHARACTERS";
                         return false;
                     }
 
@@ -630,7 +630,7 @@ namespace ZonderqOS.GUI
 
                 if (!hasLetter || !hasDigit)
                 {
-                    reason = "HASLO MUSI ZAWIERAC LITERE I CYFRE";
+                    reason = "PASSWORD MUST CONTAIN A LETTER AND A DIGIT";
                     return false;
                 }
 

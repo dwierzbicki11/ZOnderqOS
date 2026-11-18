@@ -23,36 +23,36 @@ namespace ZonderqOS.GUI.Apps
         private string pendingNewPassword = string.Empty;
 
         public UserAccountsApp(int x, int y)
-            : base("Konta lokalne", "Konta i sesje użytkowników - ZOnderqOS", x, y, 900, 724)
+            : base("Local Accounts", "Accounts and user sessions - ZOnderqOS", x, y, 900, 724)
         {
             RefreshData();
         }
 
         protected override void RenderContent(Canvas canvas)
         {
-            string selectedName = userCount > 0 ? users[selectedUser] : "BRAK";
+            string selectedName = userCount > 0 ? users[selectedUser] : "NONE";
             DrawRow(canvas, 0, IconType.About,
-                "WYBRANE KONTO", "Kliknij aby przejsc do nastepnego lokalnego konta",
+                "SELECTED ACCOUNT", "Click to select the next local account",
                 selectedName, Accent);
             DrawNumericRow(canvas, 1, IconType.About,
-                "UID", "Identyfikator wybranego konta",
+                "UID", "Selected account identifier",
                 userCount > 0 ? (ulong)System.Math.Max(0, uids[selectedUser]) : 0UL, "");
             DrawRow(canvas, 2, IconType.Folder,
                 "KATALOG DOMOWY", "Home wybranego uzytkownika",
-                userCount > 0 ? homes[selectedUser] : "BRAK", Text);
+                userCount > 0 ? homes[selectedUser] : "NONE", Text);
             DrawRow(canvas, 3, IconType.Settings,
-                "DODAJ UZYTKOWNIKA", "Dostepne dla sesji root; kreator pyta o nazwe i haslo",
+                "ADD USER", "Root-only: enter a username and password",
                 inputMode == 1 || inputMode == 2 ? "WPROWADZANIE" : "UTWORZ",
                 IsRootSession() ? Good : Muted);
             DrawRow(canvas, 4, IconType.Start,
-                "ZMIEN UZYTKOWNIKA", "Potwierdz haslo konta; biezaca sesja zostanie bezpiecznie zakonczona",
-                inputMode == 3 ? "HASLO..." : "PRZELACZ", Warning);
+                "SWITCH USER", "Confirm account password; the current session will end safely",
+                inputMode == 3 ? "PASSWORD..." : "SWITCH", Warning);
             DrawRow(canvas, 5, IconType.Settings,
-                "ZMIEN HASLO", "Wlasne konto lub reset przez root po potwierdzeniu hasla sesji",
+                "CHANGE PASSWORD", "Change your own password or reset one as root after verification",
                 inputMode >= 4 ? "WPROWADZANIE" : CanChangeSelectedPassword() ? "ZMIEN" : "NIEDOSTEPNE",
                 CanChangeSelectedPassword() ? Good : Muted);
             DrawRow(canvas, 6, IconType.Settings,
-                "AUTO BLOKADA", "Blokuj pulpit po okresie bezczynnosci; kliknij aby zmienic",
+                "AUTO LOCK", "Lock the desktop when idle; click to change",
                 global::ZonderqOS.SystemSettings.AutoLockName,
                 global::ZonderqOS.SystemSettings.AutoLockMinutes > 0 ? Good : Warning);
             DrawNumericRow(canvas, 7, IconType.About,
@@ -75,20 +75,20 @@ namespace ZonderqOS.GUI.Apps
 
             string title;
             if (inputMode == 1)
-                title = "NOWY UZYTKOWNIK - NAZWA";
+                title = "NEW USER - NAME";
             else if (inputMode == 2)
-                title = "NOWY UZYTKOWNIK - HASLO";
+                title = "NEW USER - PASSWORD";
             else if (inputMode == 3)
-                title = "HASLO DLA WYBRANEGO KONTA";
+                title = "PASSWORD FOR SELECTED ACCOUNT";
             else if (inputMode == 4)
-                title = "POTWIERDZ HASLO BIEZACEJ SESJI";
+                title = "CONFIRM CURRENT SESSION PASSWORD";
             else if (inputMode == 5)
-                title = "NOWE HASLO";
+                title = "NEW PASSWORD";
             else
-                title = "POWTORZ NOWE HASLO";
+                title = "REPEAT NEW PASSWORD";
 
             SmallTextRenderer.Draw(canvas, title, x + 16, y + 16, Text);
-            SmallTextRenderer.Draw(canvas, "ENTER DALEJ  |  ESC ANULUJ", x + 16, y + 36, Muted);
+            SmallTextRenderer.Draw(canvas, "ENTER NEXT  |  ESC CANCEL", x + 16, y + 36, Muted);
 
             int inputY = y + 58;
             if (passwordPolicyMode)
@@ -172,7 +172,7 @@ namespace ZonderqOS.GUI.Apps
                     selectedUser++;
                     if (selectedUser >= userCount)
                         selectedUser = 0;
-                    SetStatus("WYBRANO KONTO", Accent);
+                    SetStatus("ACCOUNT SELECTED", Accent);
                 }
                 return;
             }
@@ -181,7 +181,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (!IsRootSession())
                 {
-                    SetStatus("TYLKO UWIERZYTELNIONY ROOT MOZE TWORZYC KONTA", Danger);
+                    SetStatus("ONLY AUTHENTICATED ROOT CAN CREATE ACCOUNTS", Danger);
                     return;
                 }
                 ClearInputState();
@@ -196,7 +196,7 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 ClearInputState();
                 inputMode = 3;
-                SetStatus("POTWIERDZ HASLO KONTA DO KTOREGO CHCESZ PRZEJSC", Warning);
+                SetStatus("CONFIRM THE PASSWORD FOR THE TARGET ACCOUNT", Warning);
                 return;
             }
 
@@ -204,13 +204,13 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (!CanChangeSelectedPassword())
                 {
-                    SetStatus("BRAK UPRAWNIEN DO ZMIANY HASLA TEGO KONTA", Danger);
+                    SetStatus("NOT AUTHORIZED TO CHANGE THIS ACCOUNT PASSWORD", Danger);
                     return;
                 }
 
                 ClearInputState();
                 inputMode = 4;
-                SetStatus("POTWIERDZ HASLO BIEZACEJ SESJI", Warning);
+                SetStatus("CONFIRM CURRENT SESSION PASSWORD", Warning);
                 return;
             }
 
@@ -289,7 +289,7 @@ namespace ZonderqOS.GUI.Apps
                 pendingUsername = inputText;
                 inputText = string.Empty;
                 inputMode = 2;
-                SetStatus("WPISZ HASLO DLA NOWEGO KONTA", Warning);
+                SetStatus("ENTER A PASSWORD FOR THE NEW ACCOUNT", Warning);
                 return;
             }
 
@@ -305,7 +305,7 @@ namespace ZonderqOS.GUI.Apps
                 bool ok = global::ZonderqOS.UserManager.CreateUser(pendingUsername, inputText);
                 ClearInputState();
                 RefreshData();
-                SetStatus(ok ? "UTWORZONO KONTO" : "NIE UDALO SIE UTWORZYC KONTA", ok ? Good : Danger);
+                SetStatus(ok ? "ACCOUNT CREATED" : "FAILED TO CREATE ACCOUNT", ok ? Good : Danger);
                 return;
             }
 
@@ -315,7 +315,7 @@ namespace ZonderqOS.GUI.Apps
                 if (string.IsNullOrEmpty(user))
                 {
                     ClearInputState();
-                    SetStatus("BRAK WYBRANEGO KONTA", Danger);
+                    SetStatus("NO ACCOUNT SELECTED", Danger);
                     return;
                 }
 
@@ -334,8 +334,8 @@ namespace ZonderqOS.GUI.Apps
                     global::ZonderqOS.AuthenticationGuard.RecordFailure(user);
                     retryAfter = global::ZonderqOS.AuthenticationGuard.GetRetryAfterSeconds(user);
                     SetStatus(retryAfter > 0
-                        ? "NIEPRAWIDLOWE HASLO - BLOKADA " + retryAfter + " S"
-                        : "NIEPRAWIDLOWE HASLO", Danger);
+                        ? "INVALID PASSWORD - LOCKED FOR " + retryAfter + " S"
+                        : "INVALID PASSWORD", Danger);
                     return;
                 }
 
@@ -371,8 +371,8 @@ namespace ZonderqOS.GUI.Apps
                     global::ZonderqOS.AuthenticationGuard.RecordFailure(actor);
                     retryAfter = global::ZonderqOS.AuthenticationGuard.GetRetryAfterSeconds(actor);
                     SetStatus(retryAfter > 0
-                        ? "NIEPRAWIDLOWE HASLO - BLOKADA " + retryAfter + " S"
-                        : "NIEPRAWIDLOWE HASLO BIEZACEJ SESJI", Danger);
+                        ? "INVALID PASSWORD - LOCKED FOR " + retryAfter + " S"
+                        : "INVALID CURRENT SESSION PASSWORD", Danger);
                     return;
                 }
 
@@ -380,7 +380,7 @@ namespace ZonderqOS.GUI.Apps
                 pendingAuthorizationPassword = inputText;
                 inputText = string.Empty;
                 inputMode = 5;
-                SetStatus("WPISZ NOWE HASLO", Warning);
+                SetStatus("ENTER NEW PASSWORD", Warning);
                 return;
             }
 
@@ -396,7 +396,7 @@ namespace ZonderqOS.GUI.Apps
                 pendingNewPassword = inputText;
                 inputText = string.Empty;
                 inputMode = 6;
-                SetStatus("POWTORZ NOWE HASLO", Warning);
+                SetStatus("REPEAT NEW PASSWORD", Warning);
                 return;
             }
 
@@ -407,7 +407,7 @@ namespace ZonderqOS.GUI.Apps
                     inputText = string.Empty;
                     pendingNewPassword = string.Empty;
                     inputMode = 5;
-                    SetStatus("HASLA NIE SA IDENTYCZNE - WPISZ NOWE HASLO PONOWNIE", Danger);
+                    SetStatus("PASSWORDS DO NOT MATCH - ENTER A NEW PASSWORD", Danger);
                     return;
                 }
 
@@ -418,7 +418,7 @@ namespace ZonderqOS.GUI.Apps
                 if (ok)
                     global::ZonderqOS.AuthenticationGuard.Reset(user);
                 ClearInputState();
-                SetStatus(ok ? "HASLO ZOSTALO ZMIENIONE" : "NIE UDALO SIE ZMIENIC HASLA",
+                SetStatus(ok ? "PASSWORD CHANGED" : "FAILED TO CHANGE PASSWORD",
                     ok ? Good : Danger);
             }
         }

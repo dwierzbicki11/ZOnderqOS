@@ -521,8 +521,8 @@ namespace ZonderqOS.GUI.Apps
             int btnW = 90;
             int btnH = 28;
 
-            DrawBtn(canvas, isStopwatchRunning ? "PAUZA" : "START", cx + 35, btnY, btnW, btnH, isStopwatchRunning ? RedColor : GreenColor);
-            DrawBtn(canvas, "OKRĄŻENIE", cx + 155, btnY, btnW, btnH, AccentColor);
+            DrawBtn(canvas, isStopwatchRunning ? "PAUSE" : "START", cx + 35, btnY, btnW, btnH, isStopwatchRunning ? RedColor : GreenColor);
+            DrawBtn(canvas, "LAP", cx + 155, btnY, btnW, btnH, AccentColor);
             DrawBtn(canvas, "RESET", cx + 275, btnY, btnW, btnH, TextColor);
 
             // Laps List Box
@@ -534,11 +534,11 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Panel, lapBoxX, lapBoxY, lapBoxW, lapBoxH);
             canvas.DrawRectangle(Border, lapBoxX, lapBoxY, lapBoxW, lapBoxH);
 
-            SmallTextRenderer.Draw(canvas, "ZAREJESTROWANE OKRĄŻENIA (LAPS):", lapBoxX + 12, lapBoxY + 10, MutedColor);
+            SmallTextRenderer.Draw(canvas, "RECORDED LAPS:", lapBoxX + 12, lapBoxY + 10, MutedColor);
 
             if (laps.Count == 0)
             {
-                SmallTextRenderer.DrawCentered(canvas, "Brak okrążen. Kliknij [OKRĄŻENIE] w trakcie pomiaru.", lapBoxX, lapBoxY + 65, lapBoxW, MutedColor);
+                SmallTextRenderer.DrawCentered(canvas, "No laps recorded. Click [LAP] while running.", lapBoxX, lapBoxY + 65, lapBoxW, MutedColor);
             }
             else
             {
@@ -600,7 +600,7 @@ namespace ZonderqOS.GUI.Apps
 
             // Action Buttons: [START / PAUZA], [RESET]
             int actY = cy + 166;
-            DrawBtn(canvas, isTimerRunning ? "PAUZA" : "START", cx + 85, actY, 105, 30, isTimerRunning ? RedColor : GreenColor);
+            DrawBtn(canvas, isTimerRunning ? "PAUSE" : "START", cx + 85, actY, 105, 30, isTimerRunning ? RedColor : GreenColor);
             DrawBtn(canvas, "RESET", cx + 210, actY, 105, 30, TextColor);
 
             // Alarm Message Banner
@@ -609,7 +609,7 @@ namespace ZonderqOS.GUI.Apps
                 int almY = cy + 225;
                 canvas.DrawFilledRectangle(Color.FromArgb(60, 20, 20), dispX, almY, dispW, 36);
                 canvas.DrawRectangle(RedColor, dispX, almY, dispW, 36);
-                SmallTextRenderer.DrawCentered(canvas, "ALARM! CZAS MINĄŁ!", dispX, almY + 14, dispW, RedColor);
+                SmallTextRenderer.DrawCentered(canvas, "ALARM! TIME IS UP!", dispX, almY + 14, dispW, RedColor);
             }
         }
 

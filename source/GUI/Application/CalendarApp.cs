@@ -30,7 +30,7 @@ namespace ZonderqOS.GUI.Apps
 
         private static readonly string[] DayNames =
         {
-            "PON", "WTO", "SRO", "CZW", "PIA", "SOB", "NIE"
+            "MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"
         };
 
         private static readonly Color Surface = Color.FromArgb(19, 24, 30);
@@ -177,7 +177,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(SystemTheme.Accent, x + 12, y + 2, width - 24, 2);
             IconManager.DrawScaled(canvas, IconType.Calendar, x + 15, y + 17, 28, 28);
             SmallTextRenderer.Draw(canvas, "KALENDARZ", x + 55, y + 16, Text);
-            SmallTextRenderer.Draw(canvas, "STRZALKI MIESIAC  |  T DZISIAJ  |  F5 ODSWIEZ", x + 55, y + 37, Muted);
+            SmallTextRenderer.Draw(canvas, "ARROWS MONTH  |  T TODAY  |  F5 REFRESH", x + 55, y + 37, Muted);
 
             DrawControl(canvas, 0, x + width - 254, y + 13, 54, 36, "<");
             DrawControl(canvas, 1, x + width - 192, y + 13, 122, 36, "DZISIAJ");

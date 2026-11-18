@@ -45,7 +45,7 @@ namespace ZonderqOS.GUI.Apps
         private readonly bool[,] enemyVisible = new bool[GridSize, GridSize];
 
         private GamePhase phase = GamePhase.Placement;
-        private string statusMessage = "Rozstaw swoja flote lub kliknij [LOSUJ FLOTE], nastepnie [START BITWY].";
+        private string statusMessage = "Place your fleet or click [RANDOM FLEET], then [START BATTLE].";
         private Color statusColor = TextColor;
         private int playerHits = 0;
         private int enemyHits = 0;
@@ -92,7 +92,7 @@ namespace ZonderqOS.GUI.Apps
             RandomizeFleet(enemyGrid);
 
             phase = GamePhase.Placement;
-            statusMessage = "Flota rozstawiona! Kliknij [START BITWY] aby rozpoczac pojedynek.";
+            statusMessage = "Fleet deployed! Click [START BATTLE] to begin.";
             statusColor = GoldColor;
         }
 
@@ -188,7 +188,7 @@ namespace ZonderqOS.GUI.Apps
                 if (phase == GamePhase.Placement && Hit(mouseX, mouseY, wx + 226, btnY, 115, 24))
                 {
                     phase = GamePhase.PlayerTurn;
-                    statusMessage = "BITWA ROZPOCZETA! Wybierz cel na mapie Wody Wroga.";
+                    statusMessage = "BATTLE STARTED! Choose a target on the enemy grid.";
                     statusColor = GreenColor;
                     Speaker.Beep(659, 4);
                     return;
@@ -219,7 +219,7 @@ namespace ZonderqOS.GUI.Apps
         {
             if (enemyVisible[row, col])
             {
-                statusMessage = "To pole zostalo juz ostrzelane! Wybierz inny sektor.";
+                statusMessage = "That square was already targeted! Choose another one.";
                 statusColor = GoldColor;
                 return;
             }
@@ -235,7 +235,7 @@ namespace ZonderqOS.GUI.Apps
                 if (playerHits >= TotalShipCells)
                 {
                     phase = GamePhase.GameOver;
-                    statusMessage = "ZWYCIESTWO! Zatopiles wszystkie 10 okretow wroga!";
+                    statusMessage = "VICTORY! You sank all 10 enemy ships!";
                     statusColor = GreenColor;
                     Speaker.Beep(1046, 8);
                 }

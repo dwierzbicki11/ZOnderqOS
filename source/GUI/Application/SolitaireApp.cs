@@ -625,7 +625,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(HeaderPanel, contentX, contentY, contentWidth, 32);
             canvas.DrawRectangle(SlotBorder, contentX, contentY, contentWidth, 32);
 
-            SmallTextRenderer.Draw(canvas, "WYNIK", contentX + 16, contentY + 11, MutedColor);
+            SmallTextRenderer.Draw(canvas, "SCORE", contentX + 16, contentY + 11, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, score, contentX + 60, contentY + 11, TextColor);
 
             SmallTextRenderer.Draw(canvas, "RUCHY", contentX + 130, contentY + 11, MutedColor);
@@ -721,7 +721,7 @@ namespace ZonderqOS.GUI.Apps
                 canvas.DrawFilledRectangle(Color.FromArgb(14, 20, 26), bx, by, bw, bh);
                 canvas.DrawRectangle(SelectBorder, bx, by, bw, bh);
                 SmallTextRenderer.DrawCentered(canvas, "GRATULACJE! PASJANS UKONCZONY!", bx, by + 14, bw, SelectBorder);
-                SmallTextRenderer.DrawCentered(canvas, "Kliknij Nowa Gra aby zagrac ponownie.", bx, by + 30, bw, TextColor);
+                SmallTextRenderer.DrawCentered(canvas, "Click New Game to play again.", bx, by + 30, bw, TextColor);
             }
 
             // Footer instructions

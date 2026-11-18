@@ -43,7 +43,7 @@ namespace ZonderqOS.Commands
             if (subcmd == "check")
             {
                 bool force = args.Length > 2 && args[2].ToLowerInvariant() == "--force";
-                CommandIO.WriteLine("Skanowanie nosnikow USB i katalogu /updates...");
+                CommandIO.WriteLine("Scanning USB devices and /updates...");
 
                 UpdatePackageInfo pkg;
                 string msg;
@@ -51,25 +51,25 @@ namespace ZonderqOS.Commands
 
                 if (found && pkg != null)
                 {
-                    WriteMessage.WriteOK("Znaleziono zweryfikowana aktualizacje USB!", "UPDATE");
+                    WriteMessage.WriteOK("Verified USB update found!", "UPDATE");
                     CommandIO.WriteLine("");
-                    CommandIO.WriteLine("  Tytul:         " + pkg.Title);
-                    CommandIO.WriteLine("  Version celu:   " + pkg.Version + " (Build " + pkg.BuildNumber + ")");
-                    CommandIO.WriteLine("  Architektura:  " + pkg.Architecture);
-                    CommandIO.WriteLine("  Waznosc:       " + pkg.Severity);
-                    CommandIO.WriteLine("  Data wydania:  " + pkg.ReleaseDate);
-                    CommandIO.WriteLine("  Podpis cyfrowy: " + (pkg.IsSigned ? (pkg.IsSignatureValid ? "ZAUFANY (SHA-256 / Ed25519)" : "NIEPRAWIDLOWY!") : "BRAK"));
-                    CommandIO.WriteLine("  Suma kernela:  " + (string.IsNullOrEmpty(pkg.KernelSha256) ? "Nieokreslona" : pkg.KernelSha256));
-                    CommandIO.WriteLine("  Plik kernela:  " + (string.IsNullOrEmpty(pkg.KernelImagePath) ? "Brak w pakiecie" : pkg.KernelImagePath));
-                    CommandIO.WriteLine("  Liczba plikow: " + (pkg.Files != null ? pkg.Files.Count.ToString() : "0"));
+                    CommandIO.WriteLine("  Title:         " + pkg.Title);
+                    CommandIO.WriteLine("  Target version: " + pkg.Version + " (Build " + pkg.BuildNumber + ")");
+                    CommandIO.WriteLine("  Architecture:  " + pkg.Architecture);
+                    CommandIO.WriteLine("  Severity:      " + pkg.Severity);
+                    CommandIO.WriteLine("  Release date:  " + pkg.ReleaseDate);
+                    CommandIO.WriteLine("  Digital signature: " + (pkg.IsSigned ? (pkg.IsSignatureValid ? "TRUSTED (SHA-256 / Ed25519)" : "INVALID!") : "MISSING"));
+                    CommandIO.WriteLine("  Kernel checksum: " + (string.IsNullOrEmpty(pkg.KernelSha256) ? "Not specified" : pkg.KernelSha256));
+                    CommandIO.WriteLine("  Kernel file:   " + (string.IsNullOrEmpty(pkg.KernelImagePath) ? "Missing from package" : pkg.KernelImagePath));
+                    CommandIO.WriteLine("  File count:    " + (pkg.Files != null ? pkg.Files.Count.ToString() : "0"));
                     CommandIO.WriteLine("");
-                    CommandIO.WriteLine("Dziennik zmian (Changelog):");
+                    CommandIO.WriteLine("Changelog:");
                     for (int i = 0; i < pkg.Changelog.Length; i++)
                     {
                         CommandIO.WriteLine("  * " + pkg.Changelog[i]);
                     }
                     CommandIO.WriteLine("");
-                    CommandIO.WriteLine("Wpisz 'zupdate verify' aby sprawdzic sumy SHA-256 lub 'zupdate install' aby zainstalowac.");
+                    CommandIO.WriteLine("Run 'zupdate verify' to check SHA-256 or 'zupdate install' to install.");
                 }
                 else
                 {
@@ -89,12 +89,12 @@ namespace ZonderqOS.Commands
 
                 if (pkg == null)
                 {
-                    WriteMessage.WriteError("Brak dostepnego pakietu do weryfikacji. Wloz USB z /updates/update.manifest", "UPDATE");
+                    WriteMessage.WriteError("No package to verify. Insert a USB drive containing /updates/update.manifest.", "UPDATE");
                     CommandIO.LastCommandSuccess = false;
                     return;
                 }
 
-                CommandIO.WriteLine("Kryptograficzna weryfikacja pakietu " + pkg.Version + "...");
+                CommandIO.WriteLine("Verifying package signature " + pkg.Version + "...");
                 string error;
                 bool ok = UpdateManager.VerifyPackageIntegrity(pkg, (pct, status) =>
                 {
@@ -103,14 +103,14 @@ namespace ZonderqOS.Commands
 
                 if (ok)
                 {
-                    WriteMessage.WriteOK("Integralnosc i autentycznosc pakietu potwierdzona pomyslnie [STATUS: PRAWIDLOWY]", "UPDATE");
+                    WriteMessage.WriteOK("Package integrity and authenticity verified [PASS]", "UPDATE");
                     CommandIO.WriteLine("  Kernel SHA-256: " + pkg.ExpectedSha256);
-                    CommandIO.WriteLine("  Podpis cyfrowy: " + (pkg.IsSigned ? "ZAUFANY (SHA-256 / Ed25519)" : "Brak (pakiet lokalny)"));
+                    CommandIO.WriteLine("  Digital signature: " + (pkg.IsSigned ? "TRUSTED (SHA-256 / Ed25519)" : "Missing (local package)"));
                     CommandIO.LastCommandSuccess = true;
                 }
                 else
                 {
-                    WriteMessage.WriteError("Weryfikacja nie powiodla sie: " + error, "UPDATE");
+                    WriteMessage.WriteError("Verification failed: " + error, "UPDATE");
                     CommandIO.LastCommandSuccess = false;
                 }
                 return;
@@ -118,7 +118,7 @@ namespace ZonderqOS.Commands
 
             if (subcmd == "apply" || subcmd == "install")
             {
-                if (!RequireRootPrivilege(subcmd, "Wymagane uprawnienia administratora root do instalacji aktualizacji."))
+                if (!RequireRootPrivilege(subcmd, "Root permissions are required to install updates."))
                     return;
 
                 UpdatePackageInfo pkg = UpdateManager.AvailablePackage;
@@ -130,13 +130,13 @@ namespace ZonderqOS.Commands
 
                 if (pkg == null)
                 {
-                    WriteMessage.WriteInfo("Brak oczekujacych aktualizacji na USB. Uzyj 'zupdate check --force'.", "UPDATE");
+                    WriteMessage.WriteInfo("No pending USB updates. Run 'zupdate check --force'.", "UPDATE");
                     CommandIO.LastCommandSuccess = false;
                     return;
                 }
 
                 string inactiveSlot = BootSlotManager.GetInactiveSlot();
-                CommandIO.WriteLine($"Instalacja wersji {pkg.Version} do osobnego slotu rozruchowego (Slot {inactiveSlot})...");
+                CommandIO.WriteLine($"Installing version {pkg.Version} to separate boot slot {inactiveSlot}...");
 
                 string error;
                 bool ok = UpdateManager.ApplyUpdate(pkg, (pct, status) =>
@@ -146,13 +146,13 @@ namespace ZonderqOS.Commands
 
                 if (ok)
                 {
-                    WriteMessage.WriteOK($"Aktualizacja zainstalowana pomyslnie w slocie {inactiveSlot}! Nowy kernel zostanie uruchomiony po restarcie.", "UPDATE");
-                    CommandIO.WriteLine("Wpisz 'reboot' aby uruchomic zaktualizowany system.");
+                    WriteMessage.WriteOK($"Update installed in slot {inactiveSlot}! The new kernel will boot after restart.", "UPDATE");
+                    CommandIO.WriteLine("Run 'reboot' to start the updated system.");
                     CommandIO.LastCommandSuccess = true;
                 }
                 else
                 {
-                    WriteMessage.WriteError("Niepowodzenie aktualizacji: " + error, "UPDATE");
+                    WriteMessage.WriteError("Update failed: " + error, "UPDATE");
                     CommandIO.LastCommandSuccess = false;
                 }
                 return;
@@ -160,17 +160,17 @@ namespace ZonderqOS.Commands
 
             if (subcmd == "rollback")
             {
-                if (!RequireRootPrivilege(subcmd, "Wymagane uprawnienia administratora root do wycofania zmian."))
+                if (!RequireRootPrivilege(subcmd, "Root permissions are required for rollback."))
                     return;
 
                 if (!UpdateManager.HasRollbackSnapshot())
                 {
-                    WriteMessage.WriteError("Brak zapisanej migawki systemu do przywrocenia.", "UPDATE");
+                    WriteMessage.WriteError("No recovery snapshot available.", "UPDATE");
                     CommandIO.LastCommandSuccess = false;
                     return;
                 }
 
-                CommandIO.WriteLine("Wycofywanie aktualizacji (A/B Rollback) do poprzedniego slotu...");
+                CommandIO.WriteLine("Rolling back to the previous A/B slot...");
                 string error;
                 bool ok = UpdateManager.Rollback((pct, status) =>
                 {
@@ -179,13 +179,13 @@ namespace ZonderqOS.Commands
 
                 if (ok)
                 {
-                    WriteMessage.WriteOK("Przywrocono poprzedni stan i slot rozruchowy (" + BootSlotManager.ActiveSlot + "). Wymagany restart.", "UPDATE");
-                    CommandIO.WriteLine("Wpisz 'reboot' aby uruchomic poprzednia wersje.");
+                    WriteMessage.WriteOK("Previous system state and boot slot restored (" + BootSlotManager.ActiveSlot + "). Restart required.", "UPDATE");
+                    CommandIO.WriteLine("Run 'reboot' to start the previous version.");
                     CommandIO.LastCommandSuccess = true;
                 }
                 else
                 {
-                    WriteMessage.WriteError("Niepowodzenie rollbacku: " + error, "UPDATE");
+                    WriteMessage.WriteError("Rollback failed: " + error, "UPDATE");
                     CommandIO.LastCommandSuccess = false;
                 }
                 return;
@@ -194,10 +194,10 @@ namespace ZonderqOS.Commands
             if (subcmd == "history")
             {
                 List<string> hist = UpdateManager.GetHistory();
-                CommandIO.WriteLine("=== Historia Aktualizacji Systemu ZonderqOS ===");
+                CommandIO.WriteLine("=== ZOnderqOS Update History ===");
                 if (hist.Count == 0)
                 {
-                    CommandIO.WriteLine("  Brak zarejestrowanych wpisow w dzienniku /var/log/update.log");
+                    CommandIO.WriteLine("  No entries in /var/log/update.log");
                 }
                 else
                 {
@@ -213,22 +213,22 @@ namespace ZonderqOS.Commands
             if (subcmd == "drives" || subcmd == "storage")
             {
                 StorageEnvironmentInfo env = UpdateManager.GetStorageEnvironmentInfo();
-                CommandIO.WriteLine("=== ZonderqOS Srodowisko Aktualizacji i Nosniki ===");
-                CommandIO.WriteLine("  Partycja glowna:     " + env.PartitionLabel + " (zamontowana jako '/')");
-                CommandIO.WriteLine("  Typ urzadzenia:      " + env.DeviceType);
-                CommandIO.WriteLine("  Aktywny slot boot:   Slot " + env.ActiveBootSlot);
-                CommandIO.WriteLine("  Uruchomiony kernel:  " + env.RunningKernelVersion + " (Build " + env.RunningKernelBuild + ")");
-                CommandIO.WriteLine("  Katalog /updates:    " + (env.HasUpdatesDir ? "DOSTEPNY" : "BRAK"));
-                CommandIO.WriteLine("  Plik manifestu:      " + (env.HasManifest ? "WYKRYTO (" + env.ManifestPath + ")" : "BRAK"));
-                CommandIO.WriteLine("  Katalog ladunku:     " + (env.HasPayload ? "WYKRYTO (" + env.PayloadPath + ", plikow: " + env.PayloadFileCount + ")" : "BRAK"));
-                CommandIO.WriteLine("  Obraz kernela:       " + (env.HasKernelBinary ? "WYKRYTO (" + env.KernelBinaryPath + ")" : "BRAK"));
+                CommandIO.WriteLine("=== ZOnderqOS Update Environment and Storage ===");
+                CommandIO.WriteLine("  System partition:      " + env.PartitionLabel + " (mounted at '/')");
+                CommandIO.WriteLine("  Device type:           " + env.DeviceType);
+                CommandIO.WriteLine("  Active boot slot:     Slot " + env.ActiveBootSlot);
+                CommandIO.WriteLine("  Running kernel:        " + env.RunningKernelVersion + " (Build " + env.RunningKernelBuild + ")");
+                CommandIO.WriteLine("  /updates directory:    " + (env.HasUpdatesDir ? "AVAILABLE" : "MISSING"));
+                CommandIO.WriteLine("  Manifest file:         " + (env.HasManifest ? "DETECTED (" + env.ManifestPath + ")" : "MISSING"));
+                CommandIO.WriteLine("  Payload directory:     " + (env.HasPayload ? "DETECTED (" + env.PayloadPath + ", files: " + env.PayloadFileCount + ")" : "MISSING"));
+                CommandIO.WriteLine("  Kernel image:          " + (env.HasKernelBinary ? "DETECTED (" + env.KernelBinaryPath + ")" : "MISSING"));
                 CommandIO.LastCommandSuccess = true;
                 return;
             }
 
             if (subcmd == "stage" || subcmd == "confirm" || subcmd == "clean")
             {
-                if (!RequireRootPrivilege(subcmd, "Wymagane uprawnienia administratora root dla operacji aktualizacji."))
+                if (!RequireRootPrivilege(subcmd, "Root permissions are required for update operations."))
                     return;
 
                 PrintHelp();
@@ -256,73 +256,73 @@ namespace ZonderqOS.Commands
         private void PrintStatusOverview()
         {
             CommandIO.WriteLine("=== ZonderqOS System Updater & Boot Diagnostics ===");
-            CommandIO.WriteLine("  Uruchomiony kernel:  " + KernelBuildInfo.KernelVersion + " (Build " + KernelBuildInfo.KernelBuild + ")");
-            CommandIO.WriteLine("  Architektura:        " + KernelBuildInfo.Architecture + " (" + KernelBuildInfo.CosmosVersion + ")");
-            CommandIO.WriteLine("  Data kompilacji:     " + KernelBuildInfo.CompileTimestamp);
-            CommandIO.WriteLine("  Aktywny slot:        Slot " + BootSlotManager.ActiveSlot + " (" + KernelBuildInfo.RunningSlotPath + ")");
-            CommandIO.WriteLine("  Stan biezacego slotu:" + (KernelBuildInfo.IsHealthyAndConfirmed ? "ZATWIERDZONY (HEALTHY)" : "OCZEKUJE NA POTWIERDZENIE"));
-            CommandIO.WriteLine("  Version w /etc:       " + UpdateManager.CurrentVersion + " (Build " + UpdateManager.CurrentBuild + ")");
+            CommandIO.WriteLine("  Running kernel:        " + KernelBuildInfo.KernelVersion + " (Build " + KernelBuildInfo.KernelBuild + ")");
+            CommandIO.WriteLine("  Architecture:          " + KernelBuildInfo.Architecture + " (" + KernelBuildInfo.CosmosVersion + ")");
+            CommandIO.WriteLine("  Build date:            " + KernelBuildInfo.CompileTimestamp);
+            CommandIO.WriteLine("  Active slot:           Slot " + BootSlotManager.ActiveSlot + " (" + KernelBuildInfo.RunningSlotPath + ")");
+            CommandIO.WriteLine("  Current slot status:" + (KernelBuildInfo.IsHealthyAndConfirmed ? "CONFIRMED (HEALTHY)" : "PENDING CONFIRMATION"));
+            CommandIO.WriteLine("  Version in /etc:       " + UpdateManager.CurrentVersion + " (Build " + UpdateManager.CurrentBuild + ")");
 
             // Detection of mismatch between booted kernel and disk version
             if (!string.Equals(KernelBuildInfo.KernelVersion, UpdateManager.CurrentVersion, StringComparison.OrdinalIgnoreCase))
             {
                 CommandIO.WriteLine("");
-                WriteMessage.WriteInfo("[OSTRZEZENIE] WYKRYTO ROZBIEZNOSC: Uruchomiony kernel (" + KernelBuildInfo.KernelVersion +
-                    ") rozni sie od wersji na dysku (" + UpdateManager.CurrentVersion + ").", "UPDATE");
-                CommandIO.WriteLine("  Wymagany restart ('reboot') aby zainicjalizowac nowy kernel ze zaktualizowanego slotu.");
+                WriteMessage.WriteInfo("[WARNING] VERSION MISMATCH: Running kernel (" + KernelBuildInfo.KernelVersion +
+                    ") differs from the version on disk (" + UpdateManager.CurrentVersion + ").", "UPDATE");
+                CommandIO.WriteLine("  Restart ('reboot') is required to boot the updated slot.");
             }
 
             if (!string.IsNullOrEmpty(BootSlotManager.PendingSlot))
             {
-                WriteMessage.WriteInfo("[OSTRZEZENIE] Oczekujacy slot rozruchowy: Slot " + BootSlotManager.PendingSlot +
-                    " (Proby rozruchu: " + BootSlotManager.BootAttempts + "/" + BootSlotManager.MaxBootAttempts + ")", "BOOT");
+                WriteMessage.WriteInfo("[WARNING] Pending boot slot: Slot " + BootSlotManager.PendingSlot +
+                    " (Boot attempts: " + BootSlotManager.BootAttempts + "/" + BootSlotManager.MaxBootAttempts + ")", "BOOT");
             }
 
             CommandIO.WriteLine("");
-            CommandIO.WriteLine("  Ostatnie badanie:    " + UpdateManager.LastCheckTime);
-            CommandIO.WriteLine("  Zrodlo aktualizacji: " + UpdateManager.SourceMode.ToString().ToUpperInvariant());
-            CommandIO.WriteLine("  Wymagany restart:    " + (UpdateManager.IsRebootRequired ? "TAK (nowy kernel oczekuje w slocie " + BootSlotManager.ActiveSlot + ")" : "Nie"));
-            CommandIO.WriteLine("  Punkt przywrocenia:  " + (UpdateManager.HasRollbackSnapshot() ? "Dostepny (migawka A/B)" : "Brak"));
+            CommandIO.WriteLine("  Last check:            " + UpdateManager.LastCheckTime);
+            CommandIO.WriteLine("  Update source:         " + UpdateManager.SourceMode.ToString().ToUpperInvariant());
+            CommandIO.WriteLine("  Restart required:      " + (UpdateManager.IsRebootRequired ? "YES (new kernel pending in slot " + BootSlotManager.ActiveSlot + ")" : "No"));
+            CommandIO.WriteLine("  Restore point:         " + (UpdateManager.HasRollbackSnapshot() ? "Available (A/B snapshot)" : "None"));
             CommandIO.WriteLine("");
             PrintHelp();
         }
 
         private void PrintSlotsDiagnostics()
         {
-            CommandIO.WriteLine("=== Diagnostyka Slotow Rozruchowych A/B (Limine) ===");
-            CommandIO.WriteLine("  Aktywny slot:     Slot " + BootSlotManager.ActiveSlot);
-            CommandIO.WriteLine("  Slot rezerwowy:   Slot " + BootSlotManager.FallbackSlot);
-            CommandIO.WriteLine("  Slot testowany:   " + (string.IsNullOrEmpty(BootSlotManager.PendingSlot) ? "Brak (stabilny)" : "Slot " + BootSlotManager.PendingSlot));
-            CommandIO.WriteLine("  Licznik prob:     " + BootSlotManager.BootAttempts + " / " + BootSlotManager.MaxBootAttempts);
+            CommandIO.WriteLine("=== A/B Boot Slot Diagnostics (Limine) ===");
+            CommandIO.WriteLine("  Active slot:    Slot " + BootSlotManager.ActiveSlot);
+            CommandIO.WriteLine("  Fallback slot:  Slot " + BootSlotManager.FallbackSlot);
+            CommandIO.WriteLine("  Pending slot:   " + (string.IsNullOrEmpty(BootSlotManager.PendingSlot) ? "None (stable)" : "Slot " + BootSlotManager.PendingSlot));
+            CommandIO.WriteLine("  Attempt count:  " + BootSlotManager.BootAttempts + " / " + BootSlotManager.MaxBootAttempts);
             CommandIO.WriteLine("");
             CommandIO.WriteLine("SLOT A:");
-            CommandIO.WriteLine("  Sciezka:          " + BootSlotManager.SlotAPath);
-            CommandIO.WriteLine("  Obecnosc pliku:   " + (File.Exists(BootSlotManager.SlotAPath) ? "TAK" : "BRAK"));
-            CommandIO.WriteLine("  Stan zdrowia:     " + BootSlotManager.SlotAStatus);
-            CommandIO.WriteLine("  Version kernela:   " + BootSlotManager.SlotAVersion + " (Build " + BootSlotManager.SlotABuild + ")");
+            CommandIO.WriteLine("  Path:           " + BootSlotManager.SlotAPath);
+            CommandIO.WriteLine("  File present:   " + (File.Exists(BootSlotManager.SlotAPath) ? "YES" : "MISSING"));
+            CommandIO.WriteLine("  Health status:  " + BootSlotManager.SlotAStatus);
+            CommandIO.WriteLine("  Kernel version: " + BootSlotManager.SlotAVersion + " (Build " + BootSlotManager.SlotABuild + ")");
             CommandIO.WriteLine("");
             CommandIO.WriteLine("SLOT B:");
-            CommandIO.WriteLine("  Sciezka:          " + BootSlotManager.SlotBPath);
-            CommandIO.WriteLine("  Obecnosc pliku:   " + (File.Exists(BootSlotManager.SlotBPath) ? "TAK" : "BRAK"));
-            CommandIO.WriteLine("  Stan zdrowia:     " + BootSlotManager.SlotBStatus);
-            CommandIO.WriteLine("  Version kernela:   " + (string.IsNullOrEmpty(BootSlotManager.SlotBVersion) ? "Pusty" : BootSlotManager.SlotBVersion + " (Build " + BootSlotManager.SlotBBuild + ")"));
+            CommandIO.WriteLine("  Path:           " + BootSlotManager.SlotBPath);
+            CommandIO.WriteLine("  File present:   " + (File.Exists(BootSlotManager.SlotBPath) ? "YES" : "MISSING"));
+            CommandIO.WriteLine("  Health status:  " + BootSlotManager.SlotBStatus);
+            CommandIO.WriteLine("  Kernel version: " + (string.IsNullOrEmpty(BootSlotManager.SlotBVersion) ? "Empty" : BootSlotManager.SlotBVersion + " (Build " + BootSlotManager.SlotBBuild + ")"));
             CommandIO.WriteLine("");
-            CommandIO.WriteLine("Konfiguracja Limine:");
-            CommandIO.WriteLine("  Plik w /boot:     " + (File.Exists(BootSlotManager.LimineBootConfig) ? "ZSYNCHRONIZOWANY" : "Brak"));
-            CommandIO.WriteLine("  Plik w /:         " + (File.Exists(BootSlotManager.LimineRootConfig) ? "ZSYNCHRONIZOWANY" : "Brak"));
+            CommandIO.WriteLine("Limine configuration:");
+            CommandIO.WriteLine("  File in /boot:  " + (File.Exists(BootSlotManager.LimineBootConfig) ? "SYNCHRONIZED" : "None"));
+            CommandIO.WriteLine("  File in /:     " + (File.Exists(BootSlotManager.LimineRootConfig) ? "SYNCHRONIZED" : "None"));
         }
 
         private void PrintHelp()
         {
-            CommandIO.WriteLine("Dostepne polecenia zupdate:");
-            CommandIO.WriteLine("  zupdate status                 - Status kernela, aktywnego slotu i wersji");
-            CommandIO.WriteLine("  zupdate slots                  - Diagnostyka slotow rozruchowych A/B");
-            CommandIO.WriteLine("  zupdate check [--force]        - Sprawdzenie pakietow aktualizacji na USB");
-            CommandIO.WriteLine("  zupdate verify                 - Kryptograficzna weryfikacja SHA-256 i podpisu");
-            CommandIO.WriteLine("  zupdate install                - Bezpieczna instalacja do nieaktywnego slotu");
-            CommandIO.WriteLine("  zupdate rollback               - Powrot (Rollback) do poprzedniego slotu");
-            CommandIO.WriteLine("  zupdate history                - Historia zainstalowanych aktualizacji");
-            CommandIO.WriteLine("  zupdate drives                 - Diagnostyka partycji i katalogow aktualizacji");
+            CommandIO.WriteLine("Available zupdate commands:");
+            CommandIO.WriteLine("  zupdate status                 - Show kernel, active slot and version");
+            CommandIO.WriteLine("  zupdate slots                  - Diagnose A/B boot slots");
+            CommandIO.WriteLine("  zupdate check [--force]        - Check USB update packages");
+            CommandIO.WriteLine("  zupdate verify                 - Verify SHA-256 and package signature");
+            CommandIO.WriteLine("  zupdate install                - Install to inactive slot safely");
+            CommandIO.WriteLine("  zupdate rollback               - Roll back to the previous slot");
+            CommandIO.WriteLine("  zupdate history                - Show installed update history");
+            CommandIO.WriteLine("  zupdate drives                 - Inspect partitions and update directories");
         }
     }
 }

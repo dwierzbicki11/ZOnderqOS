@@ -45,7 +45,7 @@ namespace ZonderqOS.GUI.Apps
             Canvas canvas = canvasProvider?.Invoke();
             if (canvas == null)
             {
-                status = "Error: Brak dostepu do ekranu";
+                status = "Error: screen access unavailable";
                 return;
             }
 
@@ -58,7 +58,7 @@ namespace ZonderqOS.GUI.Apps
             }
             else
             {
-                status = "Nie udalo sie zapisac zrzutu";
+                status = "Failed to save screenshot";
             }
         }
 
@@ -163,7 +163,7 @@ namespace ZonderqOS.GUI.Apps
                 canvas.DrawFilledRectangle(Border, btnX, btn2Y + btnH - 1, btnW, 1);
                 canvas.DrawFilledRectangle(Border, btnX, btn2Y, 1, btnH);
                 canvas.DrawFilledRectangle(Border, btnX + btnW - 1, btn2Y, 1, btnH);
-                SmallTextRenderer.DrawCentered(canvas, "OTWORZ W PRZEGLADARCE", btnX, btn2Y + 13, btnW, TextColor);
+                SmallTextRenderer.DrawCentered(canvas, "OPEN IN IMAGE VIEWER", btnX, btn2Y + 13, btnW, TextColor);
             }
 
             // Shortcut Hint

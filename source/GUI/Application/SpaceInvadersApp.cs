@@ -117,7 +117,7 @@ namespace ZonderqOS.GUI.Apps
         public SpaceInvadersApp(int x, int y, Action onClose) : base("Space Invaders")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 500, 420, "Space Invaders - Kosmiczni Najeźdźcy");
+            Window = new Window(x, y, 500, 420, "Space Invaders");
             Window.CloseAction = Close;
 
             InitWave();
@@ -534,7 +534,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(HeaderBg, contentX, contentY, contentWidth, 26);
             canvas.DrawLine(BorderColor, contentX, contentY + 26, contentX + contentWidth, contentY + 26);
 
-            string scoreStr = "WYNIK: " + score.ToString("00000");
+            string scoreStr = "SCORE: " + score.ToString("00000");
             string highStr = "REKORD: " + highScore.ToString("00000");
             string waveStr = "FALA " + wave;
             SmallTextRenderer.Draw(canvas, scoreStr, contentX + 12, contentY + 9, TextColor);
@@ -621,9 +621,9 @@ namespace ZonderqOS.GUI.Apps
 
                 canvas.DrawFilledRectangle(Color.FromArgb(20, 14, 22), boxX, boxY, boxW, boxH);
                 canvas.DrawRectangle(AlienRed, boxX, boxY, boxW, boxH);
-                SmallTextRenderer.DrawCentered(canvas, "KONIEC GRY!", boxX, boxY + 18, boxW, AlienRed);
-                SmallTextRenderer.DrawCentered(canvas, "WYNIK: " + score, boxX, boxY + 40, boxW, TextColor);
-                SmallTextRenderer.DrawCentered(canvas, "Kliknij lub wcisnij [R] aby zagrac ponownie", boxX, boxY + 62, boxW, MutedColor);
+                SmallTextRenderer.DrawCentered(canvas, "GAME OVER!", boxX, boxY + 18, boxW, AlienRed);
+                SmallTextRenderer.DrawCentered(canvas, "SCORE: " + score, boxX, boxY + 40, boxW, TextColor);
+                SmallTextRenderer.DrawCentered(canvas, "Click or press [R] to replay", boxX, boxY + 62, boxW, MutedColor);
             }
             else if (gameState == 1) // Wave Cleared
             {
@@ -646,7 +646,7 @@ namespace ZonderqOS.GUI.Apps
 
                 canvas.DrawFilledRectangle(Color.FromArgb(20, 26, 36), boxX, boxY, boxW, boxH);
                 canvas.DrawRectangle(AccentColor, boxX, boxY, boxW, boxH);
-                SmallTextRenderer.DrawCentered(canvas, "PAUZA", boxX, boxY + 20, boxW, AccentColor);
+                SmallTextRenderer.DrawCentered(canvas, "PAUSED", boxX, boxY + 20, boxW, AccentColor);
             }
         }
 

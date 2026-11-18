@@ -72,7 +72,7 @@ namespace ZonderqOS.GUI
             {
                 Console.WriteLine("[GUI] Inicjalizacja trybu graficznego...");
                 canvas = DisplayModeSelector.OpenNativeOrBest();
-                Console.WriteLine($"[GUI] Rzeczywista rozdzielczość Canvas: {canvas.Width}x{canvas.Height}");
+                Console.WriteLine($"[GUI] Actual Canvas resolution: {canvas.Width}x{canvas.Height}");
                 Console.WriteLine("[GUI] Uruchamiam pulpit...");
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
                 cursorDamageRenderer = new CursorDamageRenderer(canvas);
@@ -648,7 +648,7 @@ namespace ZonderqOS.GUI
             catch (Exception ex)
             {
                 Failed = true;
-                WriteMessage.WriteError($"Error w pętli GUI: {ex.Message}", "GUI");
+                WriteMessage.WriteError($"GUI loop error: {ex.Message}", "GUI");
             }
             finally
             {
@@ -802,13 +802,13 @@ namespace ZonderqOS.GUI
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.Terminal, "Terminal", "Terminal", "Terminal",
-                "Powłoka i narzedzia wiersza polecen",
+                "Command-line shell and utilities",
                 AppCategory.Tools, IconType.Terminal, () => LaunchTerminal(145, 96),
                 StartMenuPlacement.Pinned, 0, 1, true));
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.FileManager, "File Manager", "File Manager", "File Manager",
-                "Pliki, katalogi, schowek i zamontowane woluminy",
+                "Files, directories, clipboard and mounted volumes",
                 AppCategory.Files, IconType.Folder, () => LaunchFileManager(120, 78),
                 StartMenuPlacement.Pinned, 1, 0, true));
 
@@ -843,14 +843,14 @@ namespace ZonderqOS.GUI
                 StartMenuPlacement.Tool, 5, 6, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.DiskManager, "Menedzer dyskow", "Diski", "Diski",
+                AppIds.DiskManager, "Disk Manager", "Disks", "Disks",
                 "Diski, partycje i punkty montowania VFS",
                 AppCategory.System, IconType.DiskManager, () => LaunchDiskManager(135, 78),
                 StartMenuPlacement.Tool, 4, 7, true));
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.TaskManager, "Manager zadan", "Manager zadan", "Manager zadan",
-                "Procesy, CPU, pamiec i telemetria kernela",
+                "Processes, CPU, memory and kernel telemetry",
                 AppCategory.System, IconType.Settings, () => LaunchTaskManager(165, 110),
                 StartMenuPlacement.Pinned, 3, -1, true));
 
@@ -862,7 +862,7 @@ namespace ZonderqOS.GUI
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.ConfigManager, "Konfiguracja /etc", "Konfiguracja", "Konfiguracja",
-                "Pliki /etc, nazwa hosta i uslugi w tle",
+                "Configuration in /etc, hostname and background services",
                 AppCategory.System, IconType.Settings, () => LaunchConfigManager(130, 85),
                 StartMenuPlacement.None, -1, -1, true));
 
@@ -976,7 +976,7 @@ namespace ZonderqOS.GUI
 
             appRegistry.Register(new AppDescriptor(
                 AppIds.PassVault, "Sejf Hasel", "Sejf Hasel", "Sejf Hasel",
-                "Menedzer hasel, generator i bezpieczny sejf notatek z kodem PIN",
+                "Password manager, generator and secure PIN-protected notes",
                 AppCategory.Tools, IconType.Settings, () => LaunchPassVault(160, 65),
                 StartMenuPlacement.Tool, 21, -1, true));
 
@@ -999,8 +999,8 @@ namespace ZonderqOS.GUI
                 StartMenuPlacement.Tool, 24, -1, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.SystemUpdater, "Aktualizacje Systemu", "Aktualizacje", "Aktualizacje",
-                "Menedzer aktualizacji OS, kanaly dystrybucji, weryfikacja SHA-256 i rollback",
+                AppIds.SystemUpdater, "System Updates", "Updates", "Updates",
+                "System update manager, release channels, SHA-256 verification and rollback",
                 AppCategory.System, IconType.Install, () => LaunchSystemUpdater(130, 45),
                 StartMenuPlacement.Tool, 25, 11, true));
 
@@ -1023,7 +1023,7 @@ namespace ZonderqOS.GUI
                 StartMenuPlacement.Tool, 28, 14, true));
 
             appRegistry.Register(new AppDescriptor(
-                AppIds.Welcome, "Witamy", "Witamy", "Witamy",
+                AppIds.Welcome, "Welcome", "Welcome", "Welcome",
                 "Centrum powitalne i przewodnik po wydaniu ZOnderqOS 1.0 Alpha",
                 AppCategory.System, IconType.About, () => LaunchWelcome(120, 35),
                 StartMenuPlacement.Tool, 29, 15, true));
@@ -1199,7 +1199,7 @@ namespace ZonderqOS.GUI
                     global::ZonderqOS.NotificationKind.Security,
                     "BEZPIECZENSTWO",
                     "Sesja odblokowana",
-                    "Dostep do pulpitu zostal przywrocony po uwierzytelnieniu.");
+                    "Desktop access restored after authentication.");
             }
             return unlocked;
         }
@@ -1833,7 +1833,7 @@ namespace ZonderqOS.GUI
             catch (Exception ex)
             {
                 wallpaperCanvas = null;
-                Console.WriteLine($"[GUI] Nie udało się przygotować tapety: {ex.Message}");
+                Console.WriteLine($"[GUI] Failed to prepare wallpaper: {ex.Message}");
             }
         }
 
@@ -1907,7 +1907,7 @@ namespace ZonderqOS.GUI
                     SmallTextRenderer.DrawCentered(canvas, "SYSTEM ZONDERQOS ZOSTAL WYLACZONY",
                         boxX, boxY + 28, boxW, Color.WhiteSmoke);
 
-                    SmallTextRenderer.DrawCentered(canvas, "Wszystkie dane zostaly bezpiecznie zapisane na nosniku USB.",
+                    SmallTextRenderer.DrawCentered(canvas, "All data has been safely saved to the USB drive.",
                         boxX, boxY + 68, boxW, Color.FromArgb(135, 150, 168));
 
                     SmallTextRenderer.DrawCentered(canvas, "Twoj komputer moze byc teraz bezpiecznie wylaczony.",

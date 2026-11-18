@@ -24,11 +24,11 @@ namespace ZonderqOS.GUI
     {
         private static readonly string[] Labels =
         {
-            "ZABLOKUJ",
-            "WYLOGUJ",
-            "ANULUJ",
+            "LOCK",
+            "LOG OUT",
+            "CANCEL",
             "REBOOT",
-            "WYLACZ"
+            "SHUT DOWN"
         };
 
         private static readonly string[] Descriptions =
@@ -37,7 +37,7 @@ namespace ZonderqOS.GUI
             "Close aplikacje sesji i wroc do ekranu logowania",
             "Wroc do aktualnej sesji bez zmian",
             "Reboot ZOnderqOS",
-            "Wylacz komputer"
+            "Shut down the computer"
         };
 
         private static readonly IconType[] Icons =
@@ -222,17 +222,17 @@ namespace ZonderqOS.GUI
                 canvas.DrawFilledRectangle(SystemTheme.Accent, panelX, panelY, 5, panelHeight);
 
                 canvas.DrawString("Opcje sesji", PCScreenFont.DefaultFont, Text, panelX + 28, panelY + 24);
-                SmallTextRenderer.Draw(canvas, "UZYTKOWNIK", panelX + 30, panelY + 66, Muted);
+                SmallTextRenderer.Draw(canvas, "USER", panelX + 30, panelY + 66, Muted);
                 SmallTextRenderer.DrawClipped(canvas, SecurityContext.CurrentUser ?? "-",
                     panelX + 108, panelY + 66, 240, SystemTheme.Accent);
-                SmallTextRenderer.Draw(canvas, "GORA/DOL WYBOR  |  ENTER WYKONAJ  |  ESC ANULUJ",
+                SmallTextRenderer.Draw(canvas, "UP/DOWN SELECT  |  ENTER CONFIRM  |  ESC CANCEL",
                     panelX + 30, panelY + 90, Muted);
 
                 for (int i = 0; i < Labels.Length; i++)
                     RenderRow(canvas, panelX, panelY, i);
 
                 SmallTextRenderer.Draw(canvas,
-                    "Wylogowanie zamyka aplikacje, aby kolejny uzytkownik nie odziedziczyl danych sesji.",
+                    "Logging out closes applications to protect your session data.",
                     panelX + 30, panelY + panelHeight - 28, Muted);
             }
 

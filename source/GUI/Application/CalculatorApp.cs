@@ -505,7 +505,7 @@ namespace ZonderqOS.GUI.Apps
         {
             if (!IsFinite(value))
             {
-                SetError("WYNIK POZA ZAKRESEM");
+                SetError("RESULT OUT OF RANGE");
                 return;
             }
 
@@ -585,7 +585,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (!IsFinite(result))
             {
-                SetError("WYNIK POZA ZAKRESEM");
+                SetError("RESULT OUT OF RANGE");
                 return false;
             }
             return true;
@@ -627,7 +627,7 @@ namespace ZonderqOS.GUI.Apps
         private void SetError(string message)
         {
             errorState = true;
-            errorMessage = message ?? "BLAD";
+            errorMessage = message ?? "ERROR";
             expression = string.Empty;
             pendingOperator = '\0';
             accumulator = 0.0;

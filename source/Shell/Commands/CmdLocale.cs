@@ -6,15 +6,15 @@ namespace ZonderqOS.Commands
     public class CmdLocale : ICommand
     {
         public string Name => "locale";
-        public string Description => "Wyswietla lub zmienia jezyk systemu / Displays or sets system language";
+        public string Description => "Displays the system interface language";
 
         public void Execute(string[] args, ref string currentPath)
         {
             if (args.Length < 2)
             {
-                CommandIO.WriteLine("Aktualny jezyk / Current language: " + LocalizationManager.CurrentLanguageDisplayName + " (" + LocalizationManager.CurrentLanguageCode + ")");
-                CommandIO.WriteLine("Dostepne jezyki / Available languages: pl-PL, en-US");
-                CommandIO.WriteLine("Uzycie / Usage: locale set [pl-PL|en-US]");
+                CommandIO.WriteLine("Current language: " + LocalizationManager.CurrentLanguageDisplayName + " (" + LocalizationManager.CurrentLanguageCode + ")");
+                CommandIO.WriteLine("Available languages: en-US (Alpha 1)");
+                CommandIO.WriteLine("Usage: locale set en-US");
                 CommandIO.LastCommandSuccess = true;
                 return;
             }
@@ -26,9 +26,8 @@ namespace ZonderqOS.Commands
                 if (string.Equals(target, "pl", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(target, "pl-pl", StringComparison.OrdinalIgnoreCase))
                 {
-                    LocalizationManager.SetLanguage(Language.Polish);
-                    WriteMessage.WriteOK("Zmieniono jezyk na: Polski (pl-PL).", "LOCALE");
-                    CommandIO.LastCommandSuccess = true;
+                    WriteMessage.WriteError("Polish is planned for Beta 1. Alpha 1 supports en-US only.", "LOCALE");
+                    CommandIO.LastCommandSuccess = false;
                     return;
                 }
                 else if (string.Equals(target, "en", StringComparison.OrdinalIgnoreCase) ||
@@ -41,13 +40,13 @@ namespace ZonderqOS.Commands
                 }
                 else
                 {
-                    WriteMessage.WriteError("Nieznany kod jezyka / Unknown language code: " + target + " (uzyj pl-PL lub en-US)", "LOCALE");
+                    WriteMessage.WriteError("Unsupported language code: " + target + " (Alpha 1 supports en-US only)", "LOCALE");
                     CommandIO.LastCommandSuccess = false;
                     return;
                 }
             }
 
-            CommandIO.WriteLine("Uzycie / Usage: locale set [pl-PL|en-US]");
+            CommandIO.WriteLine("Usage: locale set en-US");
             CommandIO.LastCommandSuccess = false;
         }
     }

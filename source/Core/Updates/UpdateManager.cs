@@ -93,7 +93,7 @@ namespace ZonderqOS.SystemCore.Updates
         public static UpdateSourceMode SourceMode { get; private set; } = UpdateSourceMode.UsbOffline;
         public static string CloudServerUrl { get; private set; } = "https://updates.zonderqos.org/v1";
         public static UpdateStatus Status { get; private set; } = UpdateStatus.UpToDate;
-        public static string LastCheckTime { get; private set; } = "Brak informacji";
+        public static string LastCheckTime { get; private set; } = "No information";
         public static bool IsRebootRequired { get; private set; } = false;
         public static UpdatePackageInfo AvailablePackage { get; private set; } = null;
         private static string cachedUpToDateMessage;
@@ -253,8 +253,8 @@ namespace ZonderqOS.SystemCore.Updates
         {
             lock (_lock)
             {
-                error = "Pobieranie OTA przez siec niedostepne w tej wersji: " +
-                        "Stos sieciowy HTTPS nie jest aktywny w stock Cosmos 3.0.95 x64. " +
+                error = "OTA downloading is unavailable in this version: " +
+                        "HTTPS networking is not enabled in stock Cosmos 3.0.97 x64. " +
                         "Uzyj rzeczywistego pakietu z dedykowanego nosnika USB (/updates/update.manifest).";
                 Status = UpdateStatus.Error;
                 return false;
@@ -368,13 +368,13 @@ namespace ZonderqOS.SystemCore.Updates
 
                     if (SourceMode == UpdateSourceMode.CloudOnly)
                     {
-                        message = "Tryb CloudOnly: Stos sieciowy HTTPS nie jest wlaczony w jadrze. Brak pakietow.";
+                        message = "CloudOnly mode: HTTPS networking is disabled in the kernel. No packages available.";
                     }
                     else
                     {
                         if (cachedUpToDateMessage == null)
                         {
-                            cachedUpToDateMessage = "System ZonderqOS jest w najnowszej wersji (" + KernelBuildInfo.KernelVersion + ", build " + KernelBuildInfo.KernelBuild + "). Brak nowych pakietow na USB (/updates).";
+                            cachedUpToDateMessage = "ZonderqOS is up to date (" + KernelBuildInfo.KernelVersion + ", build " + KernelBuildInfo.KernelBuild + "). No newer USB packages in /updates.";
                         }
                         message = cachedUpToDateMessage;
                     }
@@ -392,7 +392,7 @@ namespace ZonderqOS.SystemCore.Updates
                     package = null;
                     if (cachedUpToDateVersionMessage == null || !cachedUpToDateVersionMessage.Contains(pkg.Version))
                     {
-                        cachedUpToDateVersionMessage = "System ZonderqOS jest w najnowszej wersji (" + KernelBuildInfo.KernelVersion + "). Pakiet " + pkg.Version + " nie jest nowszy.";
+                        cachedUpToDateVersionMessage = "ZonderqOS is up to date (" + KernelBuildInfo.KernelVersion + " ). Package " + pkg.Version + " is not newer.";
                     }
                     message = cachedUpToDateVersionMessage;
                     return false;
@@ -416,7 +416,7 @@ namespace ZonderqOS.SystemCore.Updates
                 Status = UpdateStatus.Available;
 
                 string signInfo = pkg.IsSigned ? (pkg.IsSignatureValid ? " [PODPIS CYFROWY: ZAUFANY]" : " [PODPIS: NIEPOPRAWNY!]") : " [NIEPODPISANY]";
-                message = "Znaleziono zweryfikowana aktualizacje USB: " + pkg.Version + " (Build " + pkg.BuildNumber + ") - " + pkg.Title + signInfo;
+                message = "Verified USB update found: " + pkg.Version + " (Build " + pkg.BuildNumber + ") - " + pkg.Title + signInfo;
 
                 if (persistCheckTime || !string.Equals(lastLoggedDiscoveredVersion, pkg.Version, StringComparison.OrdinalIgnoreCase))
                 {
@@ -507,7 +507,7 @@ namespace ZonderqOS.SystemCore.Updates
             {
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Info,
-                    "AKTUALIZACJE USB",
+                    "USB UPDATES",
                     "Wykryto nowa wersje: " + notifyVersion,
                     "Wykryto pakiet aktualizacji w /updates (" + notifyTitle + "). Open Centrum Aktualizacji.");
             }
@@ -698,7 +698,7 @@ namespace ZonderqOS.SystemCore.Updates
                 error = string.Empty;
                 if (pkg == null)
                 {
-                    error = "Brak pakietu do weryfikacji.";
+                    error = "No package to verify.";
                     return false;
                 }
 
@@ -717,7 +717,7 @@ namespace ZonderqOS.SystemCore.Updates
 
                 if (string.IsNullOrEmpty(pkg.KernelSha256))
                 {
-                    error = "Odrzucono pakiet: brak SHA-256 kernela.";
+                    error = "Package rejected: kernel SHA-256 is missing.";
                     return false;
                 }
                 {
@@ -737,7 +737,7 @@ namespace ZonderqOS.SystemCore.Updates
                 {
                     if (string.IsNullOrEmpty(payloadBase))
                     {
-                        error = "Brak wymaganego katalogu payload.";
+                        error = "Required payload directory is missing.";
                         return false;
                     }
                     for (int i = 0; i < pkg.Files.Count; i++)
@@ -761,12 +761,12 @@ namespace ZonderqOS.SystemCore.Updates
                         string fullPath = string.IsNullOrEmpty(payloadBase) ? null : Path.Combine(payloadBase, fileEntry.RelativePath);
                         if (fullPath != null && !IsSafeUpdateFilePath(payloadBase, fileEntry.RelativePath))
                         {
-                            error = "Niedozwolony dowiazany symbolicznie plik lub katalog payload: " + fileEntry.RelativePath;
+                            error = "Symlinked payload files or directories are not allowed: " + fileEntry.RelativePath;
                             return false;
                         }
                         if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
                         {
-                            error = "Brak pliku w payload: " + fileEntry.RelativePath;
+                            error = "Missing payload file: " + fileEntry.RelativePath;
                             return false;
                         }
 
@@ -804,7 +804,7 @@ namespace ZonderqOS.SystemCore.Updates
                 // 3. Integrity is distinct from authenticity. This method
                 // checks SHA-256 only; ApplyUpdateStep additionally requires a
                 // valid Ed25519 signature over every byte of the manifest.
-                progress?.Invoke(90, "Wszystkie zadeklarowane sumy SHA-256 sa prawidlowe.");
+                progress?.Invoke(90, "All declared SHA-256 checksums are valid.");
                 return true;
             }
         }
@@ -859,12 +859,12 @@ namespace ZonderqOS.SystemCore.Updates
             error = string.Empty;
             if (!HasVerifiedAsymmetricUpdateTrust())
             {
-                error = "Brak zaufanego klucza publicznego Ed25519 w obrazie kernela.";
+                error = "Trusted Ed25519 public key is missing from the kernel image.";
                 return false;
             }
             if (pkg == null || string.IsNullOrEmpty(pkg.ManifestPath))
             {
-                error = "Brak manifestu aktualizacji.";
+                error = "Update manifest is missing.";
                 return false;
             }
             try
@@ -901,7 +901,7 @@ namespace ZonderqOS.SystemCore.Updates
                 string sigPath = manifestPath + ".sig";
                 if (!File.Exists(sigPath) || new FileInfo(sigPath).Length != 64)
                 {
-                    error = "Brak 64-bajtowego podpisu Ed25519.";
+                    error = "64-byte Ed25519 signature is missing.";
                     return false;
                 }
                 byte[] signature = ReadExactBytes(sigPath, 64);
@@ -952,7 +952,7 @@ namespace ZonderqOS.SystemCore.Updates
                     pkg.Changelog == null || pkg.Changelog.Length != parsed.Changelog.Count ||
                     pkg.Components == null || pkg.Components.Length != parsed.Components.Count)
                 {
-                    error = "Dane pakietu nie sa identyczne z podpisanym manifestem.";
+                    error = "Package data does not match the signed manifest.";
                     return false;
                 }
                 for (int i = 0; i < parsed.Changelog.Count; i++)
@@ -992,7 +992,7 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
-                error = "Nie mozna zweryfikowac podpisanego pakietu: " + ex.Message;
+                error = "Cannot verify signed package: " + ex.Message;
                 return false;
             }
         }
@@ -1062,7 +1062,7 @@ namespace ZonderqOS.SystemCore.Updates
                 error = string.Empty;
                 if (pkg == null)
                 {
-                    error = "Brak wybranego pakietu aktualizacji.";
+                    error = "No update package selected.";
                     Status = UpdateStatus.Error;
                     return false;
                 }
@@ -1126,10 +1126,10 @@ namespace ZonderqOS.SystemCore.Updates
                                 if (string.IsNullOrEmpty(payloadDir) || !Directory.Exists(payloadDir))
                                 {
                                     Status = UpdateStatus.Error;
-                                    error = "Brak wymaganego katalogu payload; instalacja przerwana.";
+                                    error = "Required payload directory is missing; installation aborted.";
                                     return false;
                                 }
-                                progress?.Invoke(70, "Instalowanie tylko plikow zadeklarowanych w manifeście...");
+                                progress?.Invoke(70, "Installing only the files declared in the manifest...");
                                 string backupPayload = Path.Combine(BackupDir, "payload_snapshot");
                                 try
                                 {
@@ -1166,7 +1166,7 @@ namespace ZonderqOS.SystemCore.Updates
                                 string activationError = error;
                                 if (!RestoreSharedFilesAfterBootFailure(BootSlotManager.ActiveSlot,
                                         out string restoreError))
-                                    error = activationError + " KRYTYCZNE: nie udalo sie odtworzyc plikow: " + restoreError;
+                                    error = activationError + " CRITICAL: failed to restore files: " + restoreError;
                                 Status = UpdateStatus.Error;
                                 return false;
                             }
@@ -1277,7 +1277,7 @@ namespace ZonderqOS.SystemCore.Updates
                 sb.AppendLine("Data instalacji:      " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                 sb.AppendLine("Aktywny slot boot:    Slot " + BootSlotManager.ActiveSlot);
                 sb.AppendLine("Suma SHA-256 kernela: " + pkg.ExpectedSha256);
-                sb.AppendLine("Podpis cyfrowy:       " + (pkg.IsSigned ? (pkg.IsSignatureValid ? "ZAUFANY" : "NIEPOPRAWNY") : "BRAK"));
+                sb.AppendLine("Digital signature:       " + (pkg.IsSigned ? (pkg.IsSignatureValid ? "TRUSTED" : "INVALID") : "MISSING"));
                 sb.AppendLine();
                 sb.AppendLine("DZIENNIK ZMIAN (CHANGELOG):");
                 for (int i = 0; i < pkg.Changelog.Length; i++)
@@ -1303,9 +1303,9 @@ namespace ZonderqOS.SystemCore.Updates
         private static void DeployManifestFiles(UpdatePackageInfo pkg, string payloadDir, string backupRoot)
         {
             if (pkg == null || pkg.Files == null)
-                throw new IOException("Brak listy plikow w manifeście.");
+                throw new IOException("Manifest file list is missing.");
             if (!Directory.Exists(payloadDir))
-                throw new IOException("Nie istnieje katalog payload.");
+                throw new IOException("Payload directory does not exist.");
 
             // Preflight the entire manifest before creating files.
             var declared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1319,14 +1319,14 @@ namespace ZonderqOS.SystemCore.Updates
                     throw new IOException("Niebezpieczny lub powtorzony plik aktualizacji.");
                 string source = Path.Combine(payloadDir, entry.RelativePath);
                 if (!File.Exists(source))
-                    throw new IOException("Brak pliku payload: " + entry.RelativePath);
+                    throw new IOException("Missing payload file: " + entry.RelativePath);
                 long sourceSize = new FileInfo(source).Length;
                 if (entry.SizeBytes > 0 && sourceSize != entry.SizeBytes)
                     throw new IOException("Niepoprawny rozmiar payload: " + entry.RelativePath);
                 if (!Crypto.FixedTimeEquals(
                     BootSlotManager.ComputeFileSha256(source).ToLowerInvariant(),
                     entry.ExpectedSha256.ToLowerInvariant()))
-                    throw new IOException("Bledny hash payload: " + entry.RelativePath);
+                    throw new IOException("Payload checksum mismatch: " + entry.RelativePath);
             }
 
             // A signed list must cover every real file on disk, including files
@@ -1522,7 +1522,7 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
-                throw new IOException("Nie udalo sie utworzyc kopii rollback: " + ex.Message);
+                throw new IOException("Failed to create rollback backup: " + ex.Message);
             }
         }
 
@@ -1542,7 +1542,7 @@ namespace ZonderqOS.SystemCore.Updates
                     string metadataPath = Path.Combine(BackupDir, "snapshot.meta");
                     if (!File.Exists(metadataPath))
                     {
-                        error = "Brak snapshot.meta do odtworzenia wspolnych plikow systemowych.";
+                        error = "snapshot.meta is missing; shared system files cannot be restored.";
                         return false;
                     }
                     string[] metadata = File.ReadAllLines(metadataPath);
@@ -1575,12 +1575,12 @@ namespace ZonderqOS.SystemCore.Updates
                     }
                     if (!haveOsPresence || !haveConfigPresence)
                     {
-                        error = "Migawka nie zapisala informacji o obecnosci plikow konfiguracyjnych.";
+                        error = "Snapshot lacks configuration-file presence metadata.";
                         return false;
                     }
                     if (!matchesFallback)
                     {
-                        error = "Slot awaryjny nie zgadza sie z migawka poprzedniego systemu.";
+                        error = "Fallback slot does not match the previous system snapshot.";
                         return false;
                     }
                     CleanupStaleUpdateTempFiles();

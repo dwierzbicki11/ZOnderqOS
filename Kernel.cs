@@ -50,7 +50,7 @@ namespace ZonderqOS
                 ZonderqOS.SystemCore.Updates.BootSlotManager.Initialize();
                 if (ZonderqOS.SystemCore.Updates.BootSlotManager.EmergencyRecoveryNeeded)
                     throw new InvalidOperationException(
-                        "KRYTYCZNE: nieudana naprawa A/B lub payload. Uruchom ratunkowy obraz i przywroc snapshot.");
+                        "CRITICAL: A/B or payload recovery failed. Boot the recovery image and restore the snapshot.");
                 ZonderqOS.Platform.SpeakerInitializer.Initialize();
                 UserManager.Initialize();
                 Command.Initialize();

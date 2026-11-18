@@ -202,7 +202,7 @@ namespace ZonderqOS.GUI
                 if (key.Key == ConsoleKeyEx.Delete || key.Key == ConsoleKeyEx.Escape)
                 {
                     ClearPassword();
-                    SetStatus("WPISZ HASLO, ABY ODBLOKOWAC", Muted);
+                    SetStatus("ENTER PASSWORD TO UNLOCK", Muted);
                     return;
                 }
 
@@ -442,14 +442,14 @@ namespace ZonderqOS.GUI
                     layout.HeaderSubX, layout.HeaderSubY,
                     layout.CardX + layout.CardWidth - 20 - layout.HeaderSubX, Muted);
 
-                SmallTextRenderer.Draw(canvas, "UZYTKOWNIK", layout.FieldX, layout.UserLabelY, Muted);
+                SmallTextRenderer.Draw(canvas, "USER", layout.FieldX, layout.UserLabelY, Muted);
                 canvas.DrawFilledRectangle(CardAlt, layout.FieldX, layout.UserBoxY, layout.FieldWidth, layout.UserBoxHeight);
                 canvas.DrawRectangle(Border, layout.FieldX, layout.UserBoxY, layout.FieldWidth, layout.UserBoxHeight);
                 int userTextY = layout.UserBoxY + (layout.UserBoxHeight - 7) / 2;
                 SmallTextRenderer.DrawClipped(canvas, username,
                     layout.FieldX + 15, userTextY, layout.FieldWidth - 30, Text);
 
-                SmallTextRenderer.Draw(canvas, "HASLO", layout.FieldX, layout.PassLabelY, Muted);
+                SmallTextRenderer.Draw(canvas, "PASSWORD", layout.FieldX, layout.PassLabelY, Muted);
                 canvas.DrawFilledRectangle(Color.FromArgb(31, 42, 51),
                     layout.FieldX, layout.PassBoxY, layout.FieldWidth, layout.PassBoxHeight);
                 canvas.DrawRectangle(SystemTheme.AccentBorder,
@@ -460,7 +460,7 @@ namespace ZonderqOS.GUI
                 int passTextY = layout.PassBoxY + (layout.PassBoxHeight - 7) / 2;
                 if (passwordLength == 0)
                 {
-                    SmallTextRenderer.Draw(canvas, "haslo", layout.FieldX + 15, passTextY, Muted);
+                    SmallTextRenderer.Draw(canvas, "password", layout.FieldX + 15, passTextY, Muted);
                 }
                 else
                 {
@@ -507,14 +507,14 @@ namespace ZonderqOS.GUI
                 RenderPowerButton(canvas, layout.RebootX, layout.PowerBtnY,
                     layout.RebootWidth, layout.PowerBtnHeight, "REBOOT", IconType.Reboot, false);
                 RenderPowerButton(canvas, layout.ShutdownX, layout.PowerBtnY,
-                    layout.ShutdownWidth, layout.PowerBtnHeight, "WYLACZ", IconType.Shutdown, true);
+                    layout.ShutdownWidth, layout.PowerBtnHeight, "SHUT DOWN", IconType.Shutdown, true);
             }
 
             private void Authenticate()
             {
                 if (passwordLength <= 0)
                 {
-                    SetStatus("HASLO JEST WYMAGANE", Danger);
+                    SetStatus("PASSWORD IS REQUIRED", Danger);
                     return;
                 }
 
@@ -555,7 +555,7 @@ namespace ZonderqOS.GUI
                 if (retryAfter > 0)
                     SetStatus(GetLockStatus(retryAfter), Danger);
                 else
-                    SetStatus("NIEPRAWIDLOWE HASLO", Danger);
+                    SetStatus("INCORRECT PASSWORD", Danger);
             }
 
             private void EnsureCachedUserLogs()
@@ -584,7 +584,7 @@ namespace ZonderqOS.GUI
                 if (retryAfter != cachedLockSeconds || string.IsNullOrEmpty(cachedLockStatus))
                 {
                     cachedLockSeconds = retryAfter;
-                    cachedLockStatus = "NIEPRAWIDLOWE HASLO - BLOKADA " + retryAfter + " S";
+                    cachedLockStatus = "INCORRECT PASSWORD - LOCKED FOR " + retryAfter + " S";
                 }
                 return cachedLockStatus;
             }

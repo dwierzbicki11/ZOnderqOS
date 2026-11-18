@@ -583,7 +583,7 @@ namespace ZonderqOS.GUI.Apps
             }
             RebuildVisibleRows(null, -1, false);
             OnTelemetrySelectionChanged();
-            status = page == PageProcesses ? "Procesy" : page == PagePerformance ? "Wydajnosc" : page == PageDetails ? "Szczegoly" : "Uslugi";
+            status = page == PageProcesses ? "Processes" : page == PagePerformance ? "Performance" : page == PageDetails ? "Details" : "Services";
         }
 
         private void OnTelemetrySelectionChanged()
@@ -631,7 +631,7 @@ namespace ZonderqOS.GUI.Apps
                 !TaskManagerSelectionPolicy.IsVisible(selectedIndex, scrollIndex,
                     view.VisibleRows, visibleRows.Count))
             {
-                status = "Wybierz widoczne zadanie";
+                status = "Select a visible task";
                 return;
             }
 
@@ -646,7 +646,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (row.GuiApplication == this)
                 {
-                    status = "Manager zamknij przyciskiem X";
+                    status = "Close Task Manager with X";
                     return;
                 }
                 if (row.GuiApplication.Window?.CloseAction != null)
@@ -663,7 +663,7 @@ namespace ZonderqOS.GUI.Apps
             if (row.KernelPid > 0)
             {
                 bool ok = ProcessManager.Kill(row.KernelPid);
-                status = ok ? "Wyslano zatrzymanie" : "Nie mozna zatrzymac";
+                status = ok ? "Stop signal sent" : "Cannot stop";
                 RefreshSnapshot();
             }
         }
@@ -1589,10 +1589,10 @@ namespace ZonderqOS.GUI.Apps
                 return;
             IconManager.DrawScaled(canvas, IconType.Settings, X + 16, Y + 16, 20, 20);
             SmallTextRenderer.Draw(canvas, "TASK MANAGER", X + 46, Y + 23, Text);
-            DrawNav(canvas, 0, "Procesy", IconType.FileManager);
-            DrawNav(canvas, 1, "Wydajnosc", IconType.Settings);
-            DrawNav(canvas, 2, "Szczegoly", IconType.File);
-            DrawNav(canvas, 3, "Uslugi", IconType.Settings);
+            DrawNav(canvas, 0, "Processes", IconType.FileManager);
+            DrawNav(canvas, 1, "Performance", IconType.Settings);
+            DrawNav(canvas, 2, "Details", IconType.File);
+            DrawNav(canvas, 3, "Services", IconType.Settings);
             if (Height < 300)
                 return; // The clock must not overlap compact 2x2 navigation.
             int bottom = Y + Height - 62;
@@ -1642,7 +1642,7 @@ namespace ZonderqOS.GUI.Apps
             if (Width < SidebarWidth + 64 || Height < HeaderHeight + 2)
                 return;
             int contentX = X + SidebarWidth + 8;
-            string title = app.ActivePage == 0 ? "Procesy" : app.ActivePage == 1 ? "Wydajnosc" : app.ActivePage == 2 ? "Szczegoly" : "Uslugi";
+            string title = app.ActivePage == 0 ? "Processes" : app.ActivePage == 1 ? "Performance" : app.ActivePage == 2 ? "Details" : "Services";
             if (Width < 550)
             {
                 // Do not draw REFRESH, END TASK or the clock over the sidebar.
@@ -2097,7 +2097,7 @@ namespace ZonderqOS.GUI.Apps
             DrawKey(canvas, x, row + 100, half, "ONLINE CPU", app.OnlineCpuCount, null);
             DrawKeyText(canvas, x, row + 120, half, "SCHEDULER", app.SchedulerName);
             DrawKey(canvas, x, row + 140, half, "SCHED TICK", app.SchedulerTickUs, "US");
-            DrawKeyText(canvas, x, row + 160, half, "RAM SPRZET", app.HardwareRamText);
+            DrawKeyText(canvas, x, row + 160, half, "HARDWARE RAM", app.HardwareRamText);
 
             int right = x + width / 2 + 8;
             DrawKey(canvas, right, row, half, "RUNNING", (ulong)Math.Max(0, app.RunningThreadCount), null);

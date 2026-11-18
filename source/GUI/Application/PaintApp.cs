@@ -519,7 +519,7 @@ namespace ZonderqOS.GUI.Apps
             curX += 16;
             DrawButton(canvas, curX, tbY + 2, 66, 24, "NOWY", TextColor);
             curX += 72;
-            DrawButton(canvas, curX, tbY + 2, 66, 24, "ZAPISZ", AccentColor);
+            DrawButton(canvas, curX, tbY + 2, 66, 24, "SAVE", AccentColor);
 
             // 2. Color Palette Bar
             int palY = contentY + 34;

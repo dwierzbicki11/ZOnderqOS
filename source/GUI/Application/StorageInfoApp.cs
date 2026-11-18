@@ -24,9 +24,9 @@ namespace ZonderqOS.GUI.Apps
 
         protected override void RenderContent(Canvas canvas)
         {
-            string mode = viewMode == 0 ? "URZADZENIA" : viewMode == 1 ? "PARTYCJE" : "MONTOWANIA";
+            string mode = viewMode == 0 ? "DEVICES" : viewMode == 1 ? "PARTITIONS" : "MOUNTS";
             DrawRow(canvas, 0, IconType.Folder,
-                "WIDOK", "Kliknij aby przejsc: urzadzenia / partycje / montowania", mode, Accent);
+                "VIEW", "Click to cycle: devices / partitions / mounts", mode, Accent);
 
             for (int row = 1; row <= 6; row++)
             {
@@ -40,8 +40,8 @@ namespace ZonderqOS.GUI.Apps
                 else
                 {
                     DrawRow(canvas, row, IconType.File,
-                        row == 1 && itemCount == 0 ? "BRAK DANYCH" : "-",
-                        row == 1 && itemCount == 0 ? "Brak elementow w tym widoku" : string.Empty,
+                        row == 1 && itemCount == 0 ? "NO DATA" : "-",
+                        row == 1 && itemCount == 0 ? "No items in this view" : string.Empty,
                         string.Empty, Muted);
                 }
             }
@@ -159,7 +159,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 int index = offset + row - 1;
                 if (index < itemCount)
-                    SetStatus("ELEMENT WYBRANY - DANE SA TYLKO DO ODCZYTU", Good);
+                    SetStatus("ITEM SELECTED - INFORMATION IS READ-ONLY", Good);
             }
         }
 
