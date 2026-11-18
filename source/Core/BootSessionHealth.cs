@@ -322,10 +322,10 @@ namespace ZonderqOS.SystemCore
                     Console.WriteLine("              SYSTEM ZONDERQOS ZOSTAL WYLACZONY            ");
                     Console.WriteLine("============================================================");
                     Console.WriteLine();
-                    Console.WriteLine("  Wszystkie dane zostaly bezpiecznie zsynchronizowane na USB.");
+                    Console.WriteLine("  All data has been safely synchronized to USB.");
                     Console.WriteLine("  Twoj komputer moze byc teraz bezpiecznie wylaczony.");
                     Console.WriteLine();
-                    Console.WriteLine("  * Nacisnij i przytrzymaj przycisk ZASILANIA na laptopie");
+                    Console.WriteLine("  * Press and hold the laptop POWER button");
                     Console.WriteLine("    lub");
                     Console.WriteLine("  * Nacisnij klawisz [ R ] aby zrestartowac komputer.");
                     Console.WriteLine();
