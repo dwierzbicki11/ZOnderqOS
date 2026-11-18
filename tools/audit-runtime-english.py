@@ -31,7 +31,7 @@ POLISH_STEMS = (
     "instalacj", "istniejac", "katalog", "kategor", "klawisz", "kolejn",
     "komunikat", "konfiguracj", "koniec", "kontroln", "kopia", "kopiowan",
     "kryptograficzn", "ladunk", "liczb", "ladowan", "magazyn", "menedzer",
-    "migawk", "mozna", "mozliwe", "musi", "nacisnij", "naglow", "nastepn",
+    "migawk", "mozna", "mozliwe", "nacisnij", "naglow", "nastepn",
     "niedozwolon", "niekompletn", "nieobslug", "nieoczekiwan",
     "nieodnalezion", "niepoprawn", "nieprawidlow", "nieudan",
     "niebezpieczn", "nieznan", "niezapis", "nowa", "nowy", "obliczan",
@@ -40,7 +40,7 @@ POLISH_STEMS = (
     "pamiec", "partycj", "plikow", "plik", "poczatek", "podaj",
     "podlacz", "podpis", "pominiet", "pomysln", "ponownie", "potwierdz",
     "powiadom", "powtorzon", "poziom", "przerwan", "przygotow",
-    "przywro", "prob", "przelacz", "przeskan", "przypis",
+    "przywro", "proba", "proby", "probie", "probuj", "przelacz", "przeskan", "przypis",
     "rezerw", "rozmiar", "rozpoczn", "rozwiaz", "ruchy", "sciezk",
     "sesja", "sieciow", "skanowan", "skladnik", "slocie", "sprawdz",
     "strefa", "suma", "sumy", "szybk", "szyfrowan", "tablic", "trwa",
@@ -55,7 +55,7 @@ POLISH_STEMS = (
     "zostalo", "zostal", "zweryfikowan", "zwyciestw",
 )
 ACCENTS = re.compile(r"[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]")
-POLISH_WORD = re.compile(r"(?<![a-zA-Z])(?:" + "|".join(POLISH_STEMS) + r")[a-zA-Z]*\b", re.I)
+POLISH_WORD = re.compile(r"(?<![a-zA-Z])(?:" + "|".join(POLISH_STEMS) + r")[a-zA-Z]*\b|\bmusi\b", re.I)
 # Single and double quotes on one line (includes shell and Python messages).
 STRING = re.compile(r"""(?<![A-Za-z0-9_])(?:\$@|@\$|\$|@)?(?:"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')""")
 TRANSLATION_BEGIN = "private static void RegisterPolishStrings()"
@@ -96,6 +96,16 @@ def mask_polish_dictionary(content: str, path: str) -> str:
 
 
 def extract_candidates(text: str, path: str):
+    # Release notes and update manifests contain unquoted human-facing lines.
+    if Path(path).suffix.lower() in (".txt", ".manifest", ".zpkg", ".conf"):
+        for line_no, line in enumerate(text.splitlines(), 1):
+            value = line.strip()
+            if not value or value.startswith("#"):
+                continue
+            if ACCENTS.search(value) or POLISH_WORD.search(value):
+                kind = "diacritic" if ACCENTS.search(value) else "polish-token"
+                yield line_no, kind, value[:170]
+        return
     for line_no, line in enumerate(text.splitlines(), 1):
         trimmed = line.lstrip()
         if trimmed.startswith(("//", "*", "/*", "# ", "#\t")):
@@ -108,6 +118,9 @@ def extract_candidates(text: str, path: str):
             if before.startswith(("//", "#")):
                 continue
             if "//" in before and not ('"' in before or "'" in before):
+                continue
+            if literal.startswith("'") and literal.endswith("'") and len(literal) <= 3:
+                # Glyph tables must retain Unicode character support.
                 continue
             if not ACCENTS.search(literal) and not POLISH_WORD.search(literal):
                 continue
@@ -134,7 +147,7 @@ def main() -> int:
             skipped_binary += 1
             continue
         raw = p.read_bytes()
-        if b"\\0" in raw[:4096]:
+        if b"\0" in raw[:4096]:
             skipped_binary += 1
             continue
         try:
