@@ -574,7 +574,7 @@ namespace ZonderqOS.GUI
                 if (retryAfter != cachedWaitSeconds || string.IsNullOrEmpty(cachedWaitStatus))
                 {
                     cachedWaitSeconds = retryAfter;
-                    cachedWaitStatus = "ZA DUZO PROB - ODCZEKAJ " + retryAfter + " S";
+                    cachedWaitStatus = "TOO MANY ATTEMPTS - WAIT " + retryAfter + " S";
                 }
                 return cachedWaitStatus;
             }
