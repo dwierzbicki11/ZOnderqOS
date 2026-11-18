@@ -529,7 +529,7 @@ namespace ZonderqOS.GUI
                         {
                             SmallTextRenderer.DrawClipped(canvas, "NO NOTIFICATIONS",
                                 cardX + 60, cy + 29, cardWidth - 68, Text);
-                            SmallTextRenderer.DrawClipped(canvas, "System nie ma nic nowego do pokazania.",
+                            SmallTextRenderer.DrawClipped(canvas, "No new notifications to display.",
                                 cardX + 60, cy + 50, cardWidth - 74, Muted);
                         }
                         else if (cardWidth > 20)
