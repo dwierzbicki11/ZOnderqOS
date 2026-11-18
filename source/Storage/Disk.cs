@@ -12,9 +12,18 @@ namespace ZonderqOS
     {
         private static FatFileSystemType fat;
         private static VfsMount _currentMount;
+        private static bool _approvedPersistentRootMounted;
+
+        // Set only after DataVolumePolicy approved a unique ZONDERQDATA and
+        // VFS successfully bound that exact partition at "/".
+        // Never infer permission to write from numeric drive indices.
+        public static bool IsApprovedPersistentRootMounted =>
+            _approvedPersistentRootMounted && _currentMount != null;
 
         public static bool Initialize()
         {
+            _approvedPersistentRootMounted = false;
+            _currentMount = null;
             try
             {
                 fat = new FatFileSystemType();
@@ -76,6 +85,9 @@ namespace ZonderqOS
 #endif
 
                 _currentMount = mount;
+#if !ZONDERQ_3094_RAM_ROOT
+                _approvedPersistentRootMounted = true;
+#endif
 #if ZONDERQ_3094_RAM_ROOT
                 WriteMessage.WriteOK("Mounted ephemeral ZonderqOS FAT32 RAM root at '/' (no physical writes).", "VFS");
 #else
