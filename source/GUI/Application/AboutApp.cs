@@ -13,7 +13,7 @@ namespace ZonderqOS.GUI.Apps
         private string cachedBuildValue;
         private string cachedBuildCaption;
 
-        public AboutApp(int x, int y, Action onClose) : base("O Systemie")
+        public AboutApp(int x, int y, Action onClose) : base("About System")
         {
             closeCallback = onClose;
             Window = new Window(x, y, 560, 300, "O ZOnderqOS");
@@ -55,7 +55,7 @@ namespace ZonderqOS.GUI.Apps
                 if (!string.Equals(cachedVersionValue, curVer, StringComparison.Ordinal))
                 {
                     cachedVersionValue = curVer;
-                    cachedVersionCaption = "WERSJA " + curVer + "  /  COSMOS SDK 3.0.95 X64";
+                    cachedVersionCaption = "VERSION " + curVer + "  /  COSMOS SDK 3.0.95 X64";
                 }
                 IconManager.DrawScaled(canvas, IconType.Start, x + 18, y + 18, 42, 42);
                 UiTypography.Heading(canvas, "ZOnderqOS 1.0 Alpha", x + 78, y + 13,
@@ -72,7 +72,7 @@ namespace ZonderqOS.GUI.Apps
                 if (!string.Equals(cachedBuildValue, curBuild, StringComparison.Ordinal))
                 {
                     cachedBuildValue = curBuild;
-                    cachedBuildCaption = "KOMPILACJA: BUILD " + curBuild + " (X86_64 SINGLE-VCPU NATIVE AOT)";
+                    cachedBuildCaption = "BUILD: " + curBuild + " (X86_64 SINGLE-VCPU NATIVE AOT)";
                 }
                 UiTypography.Caption(canvas, cachedBuildCaption,
                     x + 18, y + 96, System.Math.Max(1, width - 36));
@@ -83,7 +83,7 @@ namespace ZonderqOS.GUI.Apps
                     x + 18, y + 124, System.Math.Max(1, width - 36));
             }
             if (height >= 168)
-                UiTypography.Caption(canvas, "AUTOR: ZONDERQ  /  ZONDERQOS GEN 3 DESKTOP ENVIRONMENT",
+                UiTypography.Caption(canvas, "AUTHOR: ZONDERQ  /  ZONDERQOS GEN 3 DESKTOP ENVIRONMENT",
                     x + 18, y + 152, System.Math.Max(1, width - 36));
         }
     }
