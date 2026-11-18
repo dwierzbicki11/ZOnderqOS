@@ -186,7 +186,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 ClearInputState();
                 inputMode = 1;
-                SetStatus("WPISZ NAZWE NOWEGO UZYTKOWNIKA", Warning);
+                SetStatus("ENTER NEW USERNAME", Warning);
                 return;
             }
 
@@ -359,7 +359,7 @@ namespace ZonderqOS.GUI.Apps
                 if (!global::ZonderqOS.AuthenticationGuard.CanAttempt(actor, out retryAfter))
                 {
                     inputText = string.Empty;
-                    SetStatus("AUTORYZACJA ZABLOKOWANA - ODCZEKAJ " + retryAfter + " S", Danger);
+                    SetStatus("AUTHENTICATION LOCKED - WAIT " + retryAfter + " S", Danger);
                     return;
                 }
 
