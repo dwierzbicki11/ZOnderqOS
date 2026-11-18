@@ -505,7 +505,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 vfsWriteSpeedKb = 0;
                 vfsReadSpeedKb = 0;
-                vfsIntegrity = "Error katalogu VFS";
+                vfsIntegrity = "VFS directory error";
                 return;
             }
 
@@ -905,7 +905,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     cachedMandelTimeLine = mandelbrotTimeMs;
                     cachedMandelLine = mandelbrotTimeMs > 0
-                        ? "✓ Mandelbrot (160x100 arytm. 16.16): " + mandelbrotTimeMs + " ms | CRC-32 (1 MB): " + crcTimeMs + " ms [Suma: 0x" + crcResult.ToString("X8") + "]"
+                        ? "✓ Mandelbrot (160x100 arytm. 16.16): " + mandelbrotTimeMs + " ms | CRC-32 (1 MB): " + crcTimeMs + " ms [Checksum: 0x" + crcResult.ToString("X8") + "]"
                         : "• Mandelbrot complex-set CRC32 check: pending";
                 }
                 SmallTextRenderer.Draw(canvas, cachedMandelLine, wx + 26, dy, mandelbrotTimeMs > 0 ? GreenColor : TextColor);
@@ -1000,7 +1000,7 @@ namespace ZonderqOS.GUI.Apps
             int sy = cy + 16;
             int lineH = 20;
 
-            SmallTextRenderer.Draw(canvas, "JEDNOSTKA CENTRALNA (CPU):", sx, sy, GoldColor);
+            SmallTextRenderer.Draw(canvas, "CENTRAL PROCESSING UNIT (CPU):", sx, sy, GoldColor);
             sy += lineH;
             string brand = hardware != null ? hardware.CpuBrand : "Procesor x86_64";
             SmallTextRenderer.Draw(canvas, "  Model:        " + brand, sx, sy, TextColor);
@@ -1014,7 +1014,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "  Rdzenie:      " + cores + " fizyczne / " + threads + " logiczne (Cosmos BSP: 1 vCPU)", sx, sy, TextColor);
 
             sy += lineH + 6;
-            SmallTextRenderer.Draw(canvas, "PODSYSTEM PAMIECI OPERACYJNEJ (RAM):", sx, sy, AccentColor);
+            SmallTextRenderer.Draw(canvas, "SYSTEM MEMORY (RAM):", sx, sy, AccentColor);
             sy += lineH;
             ulong totalMb = (hardware != null ? hardware.TotalMemoryBytes : 256UL * 1024 * 1024) / (1024 * 1024);
             ulong usedMb = (hardware != null ? hardware.UsedMemoryBytes : 48UL * 1024 * 1024) / (1024 * 1024);
