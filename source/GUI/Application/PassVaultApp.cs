@@ -333,7 +333,7 @@ namespace ZonderqOS.GUI.Apps
                     if (!TryHexToBytes(cipherHex, out byte[] cipherBytes))
                     {
                         entries.Clear();
-                        statusMessage = "Uszkodzony szyfrogram bazy!";
+                        statusMessage = "Vault ciphertext is corrupted!";
                         statusColor = RedColor;
                         return false;
                     }
@@ -383,7 +383,7 @@ namespace ZonderqOS.GUI.Apps
                     if (!TryHexToBytes(cipherHex, out byte[] cipherBytes))
                     {
                         entries.Clear();
-                        statusMessage = "Uszkodzony szyfrogram bazy!";
+                        statusMessage = "Vault ciphertext is corrupted!";
                         statusColor = RedColor;
                         return false;
                     }
@@ -617,7 +617,7 @@ namespace ZonderqOS.GUI.Apps
                 if (isChangingPin)
                 {
                     isChangingPin = false;
-                    statusMessage = "Anulowano zmiane PINu.";
+                    statusMessage = "PIN change cancelled.";
                     return;
                 }
                 Close();
@@ -1058,7 +1058,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, maskedPass, x + 14, y + 92, TextColor);
 
             // Buttons: [KOPIUJ], [POKAZ]
-            DrawBtn(canvas, "KOPIUJ", x + 150, y + 86, 75, 24, AccentColor);
+            DrawBtn(canvas, "COPY", x + 150, y + 86, 75, 24, AccentColor);
             DrawBtn(canvas, showPassword ? "UKRYJ" : "POKAZ", x + 235, y + 86, 80, 24, TextColor);
 
             // Entropy strength meter
@@ -1076,7 +1076,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, entry.Notes, x + 14, y + 192, TextColor);
 
             // Security Info footer
-            SmallTextRenderer.Draw(canvas, "Szyfrowanie: PBKDF2 + SHA-256 HMAC | Autoblokada: 90 s", x + 14, y + h - 26, MutedColor);
+            SmallTextRenderer.Draw(canvas, "Encryption: PBKDF2 + SHA-256 HMAC | Auto-lock: 90 s", x + 14, y + h - 26, MutedColor);
 
             // Delete button
             DrawBtn(canvas, "DELETE ENTRY", x + w - 95, y + h - 34, 85, 24, RedColor);
