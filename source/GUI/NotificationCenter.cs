@@ -32,7 +32,7 @@ namespace ZonderqOS.GUI
             }
         }
 
-        private static readonly string[] FilterLabels = { "WSZYSTKIE", "NIEPRZECZYTANE", "WAZNE" };
+        private static readonly string[] FilterLabels = { "ALL", "UNREAD", "IMPORTANT" };
         private static readonly Color Background = Color.FromArgb(20, 25, 31);
         private static readonly Color Header = Color.FromArgb(27, 34, 42);
         private static readonly Color Panel = Color.FromArgb(30, 37, 45);
@@ -527,14 +527,14 @@ namespace ZonderqOS.GUI
                             IconManager.DrawScaled(canvas, IconType.About, cardX + 18, cy + 27, 28, 28);
                         if (cardWidth > 74)
                         {
-                            SmallTextRenderer.DrawClipped(canvas, "BRAK POWIADOMIEN",
+                            SmallTextRenderer.DrawClipped(canvas, "NO NOTIFICATIONS",
                                 cardX + 60, cy + 29, cardWidth - 68, Text);
                             SmallTextRenderer.DrawClipped(canvas, "System nie ma nic nowego do pokazania.",
                                 cardX + 60, cy + 50, cardWidth - 74, Muted);
                         }
                         else if (cardWidth > 20)
                         {
-                            SmallTextRenderer.DrawClipped(canvas, "BRAK", cardX + 8, cy + 34,
+                            SmallTextRenderer.DrawClipped(canvas, "NONE", cardX + 8, cy + 34,
                                 cardWidth - 16, Text);
                         }
                     }
