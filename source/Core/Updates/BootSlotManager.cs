@@ -336,7 +336,7 @@ namespace ZonderqOS.SystemCore.Updates
                     {
                         EmergencyRecoveryNeeded = true;
                         SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT",
-                            "KRYTYCZNE: rollback shared payload failed: " + rollbackError);
+                            "CRITICAL: shared payload rollback failed: " + rollbackError);
                         return;
                     }
                     // Automatic failover to fallback slot!
@@ -758,7 +758,7 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
-                error = "Error podczas aktywacji slotu: " + ex.Message;
+                error = "Slot activation error: " + ex.Message;
                 if (stateWasMutated)
                 {
                     ActiveSlot = previousActive;
