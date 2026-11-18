@@ -10,29 +10,28 @@ namespace ZonderqOS.SystemCore.Diagnostics
 
         public static bool TryFindZonderqDataRoot(out string rootPath)
         {
-            string[] candidates = { @"0:\", @"1:\" };
-            for (int i = 0; i < candidates.Length; i++)
+            // Disk.Initialize() binds ONLY the uniquely approved ZONDERQDATA
+            // FAT32 partition to "/"; never guess 0:/1: or scan foreign disks.
+            const string root = "/";
+            try
             {
-                string root = candidates[i];
-                try
+                string state = Path.Combine(root, "boot", "boot_state.cfg");
+                if (Directory.Exists(root) && File.Exists(state))
                 {
-                    if (!Directory.Exists(root))
-                        continue;
-
-                    // Never touch EFI or Kali partitions
-                    if (Directory.Exists(Path.Combine(root, "EFI")) ||
-                        Directory.Exists(Path.Combine(root, "boot")))
-                        continue;
-
-                    rootPath = root;
-                    return true;
-                }
-                catch
-                {
-                    // Skip unreadable root
+                    using (var reader = new StreamReader(state))
+                    {
+                        if (reader.ReadLine() == "# ZonderqOS A/B Bootloader State Configuration")
+                        {
+                            rootPath = root;
+                            return true;
+                        }
+                    }
                 }
             }
-
+            catch (Exception)
+            {
+                // Fail closed without touching any disk.
+            }
             rootPath = null;
             return false;
         }
@@ -54,13 +53,19 @@ namespace ZonderqOS.SystemCore.Diagnostics
                 expectedSum += b;
             }
 
+            bool directoryCreated = false;
+            bool fileCreated = false;
             try
             {
-                if (!Directory.Exists(diagDir))
-                    Directory.CreateDirectory(diagDir);
+                // A previous run's files or unknown user data must never be overwritten.
+                if (Directory.Exists(diagDir) || File.Exists(diagDir))
+                    return (false, "Istniejacy katalog diagnostyczny: odmowa nadpisania", "existing_diag_path");
+                Directory.CreateDirectory(diagDir);
+                directoryCreated = true;
 
-                using (var fs = new FileStream(testFile, FileMode.Create, FileAccess.Write))
+                using (var fs = new FileStream(testFile, FileMode.CreateNew, FileAccess.Write))
                 {
+                    fileCreated = true;
                     fs.Write(writeBuf, 0, size);
                     fs.Flush();
                 }
@@ -97,8 +102,8 @@ namespace ZonderqOS.SystemCore.Diagnostics
             {
                 try
                 {
-                    if (File.Exists(testFile)) File.Delete(testFile);
-                    if (Directory.Exists(diagDir)) Directory.Delete(diagDir, false);
+                    if (fileCreated && File.Exists(testFile)) File.Delete(testFile);
+                    if (directoryCreated && Directory.Exists(diagDir)) Directory.Delete(diagDir, false);
                 }
                 catch
                 {

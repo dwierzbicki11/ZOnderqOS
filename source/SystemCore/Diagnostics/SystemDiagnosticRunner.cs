@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using ZonderqOS.SystemCore;
+using ZonderqOS.SystemCore.Updates;
 
 namespace ZonderqOS.SystemCore.Diagnostics
 {
@@ -193,10 +194,10 @@ namespace ZonderqOS.SystemCore.Diagnostics
             Results.Add(new DiagnosticResult
             {
                 Name = "App Cycles (100x)",
-                Status = completed == 100 ? DiagnosticStatus.Pass : DiagnosticStatus.Skipped,
-                Reason = completed == 100 ? "100 cykli diagnostycznych zakonczonych" : $"Przerwano po {completed}/100",
+                Status = DiagnosticStatus.NotTested,
+                Reason = "Nie wykonywano operacji GUI; petla nie jest testem otwierania aplikacji",
                 DurationMs = sw.ElapsedMilliseconds,
-                Metrics = $"cycles={completed}/100"
+                Metrics = $"simulated_iterations={completed};real_app_cycles=0"
             });
         }
 
@@ -237,7 +238,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
             Results.Add(new DiagnosticResult
             {
                 Name = "Auth (50x Lock + 20x Wrong)",
-                Status = ok ? DiagnosticStatus.Pass : DiagnosticStatus.Fail,
+                Status = DiagnosticStatus.NotTested,
                 Reason = reason,
                 DurationMs = sw.ElapsedMilliseconds,
                 Metrics = metrics
@@ -264,8 +265,8 @@ namespace ZonderqOS.SystemCore.Diagnostics
             Results.Add(new DiagnosticResult
             {
                 Name = "RAM Soak 60 min",
-                Status = includeSoak60Min ? DiagnosticStatus.Pass : DiagnosticStatus.Skipped,
-                Reason = includeSoak60Min ? "Pomiary 0/10/20/30/60 min aktywne" : "Tryb szybki (--quick); pominieto soak 60 min",
+                Status = includeSoak60Min ? DiagnosticStatus.NotTested : DiagnosticStatus.Skipped,
+                Reason = includeSoak60Min ? "Nie wykonano pomiaru 3600s: wymagany osobny test rzeczywisty" : "Tryb szybki (--quick); pominieto soak 60 min",
                 DurationMs = 0,
                 Metrics = $"startKB={startRamBytes / 1024},peakKB={peakRamBytes / 1024}"
             });
@@ -273,10 +274,10 @@ namespace ZonderqOS.SystemCore.Diagnostics
             Results.Add(new DiagnosticResult
             {
                 Name = "Reboot Resume",
-                Status = includeRebootTest ? DiagnosticStatus.Pass : DiagnosticStatus.NotTested,
-                Reason = includeRebootTest ? "Stan restartu zapisany" : "Wymaga jawnej flagi --reboot-resume",
+                Status = DiagnosticStatus.NotTested,
+                Reason = "Nie wykonano testu ponownego rozruchu; sama flaga nie oznacza sukcesu",
                 DurationMs = 0,
-                Metrics = includeRebootTest ? "armed" : "opt-in"
+                Metrics = includeRebootTest ? "requested_not_executed" : "not_requested"
             });
         }
 
@@ -295,18 +296,33 @@ namespace ZonderqOS.SystemCore.Diagnostics
                     LastReportPath = mdPath;
                     return;
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Fallback to console/COM1
+                    LastReportPath = "REPORT_WRITE_FAILED: " + ex.Message;
+                    return;
                 }
             }
-            LastReportPath = "COM1/Console";
+            LastReportPath = "REPORT_NOT_WRITTEN: ZONDERQDATA root not verified";
         }
 
         public string ExportMarkdown()
         {
             var sb = new StringBuilder();
             sb.AppendLine("# ZOnderqOS System Benchmark & Diagnostics");
+            sb.AppendLine("Kernel: " + KernelBuildInfo.KernelVersion +
+                " (build " + KernelBuildInfo.KernelBuild + ")");
+            sb.AppendLine("Runtime: " + KernelBuildInfo.CosmosVersion +
+                ", arch: " + KernelBuildInfo.Architecture);
+            sb.AppendLine("Boot slot: " + BootSlotManager.ActiveSlot +
+                ", fallback: " + BootSlotManager.FallbackSlot +
+                ", pending: " + (string.IsNullOrEmpty(BootSlotManager.PendingSlot) ? "none" : BootSlotManager.PendingSlot));
+            sb.AppendLine("Boot attempts: " + BootSlotManager.BootAttempts +
+                "/" + BootSlotManager.MaxBootAttempts);
+            sb.AppendLine("BOOTGUARD_PREBOOT config: " +
+                (BootSlotManager.PrebootGuardEnabled ? "1" : "0") +
+                " (state flag only; not EFI execution attestation)");
+            sb.AppendLine("Report status: observed tests only; NotTested/Skipped are not PASS.");
+            sb.AppendLine();
             sb.AppendLine("| Test | Status | Czas (ms) | Metryki | Uzasadnienie |");
             sb.AppendLine("|------|--------|-----------|---------|--------------|");
             for (int i = 0; i < Results.Count; i++)

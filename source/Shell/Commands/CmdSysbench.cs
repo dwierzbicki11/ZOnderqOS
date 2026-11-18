@@ -46,6 +46,7 @@ namespace ZonderqOS.Commands
 
             Console.WriteLine(runner.ExportMarkdown());
             Console.WriteLine($"[sysbench] Raport: {runner.LastReportPath}");
+            Console.WriteLine("[sysbench] Skopiuj sysbench_report.md z ZONDERQDATA na pendrivie.");
         }
     }
 }

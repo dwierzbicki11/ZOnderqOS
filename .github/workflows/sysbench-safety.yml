@@ -1,0 +1,33 @@
+name: Alpha 1 sysbench safety contracts
+
+on:
+  pull_request:
+    paths:
+      - 'source/SystemCore/Diagnostics/**'
+      - 'source/Shell/Commands/CmdSysbench.cs'
+      - 'source/GUI/Application/SysBenchmarkApp.cs'
+      - 'tests/test_sysbench_safety_contracts.py'
+      - '.github/workflows/sysbench-safety.yml'
+  push:
+    branches:
+      - 'fix/alpha1-sysbench-safe-report'
+
+jobs:
+  source-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run sysbench safety contract tests
+        run: |
+          python3 -m unittest discover -s tests -p 'test_sysbench_safety_contracts.py' -v
+          python3 - <<'PY'
+          import runpy
+          scope = runpy.run_path('tests/test_sysbench_diagnostics.py')
+          tests = sorted((name, fn) for name, fn in scope.items()
+                         if name.startswith('test_') and callable(fn))
+          for name, fn in tests:
+              fn()
+              print(name, 'PASS')
+          print(len(tests), 'existing sysbench contracts PASS')
+          PY
