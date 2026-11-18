@@ -116,7 +116,7 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
             RefreshData();
-            SetStatus("KONFIGURACJA ZASTOSOWANA", Good);
+            SetStatus("CONFIGURATION APPLIED", Good);
         }
     }
 }
