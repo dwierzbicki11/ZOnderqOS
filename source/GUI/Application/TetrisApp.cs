@@ -508,7 +508,7 @@ namespace ZonderqOS.GUI.Apps
 
             // Score
             int statsY = previewBoxY + 95;
-            SmallTextRenderer.Draw(canvas, "WYNIK", sideX, statsY, MutedColor);
+            SmallTextRenderer.Draw(canvas, "SCORE", sideX, statsY, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, score, sideX, statsY + 14, AccentColor);
 
             // Lines
@@ -522,11 +522,11 @@ namespace ZonderqOS.GUI.Apps
             // Controls legend
             int controlsY = statsY + 118;
             SmallTextRenderer.Draw(canvas, "STEROWANIE", sideX, controlsY, MutedColor);
-            SmallTextRenderer.Draw(canvas, "< > - Ruch", sideX, controlsY + 14, TextColor);
+            SmallTextRenderer.Draw(canvas, "< > - Move", sideX, controlsY + 14, TextColor);
             SmallTextRenderer.Draw(canvas, "^   - Obrot", sideX, controlsY + 26, TextColor);
             SmallTextRenderer.Draw(canvas, "v   - Opad", sideX, controlsY + 38, TextColor);
             SmallTextRenderer.Draw(canvas, "SPC - Zrzut", sideX, controlsY + 50, TextColor);
-            SmallTextRenderer.Draw(canvas, "P   - Pauza", sideX, controlsY + 62, TextColor);
+            SmallTextRenderer.Draw(canvas, "P   - Pause", sideX, controlsY + 62, TextColor);
 
             // Overlay message for Ready / GameOver / Paused
             if (status == GameStatus.Ready)
@@ -535,11 +535,11 @@ namespace ZonderqOS.GUI.Apps
             }
             else if (status == GameStatus.GameOver)
             {
-                RenderCenterPrompt(canvas, gridX, gridY, "KONIEC GRY!", Color.FromArgb(240, 70, 70));
+                RenderCenterPrompt(canvas, gridX, gridY, "GAME OVER!", Color.FromArgb(240, 70, 70));
             }
             else if (status == GameStatus.Paused)
             {
-                RenderCenterPrompt(canvas, gridX, gridY, "PAUZA", Color.FromArgb(240, 200, 50));
+                RenderCenterPrompt(canvas, gridX, gridY, "PAUSED", Color.FromArgb(240, 200, 50));
             }
         }
 
