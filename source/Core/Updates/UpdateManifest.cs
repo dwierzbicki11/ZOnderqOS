@@ -89,13 +89,13 @@ namespace ZonderqOS.SystemCore.Updates
 
             if (string.IsNullOrWhiteSpace(content))
             {
-                error = "Manifest jest pusty.";
+                error = "Manifest is empty.";
                 return false;
             }
 
             if (content.Length > 1024 * 1024)
             {
-                error = "Manifest przekracza limit 1 MiB.";
+                error = "Manifest exceeds the 1 MiB limit.";
                 return false;
             }
 
@@ -130,7 +130,7 @@ namespace ZonderqOS.SystemCore.Updates
                     key == "HMAC" ? "SIGNATURE" : key;
                 if (canonicalKey != "FILE" && !singletonKeys.Add(canonicalKey))
                 {
-                    error = "Powtorzone pole manifestu: " + canonicalKey;
+                    error = "Duplicate manifest field: " + canonicalKey;
                     return false;
                 }
 
