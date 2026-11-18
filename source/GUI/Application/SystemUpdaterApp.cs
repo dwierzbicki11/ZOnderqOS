@@ -409,7 +409,7 @@ namespace ZonderqOS.GUI.Apps
             if (isBusy || !RequireRootAccess("reboot"))
                 return;
 
-            statusMessage = "Restartowanie systemu ZOnderqOS...";
+            statusMessage = "Restarting ZOnderqOS...";
             statusColor = GoldColor;
             global::ZonderqOS.SystemCore.SystemPower.Reboot("gui-update-reboot");
         }
@@ -535,7 +535,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 UpdatePackageInfo pkg = UpdateManager.AvailablePackage;
                 UiPainter.RoundedPanel(canvas, x, y, w, h, 4, Panel, AccentColor);
-                string signText = pkg.IsSigned ? (pkg.IsSignatureValid ? " [PODPIS OK]" : " [ZLY PODPIS]") : "";
+                string signText = pkg.IsSigned ? (pkg.IsSignatureValid ? " [SIGNATURE OK]" : " [INVALID SIGNATURE]") : "";
                 SmallTextRenderer.Draw(canvas, "USB package: " + pkg.Version + " - " + pkg.Title + signText, x + 12, y + 11, TextColor);
                 DrawButton(canvas, "INSTALL NOW", x + w - 158, y + 4, 150, 28, AccentColor, AccentColor, TextColor);
             }
@@ -543,7 +543,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 UiPainter.RoundedPanel(canvas, x, y, w, h, 4, Panel, GoldColor);
                 SmallTextRenderer.Draw(canvas, "Update installed. Restart will load the new kernel from slot " + BootSlotManager.ActiveSlot, x + 12, y + 11, GoldColor);
-                DrawButton(canvas, "ZRESTARTUJ TERAZ", x + w - 158, y + 4, 150, 28, GoldColor, GoldColor, Color.Black);
+                DrawButton(canvas, "RESTART NOW", x + w - 158, y + 4, 150, 28, GoldColor, GoldColor, Color.Black);
             }
             else
             {
@@ -618,13 +618,13 @@ namespace ZonderqOS.GUI.Apps
                 lineY += 22;
 
                 canvas.DrawFilledRectangle(AccentColor, x + 16, lineY + 4, 6, 6);
-                SmallTextRenderer.Draw(canvas, "Instalacja do slotu: " + BootSlotManager.GetInactiveSlot() + " z pelnym zachowaniem poprzedniej wersji.", x + 30, lineY, AccentColor);
+                SmallTextRenderer.Draw(canvas, "Installing to slot: " + BootSlotManager.GetInactiveSlot() + " while preserving the previous version.", x + 30, lineY, AccentColor);
             }
             else if (activeTab == 2)
             {
                 // Tab 2: Dual Boot Slots A/B & Storage Environment
                 SmallTextRenderer.Draw(canvas, "A/B boot layout and Limine slot diagnostics:", x + 14, y + 10, AccentColor);
-                SmallTextRenderer.Draw(canvas, $"Aktywny: Slot {BootSlotManager.ActiveSlot} | Rezerwowy: Slot {BootSlotManager.FallbackSlot} | Stan: {(KernelBuildInfo.IsHealthyAndConfirmed ? "ZATWIERDZONY (HEALTHY)" : "OCZEKUJE")}", x + 14, y + 26, MutedColor);
+                SmallTextRenderer.Draw(canvas, $"Active: Slot {BootSlotManager.ActiveSlot} | Fallback: Slot {BootSlotManager.FallbackSlot} | Status: {(KernelBuildInfo.IsHealthyAndConfirmed ? "CONFIRMED (HEALTHY)" : "OCZEKUJE")}", x + 14, y + 26, MutedColor);
                 canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
 
                 int lineY = y + 50;
@@ -632,18 +632,18 @@ namespace ZonderqOS.GUI.Apps
                 // Slot A
                 Color ca = BootSlotManager.ActiveSlot == BootSlotManager.SlotA ? GreenColor : MutedColor;
                 canvas.DrawFilledRectangle(ca, x + 16, lineY + 4, 6, 6);
-                SmallTextRenderer.Draw(canvas, $"SLOT A: {BootSlotManager.SlotAPath} [Version: {BootSlotManager.SlotAVersion}, Stan: {BootSlotManager.SlotAStatus}]", x + 30, lineY, TextColor);
+                SmallTextRenderer.Draw(canvas, $"SLOT A: {BootSlotManager.SlotAPath} [Version: {BootSlotManager.SlotAVersion}, Status: {BootSlotManager.SlotAStatus}]", x + 30, lineY, TextColor);
                 lineY += 23;
 
                 // Slot B
                 Color cb = BootSlotManager.ActiveSlot == BootSlotManager.SlotB ? GreenColor : MutedColor;
                 canvas.DrawFilledRectangle(cb, x + 16, lineY + 4, 6, 6);
-                SmallTextRenderer.Draw(canvas, $"SLOT B: {BootSlotManager.SlotBPath} [Version: {BootSlotManager.SlotBVersion}, Stan: {BootSlotManager.SlotBStatus}]", x + 30, lineY, TextColor);
+                SmallTextRenderer.Draw(canvas, $"SLOT B: {BootSlotManager.SlotBPath} [Version: {BootSlotManager.SlotBVersion}, Status: {BootSlotManager.SlotBStatus}]", x + 30, lineY, TextColor);
                 lineY += 23;
 
                 // Watchdog state
                 canvas.DrawFilledRectangle(AccentColor, x + 16, lineY + 4, 6, 6);
-                SmallTextRenderer.Draw(canvas, $"Watchdog rozruchu: Proby: {BootSlotManager.BootAttempts}/{BootSlotManager.MaxBootAttempts} (Automatyczny failover po 3 nieudanych startach)", x + 30, lineY, TextColor);
+                SmallTextRenderer.Draw(canvas, $"Boot watchdog: Attempts: {BootSlotManager.BootAttempts}/{BootSlotManager.MaxBootAttempts} (automatic failover after 3 failed boots)", x + 30, lineY, TextColor);
                 lineY += 23;
 
                 // Storage environment
