@@ -266,7 +266,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
             {
                 Name = "RAM Soak 60 min",
                 Status = includeSoak60Min ? DiagnosticStatus.NotTested : DiagnosticStatus.Skipped,
-                Reason = includeSoak60Min ? "Nie wykonano pomiaru 3600s: wymagany osobny test rzeczywisty" : "Quick mode (--quick); 60-min soak skipped",
+                Reason = includeSoak60Min ? "3600s measurement was not performed: separate real test required" : "Quick mode (--quick); 60-min soak skipped",
                 DurationMs = 0,
                 Metrics = $"startKB={startRamBytes / 1024},peakKB={peakRamBytes / 1024}"
             });
@@ -275,7 +275,7 @@ namespace ZonderqOS.SystemCore.Diagnostics
             {
                 Name = "Reboot Resume",
                 Status = DiagnosticStatus.NotTested,
-                Reason = "Nie wykonano testu ponownego rozruchu; sama flaga nie oznacza sukcesu",
+                Reason = "Reboot-resume was not tested; a status flag alone does not indicate success",
                 DurationMs = 0,
                 Metrics = includeRebootTest ? "requested_not_executed" : "not_requested"
             });
