@@ -178,7 +178,7 @@ namespace ZonderqOS.GUI.Apps
                 int toolH = 24;
 
                 if (Hit(mouseX, mouseY, toolX, toolY, toolW, toolH)) { currentTool = 0; statusMessage = "Tool: Pencil"; return; }
-                if (Hit(mouseX, mouseY, toolX, toolY + 28, toolW, toolH)) { currentTool = 1; statusMessage = "Narzedzie: Gumka"; return; }
+                if (Hit(mouseX, mouseY, toolX, toolY + 28, toolW, toolH)) { currentTool = 1; statusMessage = "Tool: Eraser"; return; }
                 if (Hit(mouseX, mouseY, toolX, toolY + 56, toolW, toolH)) { currentTool = 2; statusMessage = "Tool: Fill"; return; }
 
                 // Canvas transformations
@@ -186,7 +186,7 @@ namespace ZonderqOS.GUI.Apps
                 int actY = wy + 16;
                 int actW = 125;
                 if (Hit(mouseX, mouseY, actX, actY, actW, toolH)) { FlipHorizontal(); statusMessage = "Flipped horizontally (Flip X)."; return; }
-                if (Hit(mouseX, mouseY, actX, actY + 28, actW, toolH)) { FlipVertical(); statusMessage = "Odbito w pionie (Flip Y)."; return; }
+                if (Hit(mouseX, mouseY, actX, actY + 28, actW, toolH)) { FlipVertical(); statusMessage = "Flipped vertically (Y axis)."; return; }
                 if (Hit(mouseX, mouseY, actX, actY + 56, actW, toolH)) { InvertColors(); statusMessage = "Colors inverted."; return; }
                 if (Hit(mouseX, mouseY, actX, actY + 84, actW, toolH)) { ClearCanvas(); statusMessage = "Canvas cleared."; return; }
 
@@ -544,7 +544,7 @@ namespace ZonderqOS.GUI.Apps
 
             SmallTextRenderer.Draw(canvas, "NARZEDZIA", toolX, toolY - 12, AccentColor);
             DrawToolBtn(canvas, "✏ Olowek", toolX, toolY, toolW, toolH, currentTool == 0);
-            DrawToolBtn(canvas, "⌧ Gumka", toolX, toolY + 28, toolW, toolH, currentTool == 1);
+            DrawToolBtn(canvas, "⌧ Eraser", toolX, toolY + 28, toolW, toolH, currentTool == 1);
             DrawToolBtn(canvas, "▼ Wypelnij", toolX, toolY + 56, toolW, toolH, currentTool == 2);
 
             // 4. Transform Actions
@@ -580,8 +580,8 @@ namespace ZonderqOS.GUI.Apps
 
             // 6. Action and Export Buttons
             int expY = wy + 260;
-            DrawToolBtn(canvas, "💾 Eksport C#", wx + 16, expY, 130, 28, false);
-            DrawToolBtn(canvas, "📜 Eksport BASIC", wx + 154, expY, 130, 28, false);
+            DrawToolBtn(canvas, "💾 Export C#", wx + 16, expY, 130, 28, false);
+            DrawToolBtn(canvas, "📜 Export BASIC", wx + 154, expY, 130, 28, false);
             DrawToolBtn(canvas, "⬆ Save .SPR", wx + 292, expY, 135, 28, false);
             DrawToolBtn(canvas, "⬇ Load .SPR", wx + 434, expY, 135, 28, false);
 
