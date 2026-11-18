@@ -130,7 +130,10 @@ def validate(serial: str, pcap: bytes) -> str:
     # TCP FIN after a completed echo is normal socket teardown. Earlier
     # FINs and all RSTs still invalidate the isolated exchange. Evaluate
     # packets in capture order rather than rejecting legitimate cleanup.
-    completed_flows = set()
+    # Track the response's exact TCP sequence space, not only its port.
+    # A forged FIN on the same ephemeral port must not inherit permission
+    # from a valid echo response with unrelated sequence numbers.
+    completed_flows = {}
     for packet in packets:
         outbound = (packet["src"] == guest and packet["dst"] == SERVER and
                     packet["src_mac"] == MAC and packet["dport"] == PORT)
@@ -145,13 +148,26 @@ def validate(serial: str, pcap: bytes) -> str:
         # port must not authorize FIN on an unrelated socket.
         flow_port = packet["sport"] if outbound else packet["dport"]
         if flags & 0x01:
-            if (flow_port not in completed_flows or flags != 0x11
-                    or packet["payload"]):
+            completed = completed_flows.get(flow_port)
+            if (completed is None or flags != 0x11 or packet["payload"]):
                 raise ValueError("premature or malformed N4 TCP FIN")
+            response_end, request_end = completed
+            # The host FIN consumes the byte immediately after its echo;
+            # the guest FIN follows its request and ACKs the echo (or the
+            # host FIN's extra sequence byte if it arrived first).
+            if inbound:
+                valid_sequence = (packet["seq"] == response_end and
+                                  packet["ack"] == request_end)
+            else:
+                valid_sequence = (packet["seq"] == request_end and
+                                  packet["ack"] in (response_end, (response_end + 1) & 0xFFFFFFFF))
+            if not valid_sequence:
+                raise ValueError("N4 TCP FIN sequence/ack mismatch")
             continue
         if (not outbound and packet["payload"] == RESPONSE and
                 flags in (0x10, 0x18)):
-            completed_flows.add(flow_port)
+            completed_flows[flow_port] = (
+                (packet["seq"] + len(RESPONSE)) & 0xFFFFFFFF, packet["ack"])
         if flags & 0x02:  # SYN, including SYN-ACK
             expected = 0x02 if outbound else 0x12
             if flags != expected or packet["payload"] or (outbound and packet["ack"] != 0):
@@ -301,6 +317,19 @@ def self_test() -> None:
         fake_tcp(False, 0x11, 1001 + len(REQUEST), 5002 + len(RESPONSE)),
     ]
     assert "PASS" in validate(serial, synthetic_capture(teardown))
+    # A FIN with the correct port and flags but unrelated TCP sequence
+    # must not be accepted just because the echo has completed.
+    for bad_fin in (
+        fake_tcp(True, 0x11, 5000, 1001 + len(REQUEST)),
+        fake_tcp(False, 0x11, 1001 + len(REQUEST) + 7,
+                 5001 + len(RESPONSE)),
+    ):
+        try:
+            validate(serial, synthetic_capture(frames + [bad_fin]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted FIN outside completed TCP sequence space")
     # An echo completed on port 49152 cannot authorize a FIN on a
     # different ephemeral TCP connection to the same server port.
     unrelated_fin = frames + [
