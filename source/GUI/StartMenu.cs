@@ -680,7 +680,7 @@ namespace ZonderqOS.GUI
                     button.Y + (CompactLayout ? 10 : 17),
                     Math.Max(18, button.Width - (CompactLayout ? 37 : 43)), Text);
 
-                if (HasPendingUpdate && toolLabels[i] != null && toolLabels[i].IndexOf("Aktualizac", StringComparison.OrdinalIgnoreCase) >= 0)
+                if (HasPendingUpdate && toolLabels[i] != null && toolLabels[i].IndexOf("Update", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     int dotX = button.X + button.Width - 14;
                     int dotY = button.Y + 6;
