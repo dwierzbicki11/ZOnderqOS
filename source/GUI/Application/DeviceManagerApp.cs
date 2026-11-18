@@ -74,7 +74,7 @@ namespace ZonderqOS.GUI.Apps
                         names[itemCount] = device.Name;
                         descriptions[itemCount] = "MAC " + device.MacAddress;
                         bool active = device == global::ZonderqOS.Network.ActiveDevice;
-                        values[itemCount] = active ? "AKTYWNY" : device.LinkUp ? "LINK UP" : device.Ready ? "GOTOWY" : "OFFLINE";
+                        values[itemCount] = active ? "ACTIVE" : device.LinkUp ? "LINK UP" : device.Ready ? "READY" : "OFFLINE";
                         if (active)
                             selectedIndex = itemCount;
                         itemCount++;
@@ -159,7 +159,7 @@ namespace ZonderqOS.GUI.Apps
                     }
                     StorageManager.RescanPartitions(device);
                     RefreshData();
-                    SetStatus("PONOWNIE ODCZYTANO TABLICE PARTYCJI", Good);
+                    SetStatus("PARTITION TABLE RELOADED", Good);
                 }
                 catch
                 {
