@@ -130,7 +130,7 @@ def validate(serial: str, pcap: bytes) -> str:
     # TCP FIN after a completed echo is normal socket teardown. Earlier
     # FINs and all RSTs still invalidate the isolated exchange. Evaluate
     # packets in capture order rather than rejecting legitimate cleanup.
-    echo_completed = False
+    completed_flows = set()
     for packet in packets:
         outbound = (packet["src"] == guest and packet["dst"] == SERVER and
                     packet["src_mac"] == MAC and packet["dport"] == PORT)
@@ -141,13 +141,17 @@ def validate(serial: str, pcap: bytes) -> str:
         flags = packet["flags"]
         if flags & 0x04:
             raise ValueError("unexpected N4 TCP RST control packet")
+        # Completion is per TCP 4-tuple. A valid echo on one ephemeral
+        # port must not authorize FIN on an unrelated socket.
+        flow_port = packet["sport"] if outbound else packet["dport"]
         if flags & 0x01:
-            if not echo_completed or flags != 0x11 or packet["payload"]:
+            if (flow_port not in completed_flows or flags != 0x11
+                    or packet["payload"]):
                 raise ValueError("premature or malformed N4 TCP FIN")
             continue
         if (not outbound and packet["payload"] == RESPONSE and
                 flags in (0x10, 0x18)):
-            echo_completed = True
+            completed_flows.add(flow_port)
         if flags & 0x02:  # SYN, including SYN-ACK
             expected = 0x02 if outbound else 0x12
             if flags != expected or packet["payload"] or (outbound and packet["ack"] != 0):
@@ -297,6 +301,18 @@ def self_test() -> None:
         fake_tcp(False, 0x11, 1001 + len(REQUEST), 5002 + len(RESPONSE)),
     ]
     assert "PASS" in validate(serial, synthetic_capture(teardown))
+    # An echo completed on port 49152 cannot authorize a FIN on a
+    # different ephemeral TCP connection to the same server port.
+    unrelated_fin = frames + [
+        fake_tcp(True, 0x11, 5001 + len(RESPONSE),
+                 1001 + len(REQUEST), sport=49153),
+    ]
+    try:
+        validate(serial, synthetic_capture(unrelated_fin))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted FIN from unrelated TCP flow")
     # IPv4 reserved flag (0x8000) is invalid even when DF/MF/offset are clear.
     # Recompute the IP checksum so this negative case isolates flag validation.
     reserved = bytearray(frames[-1])
