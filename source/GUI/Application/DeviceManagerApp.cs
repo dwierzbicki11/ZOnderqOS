@@ -45,7 +45,7 @@ namespace ZonderqOS.GUI.Apps
             }
 
             DrawRow(canvas, 6, IconType.Refresh,
-                viewMode == 0 ? "USTAW AKTYWNY INTERFEJS" : "PONOWNIE SKANUJ PARTYCJE",
+                viewMode == 0 ? "USTAW AKTYWNY INTERFEJS" : "RESCAN PARTITIONS",
                 viewMode == 0 ? "Apply the saved IPv4 profile to the selected adapter" : "No formatting; rescan the partition table only",
                 itemCount > 0 ? "EXECUTE" : "NONE", itemCount > 0 ? Warning : Muted);
         }
