@@ -625,7 +625,7 @@ namespace ZonderqOS.GUI.Apps
             if (application == null)
                 return;
 
-            string appName = application.Name ?? "Aplikacja";
+            string appName = application.Name ?? "Application";
             string errorMsg = ex != null ? ex.Message : "Unknown error";
 
             try
@@ -639,7 +639,7 @@ namespace ZonderqOS.GUI.Apps
                     global::ZonderqOS.NotificationKind.Warning,
                     "AWARIA APLIKACJI",
                     appName,
-                    $"Aplikacja zostala bezpiecznie zamknieta: {errorMsg}");
+                    $"Application closed safely: {errorMsg}");
             }
             catch
             {
