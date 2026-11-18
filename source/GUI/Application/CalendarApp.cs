@@ -144,7 +144,7 @@ namespace ZonderqOS.GUI.Apps
             if (hoveredCell >= 0 && hoveredCell < days.Length && days[hoveredCell] > 0)
             {
                 selectedDay = days[hoveredCell];
-                statusMessage = "WYBRANO DZIEN";
+                statusMessage = "DAY SELECTED";
             }
         }
 
@@ -258,10 +258,10 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "WYBRANA DATA", x + 16, y + 18, Text);
             canvas.DrawLine(Border, x + 16, y + 40, x + width - 16, y + 40);
 
-            DrawInfoLine(canvas, x, y + 63, width, "DZIEN", selectedDay);
-            SmallTextRenderer.Draw(canvas, "MIESIAC", x + 16, y + 104, Muted);
+            DrawInfoLine(canvas, x, y + 63, width, "DAY", selectedDay);
+            SmallTextRenderer.Draw(canvas, "MONTH", x + 16, y + 104, Muted);
             SmallTextRenderer.DrawClipped(canvas, MonthNames[displayMonth - 1], x + 16, y + 124, width - 32, Text);
-            DrawInfoLine(canvas, x, y + 155, width, "ROK", displayYear);
+            DrawInfoLine(canvas, x, y + 155, width, "YEAR", displayYear);
 
             int zone = global::ZonderqOS.SystemSettings.TimeZoneOffsetHours;
             SmallTextRenderer.Draw(canvas, "STREFA CZASOWA", x + 16, y + 207, Muted);
