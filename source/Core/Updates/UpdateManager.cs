@@ -41,7 +41,7 @@ namespace ZonderqOS.SystemCore.Updates
         public string Architecture { get; set; } = "x86_64";
         public string Title { get; set; } = "ZonderqOS System Update";
         public string ReleaseDate { get; set; } = "2026-11-08";
-        public string Severity { get; set; } = "Zalecana";
+        public string Severity { get; set; } = "Recommended";
         public int SizeKb { get; set; } = 0;
         public string ExpectedSha256 { get; set; } = string.Empty;
         public string KernelSha256 { get; set; } = string.Empty;
@@ -415,7 +415,7 @@ namespace ZonderqOS.SystemCore.Updates
                 package = pkg;
                 Status = UpdateStatus.Available;
 
-                string signInfo = pkg.IsSigned ? (pkg.IsSignatureValid ? " [PODPIS CYFROWY: ZAUFANY]" : " [PODPIS: NIEPOPRAWNY!]") : " [NIEPODPISANY]";
+                string signInfo = pkg.IsSigned ? (pkg.IsSignatureValid ? " [DIGITAL SIGNATURE: TRUSTED]" : " [SIGNATURE: INVALID!]") : " [UNSIGNED]";
                 message = "Verified USB update found: " + pkg.Version + " (Build " + pkg.BuildNumber + ") - " + pkg.Title + signInfo;
 
                 if (persistCheckTime || !string.Equals(lastLoggedDiscoveredVersion, pkg.Version, StringComparison.OrdinalIgnoreCase))
@@ -708,11 +708,11 @@ namespace ZonderqOS.SystemCore.Updates
                 string kernelSrc = FindKernelSource(pkg);
                 if (string.IsNullOrEmpty(kernelSrc) || !File.Exists(kernelSrc))
                 {
-                    error = "File not found binarnego kernela (ZonderqOS.elf) w pakiecie.";
+                    error = "Kernel binary (ZonderqOS.elf) not found in package.";
                     return false;
                 }
 
-                progress?.Invoke(30, "Kryptograficzne obliczanie sumy SHA-256 z rzeczywistego pliku kernela na dysku...");
+                progress?.Invoke(30, "Calculating SHA-256 checksum of actual on-disk kernel file...");
                 string actualKernelSha = BootSlotManager.ComputeFileSha256(kernelSrc);
 
                 if (string.IsNullOrEmpty(pkg.KernelSha256))
@@ -745,7 +745,7 @@ namespace ZonderqOS.SystemCore.Updates
                         var fileEntry = pkg.Files[i];
                         if (fileEntry == null)
                         {
-                            error = "Pusty wpis FILE w pakiecie.";
+                            error = "Empty FILE entry in package.";
                             return false;
                         }
                         int pct = 30 + (int)((i + 1) * 50.0 / pkg.Files.Count);
@@ -755,7 +755,7 @@ namespace ZonderqOS.SystemCore.Updates
                             !UpdateManifest.IsSafeRelativePath(fileEntry.RelativePath) ||
                             !IsAllowedUpdatePayloadPath(fileEntry.RelativePath))
                         {
-                            error = "Niedozwolona lub niepoprawna sciezka w pakiecie.";
+                            error = "Disallowed or invalid path in package.";
                             return false;
                         }
                         string fullPath = string.IsNullOrEmpty(payloadBase) ? null : Path.Combine(payloadBase, fileEntry.RelativePath);
@@ -875,14 +875,14 @@ namespace ZonderqOS.SystemCore.Updates
                     manifestPath != "/var/updates/incoming/update.manifest" &&
                     manifestPath != "/var/updates/update.manifest")
                 {
-                    error = "Niezatwierdzona lokalizacja manifestu: " + manifestPath;
+                    error = "Unapproved manifest location: " + manifestPath;
                     return false;
                 }
                 string baseDir = Path.GetDirectoryName(manifestPath);
                 if (!IsSafeUpdateFilePath(baseDir, "update.manifest") ||
                     !IsSafeUpdateFilePath(baseDir, "update.manifest.sig"))
                 {
-                    error = "Niedozwolony symlink manifestu lub podpisu.";
+                    error = "Disallowed manifest or signature symlink.";
                     return false;
                 }
 
@@ -907,7 +907,7 @@ namespace ZonderqOS.SystemCore.Updates
                 byte[] signature = ReadExactBytes(sigPath, 64);
                 if (signature == null || !ReleaseSignatureVerifier.VerifyProductionManifest(bytes, signature))
                 {
-                    error = "Podpis Ed25519 manifestu jest niepoprawny.";
+                    error = "Manifest Ed25519 signature is invalid.";
                     return false;
                 }
                 pkg.IsSigned = true;
@@ -918,7 +918,7 @@ namespace ZonderqOS.SystemCore.Updates
                     return false;
                 if (parsed.UpdateFormat != 2 || parsed.SignatureAlgorithm != "ED25519")
                 {
-                    error = "Odrzucono niepodpisany format legacy HMAC.";
+                    error = "Rejected unsigned legacy HMAC format.";
                     return false;
                 }
 
@@ -929,7 +929,7 @@ namespace ZonderqOS.SystemCore.Updates
                     !IsSafeUpdateFilePath(baseDir, kernelRelative) ||
                     !IsSafeUpdateFilePath(baseDir, payloadRelative))
                 {
-                    error = "Niebezpieczna sciezka kernela/payload.";
+                    error = "Unsafe kernel/payload path.";
                     return false;
                 }
                 string expectedKernel = Path.Combine(baseDir, kernelRelative);
@@ -1142,12 +1142,12 @@ namespace ZonderqOS.SystemCore.Updates
                                     try
                                     {
                                         RestoreManifestFiles(backupPayload);
-                                        error = "Instalacja payload przerwana i wycofana: " + deployError.Message;
+                                        error = "Payload installation aborted and rolled back: " + deployError.Message;
                                     }
                                     catch (Exception restoreError)
                                     {
-                                        error = "KRYTYCZNE: instalacja payload nieudana: " +
-                                            deployError.Message + "; rollback tez nieudany: " +
+                                        error = "CRITICAL: payload installation failed: " +
+                                            deployError.Message + "; rollback also failed: " +
                                             restoreError.Message;
                                     }
                                     Status = UpdateStatus.Error;
@@ -1160,7 +1160,7 @@ namespace ZonderqOS.SystemCore.Updates
                         case 4:
                             // Step 5: Activate new boot slot in Limine
                             string newActiveSlot = BootSlotManager.GetInactiveSlot();
-                            progress?.Invoke(85, $"Przelaczanie aktywnego slotu rozruchowego na slot {newActiveSlot}...");
+                            progress?.Invoke(85, $"Switching active boot slot to {newActiveSlot}...");
                             if (!BootSlotManager.ActivateSlot(newActiveSlot, out error))
                             {
                                 string activationError = error;
@@ -1225,12 +1225,12 @@ namespace ZonderqOS.SystemCore.Updates
                             AvailablePackage = null;
 
                             string logEntry = "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] INSTALLED: " +
-                                              pkg.Version + " (Build " + pkg.BuildNumber + ") w slocie " + BootSlotManager.ActiveSlot +
+                                              pkg.Version + " (Build " + pkg.BuildNumber + ") in slot " + BootSlotManager.ActiveSlot +
                                               " | SHA256: " + (pkg.ExpectedSha256.Length >= 16 ? pkg.ExpectedSha256.Substring(0, 16) : pkg.ExpectedSha256) + "...\n";
                             File.AppendAllText(HistoryLogPath, logEntry);
 
-                            SecurityLogger.LogEvent("SECURITY", $"System zaktualizowany do {pkg.Version} w slocie {BootSlotManager.ActiveSlot}");
-                            SystemLogger.Log(SystemLogLevel.Info, "UPDATE", $"Zaktualizowano system do {pkg.Version} w slocie {BootSlotManager.ActiveSlot}");
+                            SecurityLogger.LogEvent("SECURITY", $"System updated to {pkg.Version} in slot {BootSlotManager.ActiveSlot}");
+                            SystemLogger.Log(SystemLogLevel.Info, "UPDATE", $"Updated system to {pkg.Version} in slot {BootSlotManager.ActiveSlot}");
                             step = -1; // Done!
                             return true;
 
@@ -1274,12 +1274,12 @@ namespace ZonderqOS.SystemCore.Updates
                 sb.AppendLine("============================================================");
                 sb.AppendLine("Installed version: " + pkg.Version + " (Build " + pkg.BuildNumber + ")");
                 sb.AppendLine("Tytul wydania:        " + pkg.Title);
-                sb.AppendLine("Data instalacji:      " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                sb.AppendLine("Aktywny slot boot:    Slot " + BootSlotManager.ActiveSlot);
+                sb.AppendLine("Installation date:      " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                sb.AppendLine("Active boot slot:    Slot " + BootSlotManager.ActiveSlot);
                 sb.AppendLine("Suma SHA-256 kernela: " + pkg.ExpectedSha256);
                 sb.AppendLine("Digital signature:       " + (pkg.IsSigned ? (pkg.IsSignatureValid ? "TRUSTED" : "INVALID") : "MISSING"));
                 sb.AppendLine();
-                sb.AppendLine("DZIENNIK ZMIAN (CHANGELOG):");
+                sb.AppendLine("CHANGELOG:");
                 for (int i = 0; i < pkg.Changelog.Length; i++)
                 {
                     sb.AppendLine("  * " + pkg.Changelog[i]);
@@ -1337,7 +1337,7 @@ namespace ZonderqOS.SystemCore.Updates
                 string relative = actualFiles[i].Substring(payloadDir.TrimEnd('/').Length).TrimStart('/', '\\');
                 relative = relative.Replace('\\', '/');
                 if (!declared.Contains(relative) || !IsSafeUpdateFilePath(payloadDir, relative))
-                    throw new IOException("Niezadeklarowany plik w payload: " + relative);
+                    throw new IOException("Undeclared payload file: " + relative);
             }
 
             if (!Directory.Exists(backupRoot))
@@ -1374,7 +1374,7 @@ namespace ZonderqOS.SystemCore.Updates
                 string dest = Path.Combine("/", entry.RelativePath);
                 string parent = Path.GetDirectoryName(dest);
                 if (!IsSafeUpdateFilePath("/", entry.RelativePath))
-                    throw new IOException("Zmiana sciezki docelowej podczas instalacji.");
+                    throw new IOException("Target path changed during installation.");
                 if (!Directory.Exists(parent)) Directory.CreateDirectory(parent);
                 string temp = dest + ".update-part";
                 try
@@ -1421,7 +1421,7 @@ namespace ZonderqOS.SystemCore.Updates
                     if (!IsAllowedUpdatePayloadPath(relative) ||
                         !IsSafeUpdateFilePath(backupRoot, relative) ||
                         !IsSafeUpdateFilePath("/", relative))
-                        throw new IOException("Niebezpieczny plik w kopii rollback: " + relative);
+                        throw new IOException("Unsafe file in rollback backup: " + relative);
                     string dst = Path.Combine("/", relative);
                     string parent = Path.GetDirectoryName(dst);
                     if (!Directory.Exists(parent)) Directory.CreateDirectory(parent);
@@ -1441,7 +1441,7 @@ namespace ZonderqOS.SystemCore.Updates
                     if (relative.Length == 0) continue;
                     if (!IsAllowedUpdatePayloadPath(relative) ||
                         !IsSafeUpdateFilePath("/", relative))
-                        throw new IOException("Niebezpieczna sciezka usuwania w rollback: " + relative);
+                        throw new IOException("Unsafe path for rollback removal: " + relative);
                     string destination = Path.Combine("/", relative);
                     string staleTemp = destination + ".update-part";
                     try { if (File.Exists(staleTemp)) File.Delete(staleTemp); } catch { }
@@ -1661,7 +1661,7 @@ namespace ZonderqOS.SystemCore.Updates
                             string targetFallback = BootSlotManager.FallbackSlot;
                             if (targetFallback != BootSlotManager.SlotA && targetFallback != BootSlotManager.SlotB)
                             {
-                                error = $"Niepoprawny slot przywracania: '{targetFallback}'.";
+                                error = $"Invalid recovery slot: '{targetFallback}'.";
                                 Status = UpdateStatus.Error;
                                 return false;
                             }
@@ -1751,7 +1751,7 @@ namespace ZonderqOS.SystemCore.Updates
                             AvailablePackage = null;
 
                             string logEntry = "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] ROLLBACK: Przywrocono wersje " + prevVersion +
-                                              " (Build " + prevBuild + ") w slocie " + BootSlotManager.ActiveSlot + "\n";
+                                              " (Build " + prevBuild + ") in slot " + BootSlotManager.ActiveSlot + "\n";
                             File.AppendAllText(HistoryLogPath, logEntry);
 
                             SecurityLogger.LogEvent("WARN", "System rolled back to previous snapshot: " + prevVersion + " (Build " + prevBuild + ")");
