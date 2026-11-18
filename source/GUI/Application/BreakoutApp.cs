@@ -449,7 +449,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "BEST", contentX + 80, contentY + 11, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, highScore, contentX + 80, contentY + 23, TextColor);
 
-            SmallTextRenderer.Draw(canvas, "ZYCIA", contentX + 155, contentY + 11, MutedColor);
+            SmallTextRenderer.Draw(canvas, "LIVES", contentX + 155, contentY + 11, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, (ulong)Math.Max(0, lives), contentX + 155, contentY + 23, RedColor);
 
             SmallTextRenderer.Draw(canvas, "CEGLY", contentX + 215, contentY + 11, MutedColor);
