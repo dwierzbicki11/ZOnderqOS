@@ -405,7 +405,7 @@ namespace ZonderqOS.GUI
                 {
                     global::ZonderqOS.NotificationService.Post(
                         global::ZonderqOS.NotificationKind.Storage,
-                        "MAGAZYN",
+                        "STORAGE",
                         "Zmiana woluminow",
                         "System detected a change in partitions or volumes.");
                 }
