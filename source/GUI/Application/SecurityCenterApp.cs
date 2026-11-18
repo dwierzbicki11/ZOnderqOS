@@ -512,7 +512,7 @@ namespace ZonderqOS.GUI.Apps
             }
             else if (!isFirewallActive)
             {
-                SmallTextRenderer.Draw(canvas, "ZAPORA SIECIOWA JEST WYLACZONA - RUCH NIEFILTROWANY", textX, cy + 22, GoldColor);
+                SmallTextRenderer.Draw(canvas, "FIREWALL IS DISABLED - TRAFFIC IS UNFILTERED", textX, cy + 22, GoldColor);
                 SmallTextRenderer.Draw(canvas, "System files match the baseline, but the computer is not protected against network attacks.", textX, cy + 44, TextColor);
                 SmallTextRenderer.Draw(canvas, "Enable the firewall below or in the Firewall tab.", textX, cy + 64, MutedColor);
             }
