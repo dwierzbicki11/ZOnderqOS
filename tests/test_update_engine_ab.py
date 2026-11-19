@@ -33,7 +33,7 @@ class UpdateEngineABTests(unittest.TestCase):
 
     def test_kernel_build_info_embedded_identity(self):
         self.assertIn('public const string Architecture = "x86_64";', KERNEL_BUILD_INFO)
-        self.assertIn('public const string CosmosVersion = "Cosmos 3.0.95 Native Core";', KERNEL_BUILD_INFO)
+        self.assertIn('public const string CosmosVersion = "Cosmos 3.0.97 Native Core";', KERNEL_BUILD_INFO)
         self.assertIn("public static string RunningSlot", KERNEL_BUILD_INFO)
         self.assertIn("public static bool IsHealthyAndConfirmed", KERNEL_BUILD_INFO)
 

@@ -13,6 +13,7 @@
     <Compile Include="../../source/Common/Crypto.cs" Link="Crypto.cs" />
     <Compile Include="../../source/Core/KernelBuildInfo.cs" Link="KernelBuildInfo.cs" />
     <Compile Include="../../source/Core/NativeScratchBuffer.cs" Link="NativeScratchBuffer.cs" />
+    <Compile Include="../../source/Security/SecurityContext.cs" Link="SecurityContext.cs" />
     <Compile Include="../../source/Core/Updates/UpdateManifest.cs" Link="UpdateManifest.cs" />
     <Compile Include="../../source/Core/Updates/TrustedReleaseKey.cs" Link="TrustedReleaseKey.cs" />
     <Compile Include="../../source/Core/Updates/ReleaseSignatureVerifier.cs" Link="ReleaseSignatureVerifier.cs" />
