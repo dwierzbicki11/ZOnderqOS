@@ -110,15 +110,14 @@ namespace ZonderqOS.GUI
                     previousMouseX = mouseX;
                     previousMouseY = mouseY;
 
-                    bool heartbeat = frame % 134 == 0;
-                    if (!screen.Finished && (keyboardActivity || pointerMoved || buttonChanged || heartbeat))
+                    if (!screen.Finished && (keyboardActivity || pointerMoved || buttonChanged))
                     {
                         screen.Render(canvas);
                         Cursor.Draw(canvas, mouseX, mouseY);
                         canvas.Display();
                     }
 
-                    Thread.Sleep(15);
+                    Thread.Sleep(keyboardActivity || pointerMoved || buttonChanged ? 15 : 25);
                 }
 
                 return screen.Action;

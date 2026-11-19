@@ -445,6 +445,8 @@ namespace ZonderqOS
             buf[offset + 1] = (char)('0' + (value % 10));
         }
 
+        private static readonly object TimestampSync = new object();
+
         private static string GetTimestamp()
         {
             try
@@ -457,40 +459,43 @@ namespace ZonderqOS
                 int minute = now.Minute;
                 int second = now.Second;
 
-                if (year == lastTimestampYear &&
-                    month == lastTimestampMonth &&
-                    day == lastTimestampDay &&
-                    hour == lastTimestampHour &&
-                    minute == lastTimestampMinute &&
-                    second == lastTimestampSecond)
+                lock (TimestampSync)
                 {
+                    if (year == lastTimestampYear &&
+                        month == lastTimestampMonth &&
+                        day == lastTimestampDay &&
+                        hour == lastTimestampHour &&
+                        minute == lastTimestampMinute &&
+                        second == lastTimestampSecond)
+                    {
+                        return cachedTimestamp;
+                    }
+
+                    lastTimestampYear = year;
+                    lastTimestampMonth = month;
+                    lastTimestampDay = day;
+                    lastTimestampHour = hour;
+                    lastTimestampMinute = minute;
+                    lastTimestampSecond = second;
+
+                    TimestampChars[0] = (char)('0' + (year / 1000) % 10);
+                    TimestampChars[1] = (char)('0' + (year / 100) % 10);
+                    TimestampChars[2] = (char)('0' + (year / 10) % 10);
+                    TimestampChars[3] = (char)('0' + (year % 10));
+                    TimestampChars[4] = '-';
+                    WriteTwoDigits(TimestampChars, 5, month);
+                    TimestampChars[7] = '-';
+                    WriteTwoDigits(TimestampChars, 8, day);
+                    TimestampChars[10] = ' ';
+                    WriteTwoDigits(TimestampChars, 11, hour);
+                    TimestampChars[13] = ':';
+                    WriteTwoDigits(TimestampChars, 14, minute);
+                    TimestampChars[16] = ':';
+                    WriteTwoDigits(TimestampChars, 17, second);
+
+                    cachedTimestamp = new string(TimestampChars);
                     return cachedTimestamp;
                 }
-
-                lastTimestampYear = year;
-                lastTimestampMonth = month;
-                lastTimestampDay = day;
-                lastTimestampHour = hour;
-                lastTimestampMinute = minute;
-                lastTimestampSecond = second;
-
-                TimestampChars[0] = (char)('0' + (year / 1000) % 10);
-                TimestampChars[1] = (char)('0' + (year / 100) % 10);
-                TimestampChars[2] = (char)('0' + (year / 10) % 10);
-                TimestampChars[3] = (char)('0' + (year % 10));
-                TimestampChars[4] = '-';
-                WriteTwoDigits(TimestampChars, 5, month);
-                TimestampChars[7] = '-';
-                WriteTwoDigits(TimestampChars, 8, day);
-                TimestampChars[10] = ' ';
-                WriteTwoDigits(TimestampChars, 11, hour);
-                TimestampChars[13] = ':';
-                WriteTwoDigits(TimestampChars, 14, minute);
-                TimestampChars[16] = ':';
-                WriteTwoDigits(TimestampChars, 17, second);
-
-                cachedTimestamp = new string(TimestampChars);
-                return cachedTimestamp;
             }
             catch
             {

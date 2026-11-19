@@ -134,7 +134,12 @@ namespace ZonderqOS
             lock (_aclLock)
             {
                 string normalized = NormalizePath(path);
-                if (!_aclCache.ContainsKey(normalized) && _aclCache.Count >= MaxAclEntries)
+                if (_aclCache.TryGetValue(normalized, out var existing))
+                {
+                    if (string.Equals(existing.Owner, owner, StringComparison.Ordinal) && existing.Perms == perms)
+                        return;
+                }
+                else if (_aclCache.Count >= MaxAclEntries)
                 {
                     WriteMessage.WriteError("ACL entry limit reached.", "SEC");
                     return;
@@ -279,9 +284,42 @@ namespace ZonderqOS
             }
         }
 
+        private static bool CanTraverseExplicitAncestors(string path, string user)
+        {
+            if (user == "root")
+                return true;
+
+            string normalized = NormalizePath(path);
+            if (string.IsNullOrEmpty(normalized) || normalized == "/")
+                return true;
+
+            lock (_aclLock)
+            {
+                int slash = normalized.LastIndexOf('/');
+                while (slash > 0)
+                {
+                    string ancestor = normalized.Substring(0, slash);
+                    if (_aclCache.TryGetValue(ancestor, out var ancestorAcl))
+                    {
+                        int bits = ancestorAcl.Owner == user
+                            ? (ancestorAcl.Perms / 100) % 10
+                            : ancestorAcl.Perms % 10;
+                        // Require traverse (1) or read (4) on explicitly restricted ancestor directories
+                        // so 700 private roots (/root, /home/<other>, /etc/security) cannot be bypassed.
+                        if ((bits & 5) == 0)
+                            return false;
+                    }
+                    slash = ancestor.LastIndexOf('/');
+                }
+            }
+
+            return true;
+        }
+
         public static bool CanRead(string path, string user)
         {
             if (user == "root") return true;
+            if (!CanTraverseExplicitAncestors(path, user)) return false;
 
             var acl = GetPermission(path);
             int ownerPerms = (acl.Perms / 100) % 10;
@@ -296,6 +334,7 @@ namespace ZonderqOS
         public static bool CanWrite(string path, string user)
         {
             if (user == "root") return true;
+            if (!CanTraverseExplicitAncestors(path, user)) return false;
 
             var acl = GetPermission(path);
             int ownerPerms = (acl.Perms / 100) % 10;
@@ -315,6 +354,9 @@ namespace ZonderqOS
 
             if (user == "root")
                 return true;
+
+            if (!CanTraverseExplicitAncestors(normalized, user))
+                return false;
 
             if (File.Exists(normalized) || Directory.Exists(normalized))
                 return CanWrite(normalized, user);

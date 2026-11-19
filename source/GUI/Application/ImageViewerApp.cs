@@ -316,7 +316,7 @@ namespace ZonderqOS.GUI.Apps
                         x + (width - 56) / 2, y + height / 2 - 72, 56, 56);
                     SmallTextRenderer.DrawCentered(canvas, "NO IMAGE OPEN", x + 8,
                         y + height / 2 + 4, width - 16, Text);
-                    SmallTextRenderer.DrawCentered(canvas, "Open PNG/BMP dwuklikiem w File Managerze", x + 8,
+                    SmallTextRenderer.DrawCentered(canvas, "Open PNG/BMP by double-clicking in File Manager", x + 8,
                         y + height / 2 + 24, width - 16, Muted);
                 }
                 else if (width >= 40 && height >= 20)

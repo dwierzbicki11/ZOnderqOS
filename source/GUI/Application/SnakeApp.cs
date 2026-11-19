@@ -50,11 +50,11 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action closeCallback;
         private readonly Random rng = new Random();
 
-        public SnakeApp(int x, int y, Action onClose) : base("Waz")
+        public SnakeApp(int x, int y, Action onClose) : base("Snake")
         {
             closeCallback = onClose;
             // 20 * 18 = 360 px grid. Window 416 x 512.
-            Window = new Window(x, y, 416, 512, "Waz");
+            Window = new Window(x, y, 416, 512, "Snake");
             Window.CloseAction = Close;
             ResetGame();
         }

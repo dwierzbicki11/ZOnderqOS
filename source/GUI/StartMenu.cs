@@ -531,7 +531,7 @@ namespace ZonderqOS.GUI
             UiPainter.RoundedFill(canvas, X + 2, footerY, Width - 4,
                 TinyFooterHeight - 2, UiMetrics.ButtonRadius, Header);
             if (lockButton != null && lockButton.Visible)
-                RenderPowerButton(canvas, lockButton, IconType.Settings, "BLOKUJ", false);
+                RenderPowerButton(canvas, lockButton, IconType.Settings, "LOCK", false);
             if (exitButton != null && exitButton.Visible)
                 RenderPowerButton(canvas, exitButton, IconType.Close, "LOG OUT", false);
             if (rebootButton != null && rebootButton.Visible)
@@ -587,7 +587,7 @@ namespace ZonderqOS.GUI
 
         private void RenderPinned(Canvas canvas)
         {
-            SmallTextRenderer.Draw(canvas, "PRZYPINANE", X + Padding, Y + PinnedLabelY, Muted);
+            SmallTextRenderer.Draw(canvas, "PINNED", X + Padding, Y + PinnedLabelY, Muted);
 
             int visibleCount = 0;
             for (int i = 0; i < pinnedButtons.Count; i++)
@@ -626,7 +626,7 @@ namespace ZonderqOS.GUI
             for (int i = 0; i < pinnedButtons.Count; i++)
                 if (pinnedButtons[i].Visible)
                     visibleIndex++;
-            SmallTextRenderer.Draw(canvas, "NARZEDZIA", X + Padding, Y + ToolsLabelY, Muted);
+            SmallTextRenderer.Draw(canvas, "TOOLS", X + Padding, Y + ToolsLabelY, Muted);
 
             // Tools Scrollbar and Page Controls if needed
             if (!TinyLayout && toolTotalRows > toolVisibleRows)
@@ -711,7 +711,7 @@ namespace ZonderqOS.GUI
             SmallTextRenderer.Draw(canvas, "Admin", X + Padding + 34, footerY + 38, SystemTheme.Accent);
 
             if (lockButton != null)
-                RenderPowerButton(canvas, lockButton, IconType.Settings, "BLOKUJ", false);
+                RenderPowerButton(canvas, lockButton, IconType.Settings, "LOCK", false);
             if (exitButton != null)
                 RenderPowerButton(canvas, exitButton, IconType.Close, "LOG OUT", false);
             if (rebootButton != null)

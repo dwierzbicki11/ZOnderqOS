@@ -523,7 +523,7 @@ namespace ZonderqOS.GUI.Apps
             int controlsY = statsY + 118;
             SmallTextRenderer.Draw(canvas, "CONTROLS", sideX, controlsY, MutedColor);
             SmallTextRenderer.Draw(canvas, "< > - Move", sideX, controlsY + 14, TextColor);
-            SmallTextRenderer.Draw(canvas, "^   - Obrot", sideX, controlsY + 26, TextColor);
+            SmallTextRenderer.Draw(canvas, "^   - Rotate", sideX, controlsY + 26, TextColor);
             SmallTextRenderer.Draw(canvas, "v   - Drop", sideX, controlsY + 38, TextColor);
             SmallTextRenderer.Draw(canvas, "SPC - Hard drop", sideX, controlsY + 50, TextColor);
             SmallTextRenderer.Draw(canvas, "P   - Pause", sideX, controlsY + 62, TextColor);
@@ -531,7 +531,7 @@ namespace ZonderqOS.GUI.Apps
             // Overlay message for Ready / GameOver / Paused
             if (status == GameStatus.Ready)
             {
-                RenderCenterPrompt(canvas, gridX, gridY, "SPACJA: START", AccentColor);
+                RenderCenterPrompt(canvas, gridX, gridY, "SPACE: START", AccentColor);
             }
             else if (status == GameStatus.GameOver)
             {

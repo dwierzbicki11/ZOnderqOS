@@ -89,10 +89,10 @@ namespace ZonderqOS.GUI.Apps
         private readonly Random rng = new Random();
         private readonly Action closeCallback;
 
-        public SolitaireApp(int x, int y, Action onClose) : base("Pasjans")
+        public SolitaireApp(int x, int y, Action onClose) : base("Solitaire")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 540, 470, "Pasjans Klondike");
+            Window = new Window(x, y, 540, 470, "Klondike Solitaire");
             Window.CloseAction = Close;
 
             for (int i = 0; i < 4; i++) foundations[i] = new List<Card>(13);
@@ -101,7 +101,7 @@ namespace ZonderqOS.GUI.Apps
             ResetGame();
         }
 
-        public override bool NeedsContinuousRedraw => isWon;
+        public override bool NeedsContinuousRedraw => false;
 
         public override void Close()
         {

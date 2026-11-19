@@ -35,6 +35,17 @@ namespace ZonderqOS.Storage
         public const ulong DualLayoutMinDiskMegabytes = 160UL;
         private const string LimineHddResourceName = "Bootloader.limine-hdd.bin";
 
+        private static bool EnsureRootPrivilege(out string error)
+        {
+            if (!SecurityContext.IsAuthenticated || SecurityContext.CurrentUid != 0)
+            {
+                error = "Root privileges are required for destructive disk operations.";
+                return false;
+            }
+            error = null;
+            return true;
+        }
+
         public static bool PrepareDiskForInstallation(
             DiskIdentityToken token,
             string typedConfirmation,
@@ -46,6 +57,9 @@ namespace ZonderqOS.Storage
         {
             prepared = null;
             error = null;
+
+            if (!EnsureRootPrivilege(out error))
+                return false;
 
             // 1. Verify explicit typed confirmation (e.g. "DISK-1")
             if (token == null || !InstallerInputValidator.ValidateDiskConfirmation(token.DiskId, typedConfirmation))
@@ -520,6 +534,9 @@ namespace ZonderqOS.Storage
             out string error)
         {
             error = null;
+            if (!EnsureRootPrivilege(out error))
+                return false;
+
             if (token == null || !InstallerInputValidator.ValidateDiskConfirmation(token.DiskId, typedConfirmation))
             {
                 error = "Confirmation ID does not match the selected disk.";
@@ -586,9 +603,18 @@ namespace ZonderqOS.Storage
             out string error)
         {
             error = null;
+            if (!EnsureRootPrivilege(out error))
+                return false;
+
             if (!InstallerInputValidator.ValidateDiskConfirmation(expectedConfirmCode, typedConfirmation))
             {
                 error = "Confirmation code does not match.";
+                return false;
+            }
+
+            if (mbrPartitionSlotIndex < 0 || mbrPartitionSlotIndex > 3)
+            {
+                error = "Invalid MBR partition slot index.";
                 return false;
             }
 
@@ -614,6 +640,87 @@ namespace ZonderqOS.Storage
                 error = "Failed to delete partition: " + ex.Message;
                 return false;
             }
+        }
+
+        public static int FindRawMbrSlotByStartLba(IBlockDevice device, ulong startLba)
+        {
+            if (device == null || device.BlockSize != 512UL || device.BlockCount == 0UL || startLba == 0UL)
+                return -1;
+
+            try
+            {
+                byte[] sector0 = new byte[512];
+                device.ReadBlock(0UL, 1UL, sector0);
+                if (sector0[510] != 0x55 || sector0[511] != 0xAA)
+                    return -1;
+
+                for (int slot = 0; slot < 4; slot++)
+                {
+                    int off = 446 + slot * 16;
+                    byte partType = sector0[off + 4];
+                    if (partType == 0)
+                        continue;
+
+                    uint lba = (uint)(sector0[off + 8] |
+                                      (sector0[off + 9] << 8) |
+                                      (sector0[off + 10] << 16) |
+                                      (sector0[off + 11] << 24));
+                    if ((ulong)lba == startLba)
+                        return slot;
+                }
+            }
+            catch
+            {
+                // fall through
+            }
+
+            return -1;
+        }
+
+        public static bool FormatPartitionWithIdentity(
+            DiskIdentityToken diskToken,
+            ulong partitionStartLba,
+            string expectedConfirmCode,
+            string typedConfirmation,
+            string volumeLabel,
+            out string error)
+        {
+            error = null;
+            if (!EnsureRootPrivilege(out error))
+                return false;
+
+            if (!InstallerInputValidator.ValidateDiskConfirmation(expectedConfirmCode, typedConfirmation))
+            {
+                error = "Confirmation code does not match.";
+                return false;
+            }
+
+            if (!DiskCatalog.VerifyIdentityBeforeWrite(diskToken, out error))
+                return false;
+
+            IBlockDevice device = diskToken.DeviceReference;
+            Partition target = null;
+            var parts = StorageManager.Partitions;
+            if (parts != null)
+            {
+                for (int i = 0; i < parts.Count; i++)
+                {
+                    Partition p = parts[i];
+                    if (p != null && object.ReferenceEquals(p.Host, device) && p.StartSector == partitionStartLba)
+                    {
+                        target = p;
+                        break;
+                    }
+                }
+            }
+
+            if (target == null)
+            {
+                error = "Target partition no longer exists at LBA " + partitionStartLba + ".";
+                return false;
+            }
+
+            return FormatAndVerifyFat32(target, volumeLabel, false, out error);
         }
 
         private static bool WipePartitionStructures(IBlockDevice device, bool zeroFillExtendedHeader, out string error)

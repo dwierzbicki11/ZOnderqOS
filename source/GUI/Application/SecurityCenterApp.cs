@@ -352,7 +352,7 @@ namespace ZonderqOS.GUI.Apps
             int tabGap = 6;
 
             DrawTab(canvas, "🛡 PROTECTION STATUS", wx + 12, tabY, tabW, tabH, activeTab == 0);
-            DrawTab(canvas, "🔍 INTEGRALNOSC", wx + 12 + (tabW + tabGap), tabY, tabW, tabH, activeTab == 1);
+            DrawTab(canvas, "🔍 INTEGRITY", wx + 12 + (tabW + tabGap), tabY, tabW, tabH, activeTab == 1);
             DrawTab(canvas, "🧱 FIREWALL", wx + 12 + (tabW + tabGap) * 2, tabY, tabW, tabH, activeTab == 2);
             DrawTab(canvas, "📜 AUDIT LOG", wx + 12 + (tabW + tabGap) * 3, tabY, tabW, tabH, activeTab == 3);
 
@@ -391,7 +391,7 @@ namespace ZonderqOS.GUI.Apps
             cachedDashSafeText = "All " + total + " monitored /etc files are authentic. The firewall is active.";
             cachedIntCardStatus = anomalies == 0
                 ? "✓ " + passed + "/" + total + " files verified (SHA-256)"
-                : "⚠ " + anomalies + " anomalii wykrytych!";
+                : "⚠ " + anomalies + " anomalies detected!";
         }
 
         private void EnsureFirewallCache()
@@ -753,7 +753,7 @@ namespace ZonderqOS.GUI.Apps
             }
 
             int btnY = cy + 280;
-            DrawButton(canvas, "↺ Refresh Logi", wx + 16, btnY, 150, 30, AccentColor);
+            DrawButton(canvas, "↺ Refresh Logs", wx + 16, btnY, 150, 30, AccentColor);
             SmallTextRenderer.Draw(canvas, GetStatusLine(), wx + 20, btnY + 42, MutedColor);
         }
 

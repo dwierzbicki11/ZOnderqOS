@@ -183,6 +183,9 @@ namespace ZonderqOS.SystemCore.Updates
 
         public static void SaveConfig()
         {
+            if (SecurityContext.IsAuthenticated && SecurityContext.CurrentUid != 0)
+                return;
+
             lock (_lock)
             {
                 try
@@ -1063,6 +1066,15 @@ namespace ZonderqOS.SystemCore.Updates
                 if (pkg == null)
                 {
                     error = "No update package selected.";
+                    Status = UpdateStatus.Error;
+                    return false;
+                }
+
+                if (step == 0 && !IsNewerVersion(pkg.Version, pkg.BuildNumber, CurrentVersion, CurrentBuild))
+                {
+                    error = "Rollback/downgrade protection: package version " + pkg.Version +
+                            " (build " + pkg.BuildNumber + ") is not newer than installed " +
+                            CurrentVersion + " (build " + CurrentBuild + ").";
                     Status = UpdateStatus.Error;
                     return false;
                 }

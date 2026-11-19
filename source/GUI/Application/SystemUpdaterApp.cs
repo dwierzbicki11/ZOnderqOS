@@ -222,7 +222,7 @@ namespace ZonderqOS.GUI.Apps
             };
 
             UpdateManager.SetChannel(next);
-            statusMessage = "Przestawiono kanal na: " + next.ToString().ToUpperInvariant();
+            statusMessage = "Switched channel to: " + next.ToString().ToUpperInvariant();
             statusColor = AccentColor;
         }
 
@@ -494,7 +494,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderChannelRow(Canvas canvas, int x, int y, int w, int h)
         {
-            string chText = "KANAL: " + UpdateManager.Channel.ToString().ToUpperInvariant();
+            string chText = "CHANNEL: " + UpdateManager.Channel.ToString().ToUpperInvariant();
             DrawButton(canvas, chText, x, y, 105, h, Panel, Border, AccentColor);
 
             string srcText = UpdateManager.SourceMode switch
@@ -577,7 +577,7 @@ namespace ZonderqOS.GUI.Apps
                 // Tab 0: Changelog
                 UpdatePackageInfo pkg = UpdateManager.AvailablePackage ?? EmptyPackage;
                 SmallTextRenderer.Draw(canvas, "Package version: " + pkg.Version + " - " + pkg.Title, x + 14, y + 10, AccentColor);
-                SmallTextRenderer.Draw(canvas, "Release date: " + pkg.ReleaseDate + " | Waznosc: " + pkg.Severity + " | Theme: " + pkg.TargetThemeName, x + 14, y + 26, MutedColor);
+                SmallTextRenderer.Draw(canvas, "Release date: " + pkg.ReleaseDate + " | Severity: " + pkg.Severity + " | Theme: " + pkg.TargetThemeName, x + 14, y + 26, MutedColor);
 
                 canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
 
@@ -624,7 +624,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 // Tab 2: Dual Boot Slots A/B & Storage Environment
                 SmallTextRenderer.Draw(canvas, "A/B boot layout and Limine slot diagnostics:", x + 14, y + 10, AccentColor);
-                SmallTextRenderer.Draw(canvas, $"Active: Slot {BootSlotManager.ActiveSlot} | Fallback: Slot {BootSlotManager.FallbackSlot} | Status: {(KernelBuildInfo.IsHealthyAndConfirmed ? "CONFIRMED (HEALTHY)" : "OCZEKUJE")}", x + 14, y + 26, MutedColor);
+                SmallTextRenderer.Draw(canvas, $"Active: Slot {BootSlotManager.ActiveSlot} | Fallback: Slot {BootSlotManager.FallbackSlot} | Status: {(KernelBuildInfo.IsHealthyAndConfirmed ? "CONFIRMED (HEALTHY)" : "PENDING")}", x + 14, y + 26, MutedColor);
                 canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
 
                 int lineY = y + 50;
@@ -650,7 +650,7 @@ namespace ZonderqOS.GUI.Apps
                 StorageEnvironmentInfo env = cachedEnvInfo;
                 Color c4 = env.HasUpdatesDir ? GreenColor : GoldColor;
                 canvas.DrawFilledRectangle(c4, x + 16, lineY + 4, 6, 6);
-                SmallTextRenderer.Draw(canvas, $"Folder /updates na USB: {(env.HasUpdatesDir ? "AVAILABLE" : "MISSING")} | Manifest: {(env.HasManifest ? "DETECTED" : "MISSING")} | Kernel: {(env.HasKernelBinary ? "DETECTED" : "MISSING")}", x + 30, lineY, TextColor);
+                SmallTextRenderer.Draw(canvas, $"USB /updates folder: {(env.HasUpdatesDir ? "AVAILABLE" : "MISSING")} | Manifest: {(env.HasManifest ? "DETECTED" : "MISSING")} | Kernel: {(env.HasKernelBinary ? "DETECTED" : "MISSING")}", x + 30, lineY, TextColor);
                 lineY += 26;
 
                 SmallTextRenderer.Draw(canvas, "Target slot for next update: Slot " + BootSlotManager.GetInactiveSlot(), x + 14, y + h - 20, AccentColor);

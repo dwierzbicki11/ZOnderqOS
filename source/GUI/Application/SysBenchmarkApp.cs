@@ -121,6 +121,8 @@ namespace ZonderqOS.GUI.Apps
             isRunningAll = false;
             testStep = -1;
             isGpuBenchmarking = false;
+            if (SystemDiagnosticRunner.Shared.IsRunning)
+                SystemDiagnosticRunner.Shared.RequestAbort();
             primeSieve.Dispose();
             testRamBuffer.Dispose();
             base.Close();
@@ -168,6 +170,9 @@ namespace ZonderqOS.GUI.Apps
         public override void Update()
         {
             base.Update();
+
+            if (SystemDiagnosticRunner.Shared.IsRunning)
+                SystemDiagnosticRunner.Shared.Step();
 
             if (testStep >= 0 && !isGpuBenchmarking)
             {
@@ -437,13 +442,14 @@ namespace ZonderqOS.GUI.Apps
                 pixelsDrawn += Math.Max(Math.Abs(x2 - x1), Math.Abs(y2 - y1));
             }
 
-            // Render 50 text overlays
+            // Render 40 text overlays without per-iteration string allocations
             const int textCount = 40;
             for (int i = 0; i < textCount; i++)
             {
                 int tx = rx + 6 + ((i * 29) % Math.Max(1, rw - 110));
                 int ty = ry + 6 + ((i * 23) % Math.Max(1, rh - 16));
-                SmallTextRenderer.Draw(canvas, "ZONDERQ VESA " + i, tx, ty, TextColor);
+                SmallTextRenderer.Draw(canvas, "ZONDERQ VESA ", tx, ty, TextColor);
+                SmallTextRenderer.DrawUInt(canvas, (ulong)i, tx + 78, ty, TextColor);
                 pixelsDrawn += (13 * 5 * 7);
             }
 
@@ -784,8 +790,6 @@ namespace ZonderqOS.GUI.Apps
             }
             else
             {
-                if (SystemDiagnosticRunner.Shared.IsRunning)
-                    SystemDiagnosticRunner.Shared.Step();
                 RenderDiagnosticsTab(canvas, wx, contentY, ww);
             }
         }
@@ -1041,7 +1045,7 @@ namespace ZonderqOS.GUI.Apps
             int parts = hardware != null ? hardware.StoragePartitionCount : 2;
             SmallTextRenderer.Draw(canvas, "  Mass storage:" + drives + " drive(s), " + parts + " partition(s) (VFS FAT32 / ZONDERQDATA)", sx, sy, TextColor);
             sy += lineH;
-            SmallTextRenderer.Draw(canvas, "  Jadro:        Cosmos C# Kernel v3.0.95 Upstream (Single-vCPU)", sx, sy, TextColor);
+            SmallTextRenderer.Draw(canvas, "  Kernel:       Cosmos C# Kernel v3.0.97 Upstream (Single-vCPU)", sx, sy, TextColor);
         }
 
         private void RenderComparisonTab(Canvas canvas, int wx, int cy, int ww)

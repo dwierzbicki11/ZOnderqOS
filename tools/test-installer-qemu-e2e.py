@@ -236,10 +236,14 @@ def test_a_and_d_and_f_live_gui_install_and_disk_boot(work_dir: Path):
     esp_fs = PyFatFS(str(target_disk), offset=parts[0]["start_lba"] * 512, read_only=True)
     assert esp_fs.exists("/EFI/BOOT/BOOTX64.EFI"), "Missing /EFI/BOOT/BOOTX64.EFI on ESP"
     assert esp_fs.exists("/EFI/BOOT/LIMINE.EFI"), "Missing /EFI/BOOT/LIMINE.EFI on ESP"
-    assert esp_fs.exists("/boot/limine/limine.conf"), "Missing /boot/limine/limine.conf on ESP"
+    assert not esp_fs.exists("/boot/limine/limine.conf"), "Shadowing limine.conf must NOT exist on ESP"
     esp_fs.close()
 
     sys_fs = PyFatFS(str(target_disk), offset=parts[1]["start_lba"] * 512)
+    assert sys_fs.exists("/boot/limine/limine.conf"), "Missing authoritative /boot/limine/limine.conf on ZONDERQDATA"
+    with sys_fs.open("/etc/acl.map", "r") as f:
+        acl_text = f.read()
+        assert "/home/alice|alice|700" in acl_text and "/root|root|700" in acl_text, f"Invalid /etc/acl.map: {acl_text}"
     with sys_fs.open("/etc/hostname", "r") as f:
         assert f.read().strip() == "zonderq-pc", "Hostname mismatch on installed disk"
     with sys_fs.open("/etc/passwd", "r") as f:

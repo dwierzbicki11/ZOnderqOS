@@ -14,38 +14,79 @@ namespace ZonderqOS
             if (string.IsNullOrWhiteSpace(input))
                 return false;
 
-            return ContainsToken(input, "su") || ContainsToken(input, "useradd") || ContainsToken(input, "zinstall");
-        }
+            // Parse shell tokens while stripping single/double quotes and backslash escapes
+            // so obfuscated forms like "su", 'su', \su, s\u, or "user""add" cannot bypass redaction.
+            int len = input.Length;
+            char[] tokenBuf = new char[16];
+            int i = 0;
 
-        private static bool ContainsToken(string input, string command)
-        {
-            int commandLength = command.Length;
-            for (int i = 0; i + commandLength <= input.Length; i++)
+            while (i < len)
             {
-                if (!MatchesAtIgnoreCase(input, command, i))
-                    continue;
+                while (i < len && IsBoundary(input[i]))
+                    i++;
+                if (i >= len)
+                    break;
 
-                bool leftBoundary = i == 0 || IsBoundary(input[i - 1]);
-                int end = i + commandLength;
-                bool rightBoundary = end >= input.Length || IsBoundary(input[end]);
-                if (leftBoundary && rightBoundary)
+                int tokenLen = 0;
+                bool overflowed = false;
+                bool inSingle = false;
+                bool inDouble = false;
+
+                while (i < len)
+                {
+                    char c = input[i];
+                    if (!inSingle && !inDouble && IsBoundary(c))
+                        break;
+
+                    if (c == '\\' && !inSingle && i + 1 < len)
+                    {
+                        i++;
+                        c = input[i];
+                    }
+                    else if (c == '\'' && !inDouble)
+                    {
+                        inSingle = !inSingle;
+                        i++;
+                        continue;
+                    }
+                    else if (c == '"' && !inSingle)
+                    {
+                        inDouble = !inDouble;
+                        i++;
+                        continue;
+                    }
+
+                    if (c >= 'A' && c <= 'Z')
+                        c = (char)(c + ('a' - 'A'));
+
+                    if (tokenLen < tokenBuf.Length)
+                        tokenBuf[tokenLen++] = c;
+                    else
+                        overflowed = true;
+
+                    i++;
+                }
+
+                if (!overflowed &&
+                    (TokenEquals(tokenBuf, tokenLen, "su") ||
+                     TokenEquals(tokenBuf, tokenLen, "useradd") ||
+                     TokenEquals(tokenBuf, tokenLen, "zinstall")))
+                {
                     return true;
+                }
             }
 
             return false;
         }
 
-        private static bool MatchesAtIgnoreCase(string input, string value, int index)
+        private static bool TokenEquals(char[] buf, int length, string expected)
         {
-            for (int i = 0; i < value.Length; i++)
+            if (length != expected.Length)
+                return false;
+
+            for (int i = 0; i < length; i++)
             {
-                char a = input[index + i];
-                char b = value[i];
-                if (a >= 'A' && a <= 'Z')
-                    a = (char)(a + ('a' - 'A'));
-                if (b >= 'A' && b <= 'Z')
-                    b = (char)(b + ('a' - 'A'));
-                if (a != b)
+                if (buf[i] != expected[i])
                     return false;
             }
 

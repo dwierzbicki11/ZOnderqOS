@@ -375,7 +375,7 @@ namespace ZonderqOS.GUI
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Network,
                     "NETWORK",
-                    networkReady ? "Network polaczona" : "Network rozlaczona",
+                    networkReady ? "Network connected" : "Network disconnected",
                     networkReady ? "Network interface is ready." : "Network connection is not currently ready.");
             }
 
@@ -432,8 +432,7 @@ namespace ZonderqOS.GUI
 
                 if (GetTrayWidth() == TrayWidth && global::ZonderqOS.SystemSettings.ShowTrayStatus)
                 {
-                    bool networkReady = global::ZonderqOS.Network.IsReady;
-                    DrawTrayTile(canvas, trayX + 47, 46, IconType.Network, "NET", networkReady);
+                    DrawTrayTile(canvas, trayX + 47, 46, IconType.Network, "NET", cachedNetworkReady);
                     DrawTrayTile(canvas, trayX + 97, 46, IconType.FileManager, cachedVolumeLabel, cachedVolumeCount > 0);
                     DrawBatteryTile(canvas, trayX + 147, 40);
                 }

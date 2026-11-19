@@ -96,9 +96,15 @@ namespace ZonderqOS
                     blockedUntil[index] = 0;
                 }
 
-                // A valid local authentication proves the console is not in a blind spray loop.
-                globalFailures = 0;
-                globalBlockedUntil = 0;
+                // Do not allow an unprivileged user's valid login to wipe an active global lockout
+                // triggered by spraying other accounts; only clear global failures once the window expires
+                // or when root successfully authenticates.
+                if (string.Equals(normalized, "root", StringComparison.Ordinal) ||
+                    RemainingSeconds(globalBlockedUntil) == 0)
+                {
+                    globalFailures = 0;
+                    globalBlockedUntil = 0;
+                }
             }
         }
 
@@ -181,9 +187,28 @@ namespace ZonderqOS
                 }
             }
 
-            int replacement = nextReplacement++;
-            if (nextReplacement >= MaxTrackedUsers)
-                nextReplacement = 0;
+            // Prefer evicting a non-root slot whose lockout has expired (or zero failures)
+            // so spraying fake usernames can never evict root or an actively locked-out account.
+            int replacement = -1;
+            for (int attempt = 0; attempt < MaxTrackedUsers; attempt++)
+            {
+                int candidate = (nextReplacement + attempt) % MaxTrackedUsers;
+                if (string.Equals(users[candidate], "root", StringComparison.Ordinal))
+                    continue;
+                if (RemainingSeconds(blockedUntil[candidate]) > 0)
+                    continue;
+
+                replacement = candidate;
+                nextReplacement = (candidate + 1) % MaxTrackedUsers;
+                break;
+            }
+
+            if (replacement < 0)
+            {
+                // All non-root slots are actively locked; refuse to evict root or locked accounts
+                // and rely on global throttling.
+                return -1;
+            }
 
             users[replacement] = normalizedUsername;
             failures[replacement] = 0;

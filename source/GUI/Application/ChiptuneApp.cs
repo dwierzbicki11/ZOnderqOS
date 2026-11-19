@@ -99,7 +99,7 @@ namespace ZonderqOS.GUI.Apps
         public ChiptuneApp(int x, int y, Action onClose) : base("Chiptune Studio")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 580, 410, "Chiptune Studio - Syntezator Retro 8-bit");
+            Window = new Window(x, y, 580, 410, "Chiptune Studio - Retro 8-bit Synth");
             Window.CloseAction = Close;
         }
 

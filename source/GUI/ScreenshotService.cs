@@ -9,9 +9,9 @@ namespace ZonderqOS.GUI
     {
         private static int counter = 1;
 
-        public static string CaptureAndSave(Canvas canvas, string targetDir = "0:/Screenshots")
+        public static string CaptureAndSave(Canvas canvas, string targetDir = null)
         {
-            if (canvas == null)
+            if (canvas == null || !SecurityContext.IsAuthenticated)
                 return null;
 
             int width = (int)canvas.Width;
@@ -21,26 +21,37 @@ namespace ZonderqOS.GUI
 
             try
             {
+                string user = SecurityContext.CurrentUser ?? "root";
+                string home = string.IsNullOrWhiteSpace(SecurityContext.CurrentHome)
+                    ? (string.Equals(user, "root", StringComparison.Ordinal) ? "/root" : "/home/" + user)
+                    : SecurityContext.CurrentHome;
+                if (string.IsNullOrWhiteSpace(targetDir) || targetDir.StartsWith("0:", StringComparison.Ordinal))
+                    targetDir = home.TrimEnd('/') + "/Screenshots";
+
+                if (!PermissionManager.CanCreate(targetDir, user))
+                    return null;
+
                 byte[] bmpBytes = BmpEncoder.EncodeCanvas(canvas);
                 if (bmpBytes.Length == 0)
                     return null;
 
                 if (!Directory.Exists(targetDir))
-                {
-                    try { Directory.CreateDirectory(targetDir); }
-                    catch { targetDir = "0:/"; }
-                }
+                    Directory.CreateDirectory(targetDir);
 
-                string fileName = "zrzut_" + counter + ".bmp";
+                string fileName = "screenshot_" + counter + ".bmp";
                 string fullPath = Path.Combine(targetDir, fileName);
                 while (File.Exists(fullPath) && counter < 9999)
                 {
                     counter++;
-                    fileName = "zrzut_" + counter + ".bmp";
+                    fileName = "screenshot_" + counter + ".bmp";
                     fullPath = Path.Combine(targetDir, fileName);
                 }
 
+                if (!PermissionManager.CanCreate(fullPath, user))
+                    return null;
+
                 File.WriteAllBytes(fullPath, bmpBytes);
+                PermissionManager.SetPermission(fullPath, user, 600);
                 counter++;
 
                 global::ZonderqOS.NotificationService.Post(

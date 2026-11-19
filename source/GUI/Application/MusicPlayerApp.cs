@@ -236,7 +236,7 @@ namespace ZonderqOS.GUI.Apps
             }
             else
             {
-                string freqStr = player.IsPlaying ? "Pauza" : "Stopped";
+                string freqStr = player.IsPlaying ? "Paused" : "Stopped";
                 int fw = SmallTextRenderer.Width(freqStr);
                 SmallTextRenderer.Draw(canvas, freqStr, rightX + rightWidth - fw - 14, cardY + 18, MutedColor);
             }
@@ -277,7 +277,7 @@ namespace ZonderqOS.GUI.Apps
             DrawCtrlButton(canvas, rightX + 120, ctrlY, 54, 28, "[ ]", hoveredBtn == 2);
             DrawCtrlButton(canvas, rightX + 180, ctrlY, 54, 28, ">|", hoveredBtn == 3);
 
-            string muteText = Speaker.Enabled ? "DZWIEK" : "WYCISZ";
+            string muteText = Speaker.Enabled ? "SOUND" : "MUTED";
             Color muteColor = Speaker.Enabled ? AccentColor : Color.FromArgb(240, 70, 70);
             DrawCtrlButton(canvas, rightX + 248, ctrlY, 68, 28, muteText, hoveredBtn == 4, muteColor);
         }

@@ -74,11 +74,11 @@ namespace ZonderqOS.GUI.Apps
             int contentY = Window.Y + 38;
             int contentWidth = Math.Max(1, Window.Width - 16);
 
-            int btnW = 200;
+            int btnW = 220;
             int btnH = 34;
             int btnX = contentX + (contentWidth - btnW) / 2;
-            int btn1Y = contentY + 160;
-            int btn2Y = contentY + 204;
+            int btn1Y = contentY + 154;
+            int btn2Y = contentY + 198;
 
             hoveredBtn = -1;
             if (mouseX >= btnX && mouseX < btnX + btnW)
@@ -121,7 +121,7 @@ namespace ZonderqOS.GUI.Apps
             int bannerY = contentY + 8;
             int bannerH = 130;
             canvas.DrawFilledRectangle(PanelBg, contentX + 8, bannerY, contentWidth - 16, bannerH);
-            canvas.DrawFilledRectangle(Border, contentX + 8, bannerY, contentWidth - 16, bannerH);
+            canvas.DrawRectangle(Border, contentX + 8, bannerY, contentWidth - 16, bannerH);
 
             // Camera Icon / Graphic
             int icX = contentX + 24;
@@ -131,12 +131,16 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Color.FromArgb(46, 117, 182), icX + 14, icY + 16, 20, 20);
             canvas.DrawFilledRectangle(Color.White, icX + 22, icY + 24, 4, 4);
 
-            // Details
+            // Details (zero per-frame string allocation)
             int textX = icX + 64;
             SmallTextRenderer.Draw(canvas, "ZOnderqOS SCREENSHOT", textX, bannerY + 16, TextColor);
-            SmallTextRenderer.Draw(canvas, "Rozdzielczosc: " + canvas.Width + " x " + canvas.Height, textX, bannerY + 36, MutedColor);
+            SmallTextRenderer.Draw(canvas, "Resolution: ", textX, bannerY + 36, MutedColor);
+            SmallTextRenderer.DrawUInt(canvas, (ulong)canvas.Width, textX + 72, bannerY + 36, MutedColor);
+            int xMarkX = textX + 72 + SmallTextRenderer.WidthUInt((ulong)canvas.Width) + 4;
+            SmallTextRenderer.Draw(canvas, "x", xMarkX, bannerY + 36, MutedColor);
+            SmallTextRenderer.DrawUInt(canvas, (ulong)canvas.Height, xMarkX + 10, bannerY + 36, MutedColor);
             SmallTextRenderer.Draw(canvas, "Format: 32-bit BMP (full quality)", textX, bannerY + 52, MutedColor);
-            SmallTextRenderer.Draw(canvas, "Location: 0:/Screenshots/", textX, bannerY + 68, MutedColor);
+            SmallTextRenderer.Draw(canvas, "Location: ~/Screenshots/", textX, bannerY + 68, MutedColor);
             SmallTextRenderer.Draw(canvas, status, textX, bannerY + 92, AccentColor);
 
             // Main Capture Button

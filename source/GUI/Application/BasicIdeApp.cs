@@ -1064,9 +1064,8 @@ namespace ZonderqOS.GUI.Apps
                     canvas.DrawFilledRectangle(ActiveLineBg, x + 2, rowY - 1, w - 4, 14);
                 }
 
-                // Line number
-                string numStr = (lineIdx + 1).ToString();
-                SmallTextRenderer.Draw(canvas, numStr, x + 6, rowY + 2, LineNumColor);
+                // Line number (zero-allocation per frame)
+                SmallTextRenderer.DrawUInt(canvas, (ulong)(lineIdx + 1), x + 6, rowY + 2, LineNumColor);
 
                 // Code text
                 string lineText = sourceLines[lineIdx];

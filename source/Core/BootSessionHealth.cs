@@ -161,7 +161,6 @@ namespace ZonderqOS.SystemCore
                     File.Delete(TempPath);
 
                 File.WriteAllText(TempPath, content);
-                PermissionManager.SetPermission(TempPath, "root", 600);
 
                 if (File.Exists(BackupPath))
                     File.Delete(BackupPath);
@@ -185,8 +184,6 @@ namespace ZonderqOS.SystemCore
                 if (File.Exists(BackupPath))
                     File.Delete(BackupPath);
 
-                PermissionManager.RemovePermission(TempPath);
-                PermissionManager.RemovePermission(BackupPath);
                 return true;
             }
             catch

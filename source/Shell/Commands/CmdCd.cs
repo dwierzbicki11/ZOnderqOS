@@ -32,6 +32,13 @@ namespace ZonderqOS.Commands
                         return;
                     }
 
+                    if (!PermissionManager.CanRead(newPath, SecurityContext.CurrentUser))
+                    {
+                        WriteMessage.WriteError($"Permission denied: {newPath}", "SEC");
+                        CommandIO.LastCommandSuccess = false;
+                        return;
+                    }
+
                     if (Directory.Exists(newPath)) 
                     {
                         currentPath = newPath;

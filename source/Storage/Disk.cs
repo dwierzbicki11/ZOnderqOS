@@ -52,6 +52,7 @@ namespace ZonderqOS
                 }
 #else
                 bool liveCmdline = ZonderqOS.Storage.LimineBootMediaDetector.IsLiveModeRequestedByCmdline();
+                bool opticalLiveMedia = ZonderqOS.Storage.LimineBootMediaDetector.IsOpticalBootMedia;
                 Partition data = null;
                 string error = null;
                 if (liveCmdline || !DataVolumePolicy.TryFindDataPartition(out data, out error))
@@ -59,6 +60,18 @@ namespace ZonderqOS
                     if (!liveCmdline && error != null && error.IndexOf("Multiple FAT32 ZONDERQDATA", StringComparison.Ordinal) >= 0)
                     {
                         WriteMessage.WriteError(error, "VFS");
+                        return false;
+                    }
+
+                    // Fail closed if an installed non-Live system boots without its ZONDERQDATA volume.
+                    // Ephemeral passwordless Live RAM sessions are permitted only when explicitly requested
+                    // via kernel cmdline ("live" / "installer") or booted from optical ISO installation media.
+                    if (!liveCmdline && !opticalLiveMedia)
+                    {
+                        WriteMessage.WriteError(
+                            (error ?? "No approved ZONDERQDATA volume found.") +
+                            " Refusing fail-open Live fallback without explicit live boot mode.",
+                            "VFS");
                         return false;
                     }
 
@@ -248,7 +261,7 @@ namespace ZonderqOS
             {
                 bool existed = File.Exists(path);
                 File.WriteAllText(path, content);
-                if (!existed || !PermissionManager.GetPermission(path).Owner.Equals(SecurityContext.CurrentUser, StringComparison.Ordinal))
+                if (!existed)
                     PermissionManager.SetPermission(path, SecurityContext.CurrentUser, 644);
                 WriteMessage.WriteOK($"File saved: {path}", "FS");
                 CommandIO.LastCommandSuccess = true;

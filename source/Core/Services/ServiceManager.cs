@@ -248,9 +248,11 @@ namespace ZonderqOS.SystemCore.Services
                 }
                 if (!ProcessManager.Kill(pid))
                 {
+                    Pids.Remove(key);
                     error = "Service exited before stop request.";
                     return false;
                 }
+                Pids.Remove(key);
                 return true;
             }
         }

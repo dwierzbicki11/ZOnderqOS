@@ -41,7 +41,6 @@ namespace ZonderqOS.SystemCore
                     File.Delete(TempCrashPath);
 
                 File.WriteAllText(TempCrashPath, report);
-                PermissionManager.SetPermission(TempCrashPath, "root", 600);
 
                 if (File.Exists(BackupCrashPath))
                     File.Delete(BackupCrashPath);
@@ -65,8 +64,6 @@ namespace ZonderqOS.SystemCore
                 if (File.Exists(BackupCrashPath))
                     File.Delete(BackupCrashPath);
 
-                PermissionManager.RemovePermission(TempCrashPath);
-                PermissionManager.RemovePermission(BackupCrashPath);
                 return true;
             }
             catch (Exception ex)

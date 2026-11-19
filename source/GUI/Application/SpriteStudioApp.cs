@@ -399,7 +399,7 @@ namespace ZonderqOS.GUI.Apps
                 }
                 if (!existed)
                     global::ZonderqOS.PermissionManager.SetPermission(path, global::ZonderqOS.SecurityContext.CurrentUser, 644);
-                statusMessage = "Saved kod BASIC DATA w: " + path;
+                statusMessage = "Saved BASIC DATA code to: " + path;
             }
             catch (Exception ex)
             {
@@ -517,7 +517,7 @@ namespace ZonderqOS.GUI.Apps
             // 2. Color Palette (16 colors)
             int palX = wx + 260;
             int palY = wy + 16;
-            SmallTextRenderer.Draw(canvas, "PALETA", palX, palY - 12, GoldColor);
+            SmallTextRenderer.Draw(canvas, "PALETTE", palX, palY - 12, GoldColor);
 
             for (int i = 0; i < 16; i++)
             {
@@ -542,26 +542,26 @@ namespace ZonderqOS.GUI.Apps
             int toolW = 100;
             int toolH = 24;
 
-            SmallTextRenderer.Draw(canvas, "NARZEDZIA", toolX, toolY - 12, AccentColor);
-            DrawToolBtn(canvas, "✏ Olowek", toolX, toolY, toolW, toolH, currentTool == 0);
+            SmallTextRenderer.Draw(canvas, "TOOLS", toolX, toolY - 12, AccentColor);
+            DrawToolBtn(canvas, "✏ Pencil", toolX, toolY, toolW, toolH, currentTool == 0);
             DrawToolBtn(canvas, "⌧ Eraser", toolX, toolY + 28, toolW, toolH, currentTool == 1);
-            DrawToolBtn(canvas, "▼ Wypelnij", toolX, toolY + 56, toolW, toolH, currentTool == 2);
+            DrawToolBtn(canvas, "▼ Fill", toolX, toolY + 56, toolW, toolH, currentTool == 2);
 
             // 4. Transform Actions
             int actX = wx + 440;
             int actY = wy + 16;
             int actW = 125;
             SmallTextRenderer.Draw(canvas, "OPERATIONS", actX, actY - 12, GreenColor);
-            DrawToolBtn(canvas, "⇄ Odbij Poz.", actX, actY, actW, toolH, false);
-            DrawToolBtn(canvas, "⇅ Odbij Pion.", actX, actY + 28, actW, toolH, false);
-            DrawToolBtn(canvas, "◐ Inwertuj", actX, actY + 56, actW, toolH, false);
+            DrawToolBtn(canvas, "⇄ Flip H", actX, actY, actW, toolH, false);
+            DrawToolBtn(canvas, "⇅ Flip V", actX, actY + 28, actW, toolH, false);
+            DrawToolBtn(canvas, "◐ Invert", actX, actY + 56, actW, toolH, false);
             DrawToolBtn(canvas, "🗑 Clear", actX, actY + 84, actW, toolH, false);
 
             // 5. Live Sprite Previews (1x, 2x, 3x)
             int prevX = wx + 330;
             int prevY = wy + 130;
             UiPainter.RoundedPanel(canvas, prevX, prevY, 235, 95, 4, Panel, Border);
-            SmallTextRenderer.Draw(canvas, "PODGLAD NA ZYWO (1X / 2X / 3X):", prevX + 10, prevY + 10, GoldColor);
+            SmallTextRenderer.Draw(canvas, "LIVE PREVIEW (1X / 2X / 3X):", prevX + 10, prevY + 10, GoldColor);
 
             // 1x Preview (16x16)
             int p1X = prevX + 12;

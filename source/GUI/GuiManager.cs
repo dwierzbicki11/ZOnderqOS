@@ -50,8 +50,12 @@ namespace ZonderqOS.GUI
         private int frameCounter;
         private static string cachedWatermarkBuild;
         private static string cachedWatermarkVersion;
+        private static Canvas sharedWallpaperCanvas;
+        private static int sharedWallpaperWidth;
+        private static int sharedWallpaperHeight;
         private string cachedLockLogUser;
         private string cachedLockLogMessage;
+        private string cachedIdleLockLogMessage;
         private string cachedUnlockLogMessage;
 
         private const int TaskbarHeight = 44;
@@ -61,7 +65,7 @@ namespace ZonderqOS.GUI
         // TryReadKey leaves the remaining events queued for the next frame.
         private const int MaxKeyboardEventsPerFrame = 64;
 
-        private const string WallpaperCacheDirectory = "/root/.zonderq-wallpapers";
+        private const string WallpaperCacheDirectory = "/var/cache/zonderq-wallpapers";
         private const string WallpaperCachePath = WallpaperCacheDirectory + "/wallpaper.png";
         private const string WallpaperResourceName = "Wallpapers.wallpaper.png";
 
@@ -365,8 +369,8 @@ namespace ZonderqOS.GUI
                     }
                     else if (ShouldAutoLock())
                     {
-                        SecurityLogger.LogEvent("INFO", "Automatic idle lock triggered for user " +
-                            SecurityContext.CurrentUser + ".");
+                        EnsureCachedLockLogMessages(SecurityContext.CurrentUser ?? string.Empty);
+                        SecurityLogger.LogSessionLockEvent(cachedIdleLockLogMessage);
                         RequestLockSession();
                         lockRequested = false;
                         if (!RunLockScreen())
@@ -1037,11 +1041,14 @@ namespace ZonderqOS.GUI
                 AppCategory.System, IconType.About, () => LaunchWelcome(120, 35),
                 StartMenuPlacement.Tool, 29, 15, true));
 
-            appRegistry.Register(new AppDescriptor(
-                AppIds.Installer, "ZonderqOS Installer", "Install OS", "Install OS",
-                "Install ZonderqOS onto a physical or virtual disk",
-                AppCategory.System, IconType.Install, () => LaunchInstaller(96, 36),
-                StartMenuPlacement.Tool, 30, 16, true));
+            if (global::ZonderqOS.Disk.IsLiveSession)
+            {
+                appRegistry.Register(new AppDescriptor(
+                    AppIds.Installer, "ZonderqOS Installer", "Install OS", "Install OS",
+                    "Install ZonderqOS onto a physical or virtual disk",
+                    AppCategory.System, IconType.Install, () => LaunchInstaller(96, 36),
+                    StartMenuPlacement.Tool, 30, 16, true));
+            }
         }
 
         private void PopulateStartMenu()
@@ -1191,18 +1198,23 @@ namespace ZonderqOS.GUI
             lockRequested = true;
         }
 
+        private void EnsureCachedLockLogMessages(string user)
+        {
+            if (!string.Equals(cachedLockLogUser, user, StringComparison.Ordinal))
+            {
+                cachedLockLogUser = user;
+                cachedLockLogMessage = "Graphical session locked for user " + user + ".";
+                cachedIdleLockLogMessage = "Automatic idle lock triggered for user " + user + ".";
+                cachedUnlockLogMessage = "Graphical session unlocked for user " + user + ".";
+            }
+        }
+
         private bool RunLockScreen()
         {
             if (!SecurityContext.IsAuthenticated || canvas == null)
                 return false;
 
-            string user = SecurityContext.CurrentUser ?? string.Empty;
-            if (!string.Equals(cachedLockLogUser, user, StringComparison.Ordinal))
-            {
-                cachedLockLogUser = user;
-                cachedLockLogMessage = "Graphical session locked for user " + user + ".";
-                cachedUnlockLogMessage = "Graphical session unlocked for user " + user + ".";
-            }
+            EnsureCachedLockLogMessages(SecurityContext.CurrentUser ?? string.Empty);
 
             SecurityLogger.LogSessionLockEvent(cachedLockLogMessage);
             bool unlocked = LockScreenManager.Run(canvas);
@@ -1661,7 +1673,23 @@ namespace ZonderqOS.GUI
 
         private void LaunchInstaller(int x, int y)
         {
-            applicationManager.Launch(new ZonderqInstallerApp(x, y, null));
+            if (!global::ZonderqOS.Disk.IsLiveSession || !SecurityContext.IsAuthenticated || SecurityContext.CurrentUid != 0)
+                return;
+
+            if (applicationManager != null)
+            {
+                for (int i = 0; i < applicationManager.Applications.Count; i++)
+                {
+                    if (applicationManager.Applications[i] is ZonderqInstallerApp existing && existing.IsRunning)
+                    {
+                        if (existing.Window != null && existing.Window.IsMinimized)
+                            existing.Window.RestoreFromMinimized();
+                        applicationManager.Activate(existing);
+                        return;
+                    }
+                }
+                applicationManager.Launch(new ZonderqInstallerApp(x, y, null));
+            }
         }
 
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,
@@ -1825,6 +1853,14 @@ namespace ZonderqOS.GUI
                 return;
 
             wallpaperLoadAttempted = true;
+            if (sharedWallpaperCanvas != null &&
+                sharedWallpaperWidth == width &&
+                sharedWallpaperHeight == height)
+            {
+                wallpaperCanvas = sharedWallpaperCanvas;
+                return;
+            }
+
             try
             {
                 Assembly assembly = typeof(GuiManager).Assembly;
@@ -1844,11 +1880,16 @@ namespace ZonderqOS.GUI
                     }
                 }
 
-                wallpaperCanvas = new Canvas(width, height);
-                wallpaperCanvas.Clear(Color.FromArgb(12, 18, 27));
+                Canvas nextCanvas = new Canvas(width, height);
+                nextCanvas.Clear(Color.FromArgb(12, 18, 27));
 
                 Png wallpaper = new Png(WallpaperCachePath);
-                wallpaperCanvas.DrawImage(wallpaper, 0, 0, width, height);
+                nextCanvas.DrawImage(wallpaper, 0, 0, width, height);
+
+                sharedWallpaperCanvas = nextCanvas;
+                sharedWallpaperWidth = width;
+                sharedWallpaperHeight = height;
+                wallpaperCanvas = nextCanvas;
             }
             catch (Exception ex)
             {

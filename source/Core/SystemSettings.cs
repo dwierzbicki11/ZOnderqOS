@@ -57,9 +57,9 @@ namespace ZonderqOS
 
                 switch (PerformanceProfile)
                 {
-                    case 0: return 8000;
+                    case 0: return 2400;
                     case 2: return 1000;
-                    default: return 4000;
+                    default: return 2000;
                 }
             }
         }
@@ -232,7 +232,6 @@ namespace ZonderqOS
                     File.Delete(SettingsTempPath);
 
                 File.WriteAllText(SettingsTempPath, content);
-                PermissionManager.SetPermission(SettingsTempPath, "root", 600);
 
                 if (File.Exists(SettingsBackupPath))
                     File.Delete(SettingsBackupPath);
@@ -256,9 +255,6 @@ namespace ZonderqOS
 
                 if (File.Exists(SettingsBackupPath))
                     File.Delete(SettingsBackupPath);
-
-                PermissionManager.RemovePermission(SettingsTempPath);
-                PermissionManager.RemovePermission(SettingsBackupPath);
 
                 SecurityLogger.LogEvent("INFO", "System settings updated atomically.");
                 return true;
@@ -423,10 +419,42 @@ namespace ZonderqOS
             error = string.Empty;
             try
             {
+                if (!SecurityContext.IsAuthenticated)
+                {
+                    error = "Authentication required to create a settings backup.";
+                    return false;
+                }
+
                 if (string.IsNullOrWhiteSpace(destinationPath))
                 {
                     error = "Backup destination path is empty.";
                     return false;
+                }
+
+                string normalizedDestination = PathResolver.GetAbsolutePath("/", destinationPath);
+                if (ZonderqOS.SystemCore.VirtualFs.IsReadOnlyPath(normalizedDestination) ||
+                    ZonderqOS.SystemCore.VirtualFs.IsVirtualPath(normalizedDestination))
+                {
+                    error = "Backup destination cannot be inside a virtual filesystem.";
+                    return false;
+                }
+
+                string user = SecurityContext.CurrentUser ?? string.Empty;
+                if (!PermissionManager.CanCreate(normalizedDestination, user))
+                {
+                    error = "Permission denied: cannot write backup to " + normalizedDestination;
+                    return false;
+                }
+
+                bool existed = File.Exists(normalizedDestination);
+                if (existed && SecurityContext.CurrentUid != 0)
+                {
+                    var existingAcl = PermissionManager.GetPermission(normalizedDestination);
+                    if (!string.Equals(existingAcl.Owner, user, StringComparison.Ordinal))
+                    {
+                        error = "Permission denied: cannot overwrite file owned by " + existingAcl.Owner + ".";
+                        return false;
+                    }
                 }
 
                 if (!File.Exists(SettingsPath))
@@ -435,22 +463,26 @@ namespace ZonderqOS
                     return false;
                 }
 
-                string parent = Path.GetDirectoryName(destinationPath);
+                string parent = Path.GetDirectoryName(normalizedDestination);
                 if (!string.IsNullOrEmpty(parent) && !Directory.Exists(parent))
                     Directory.CreateDirectory(parent);
 
-                File.Copy(SettingsPath, destinationPath, true);
-                PermissionManager.SetPermission(destinationPath, SecurityContext.CurrentUser, 600);
+                File.Copy(SettingsPath, normalizedDestination, true);
+                if (!existed)
+                    PermissionManager.SetPermission(normalizedDestination, user, 600);
 
                 string summary;
-                if (!ValidateSettingsFile(destinationPath, false, out summary))
+                if (!ValidateSettingsFile(normalizedDestination, false, out summary))
                 {
-                    try { File.Delete(destinationPath); } catch { }
+                    if (!existed)
+                    {
+                        try { File.Delete(normalizedDestination); } catch { }
+                    }
                     error = "Backup validation failed: " + summary;
                     return false;
                 }
 
-                SystemLogger.Log(SystemLogLevel.Info, "CFG", "Settings backup written to " + destinationPath + ".");
+                SystemLogger.Log(SystemLogLevel.Info, "CFG", "Settings backup written to " + normalizedDestination + ".");
                 return true;
             }
             catch (Exception ex)
@@ -664,8 +696,12 @@ namespace ZonderqOS
                 case "timezone":
                     return int.TryParse(value, out number) && number >= -12 && number <= 14;
                 case "desktop_background":
+                    return int.TryParse(value, out number) && number >= 0 && number <= 6;
                 case "accent_theme":
-                    return int.TryParse(value, out number) && number >= 0 && number <= 2;
+                    return int.TryParse(value, out number) && number >= 0 && number <= 7;
+                case "language":
+                    return string.Equals(value, "en-US", StringComparison.OrdinalIgnoreCase) ||
+                           string.Equals(value, "pl-PL", StringComparison.OrdinalIgnoreCase);
                 case "auto_lock_minutes":
                     return int.TryParse(value, out number) && IsAutoLockPreset(number);
                 case "static_ip":
@@ -692,6 +728,7 @@ namespace ZonderqOS
                 case "timezone":
                 case "desktop_background":
                 case "accent_theme":
+                case "language":
                 case "auto_lock_minutes":
                 case "network_dhcp":
                 case "static_ip":

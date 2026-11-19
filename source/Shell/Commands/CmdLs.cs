@@ -29,6 +29,13 @@ namespace ZonderqOS.Commands
                 return;
             }
 
+            if (!PermissionManager.CanRead(path, SecurityContext.CurrentUser))
+            {
+                WriteMessage.WriteError($"Permission denied: {path}", "SEC");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             Disk.Tree(path);
             CommandIO.LastCommandSuccess = true;
         }

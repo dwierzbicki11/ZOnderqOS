@@ -108,8 +108,8 @@ namespace ZonderqOS.GUI.Apps
 
             if (lines.Count == 0)
             {
-                lines.Add("★ New note");
-                lines.Add("System zaktualizowany!");
+                lines.Add("* New note");
+                lines.Add("System updated!");
                 lines.Add("Click here and type...");
             }
 
@@ -344,7 +344,8 @@ namespace ZonderqOS.GUI.Apps
 
             // Footer info
             SmallTextRenderer.DrawClipped(canvas, statusMessage, wx + 12, wy + wh - 18, ww - 170, Color.FromArgb(100, 100, 100));
-            SmallTextRenderer.DrawClipped(canvas, "File: " + notesFilePath, wx + ww - 150, wy + wh - 18, 142, Color.FromArgb(100, 100, 100));
+            SmallTextRenderer.Draw(canvas, "File: ", wx + ww - 150, wy + wh - 18, Color.FromArgb(100, 100, 100));
+            SmallTextRenderer.DrawClipped(canvas, notesFilePath, wx + ww - 114, wy + wh - 18, 106, Color.FromArgb(100, 100, 100));
         }
     }
 }

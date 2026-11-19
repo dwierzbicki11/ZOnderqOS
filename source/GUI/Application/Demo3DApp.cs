@@ -36,7 +36,7 @@ namespace ZonderqOS.GUI.Apps
 
         private int currentShape; // 0: Cube, 1: Pyramid, 2: Diamond, 3: Torus
         private bool wireframeMode = true;
-        private bool isRotating = true;
+        private bool isRotating = false;
 
         private float rotX = 0.4f;
         private float rotY = 0.6f;
@@ -59,10 +59,10 @@ namespace ZonderqOS.GUI.Apps
         private int[] screenXBuffer = new int[16];
         private int[] screenYBuffer = new int[16];
 
-        public Demo3DApp(int x, int y, Action onClose) : base("Demoscena 3D")
+        public Demo3DApp(int x, int y, Action onClose) : base("3D Demoscene")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 480, 440, "Demoscena 3D Studio");
+            Window = new Window(x, y, 480, 440, "3D Demoscene Studio");
             Window.CloseAction = Close;
             LoadShape(0);
         }
@@ -71,13 +71,23 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
+            isRotating = false;
+            isDragging = false;
             ZonderqOS.Hardware.Speaker.Stop();
+            vertices = null;
+            faces = null;
+            edges = null;
+            screenXBuffer = null;
+            screenYBuffer = null;
             base.Close();
             closeCallback?.Invoke();
         }
 
         public override void Update()
         {
+            if (isDragging && (Window == null || !Window.Visible || Window.IsMinimized || !Window.IsActive))
+                isDragging = false;
+
             long now = Stopwatch.GetTimestamp();
 
             if (toneEndTicks > 0 && now >= toneEndTicks)
@@ -451,14 +461,14 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "3D SOFTWARE ENGINE", vpX + 10, vpY + 10, SystemTheme.Accent);
             SmallTextRenderer.Draw(canvas, "FPS: ", vpX + 10, vpY + 24, MutedColor);
             SmallTextRenderer.DrawUInt(canvas, (ulong)Math.Max(0, currentFps), vpX + 40, vpY + 24, MutedColor);
-            SmallTextRenderer.Draw(canvas, "Wierzcholki: ", vpX + 72, vpY + 24, MutedColor);
-            SmallTextRenderer.DrawUInt(canvas, (ulong)count, vpX + 150, vpY + 24, MutedColor);
+            SmallTextRenderer.Draw(canvas, "Vertices: ", vpX + 72, vpY + 24, MutedColor);
+            SmallTextRenderer.DrawUInt(canvas, (ulong)count, vpX + 132, vpY + 24, MutedColor);
 
             // Controls Bar
             int btnY = contentY + 330;
             int btnH = 26;
 
-            DrawBtn(canvas, "SZESCIAN", contentX + 14, btnY, 74, btnH, currentShape == 0);
+            DrawBtn(canvas, "CUBE", contentX + 14, btnY, 74, btnH, currentShape == 0);
             DrawBtn(canvas, "PYRAMID", contentX + 94, btnY, 74, btnH, currentShape == 1);
             DrawBtn(canvas, "DIAMOND", contentX + 174, btnY, 74, btnH, currentShape == 2);
             DrawBtn(canvas, "TORUS", contentX + 254, btnY, 74, btnH, currentShape == 3);
@@ -466,7 +476,7 @@ namespace ZonderqOS.GUI.Apps
             string modeLabel = wireframeMode ? "MODE: WIREFRAME" : "MODE: SOLID";
             DrawBtn(canvas, modeLabel, contentX + 336, btnY, 124, btnH, false);
 
-            string rotLabel = isRotating ? "OBROT: WL" : "OBROT: STOP";
+            string rotLabel = isRotating ? "ROTATE: ON" : "ROTATE: OFF";
             DrawBtn(canvas, rotLabel, contentX + 14, btnY + 32, 94, 22, isRotating);
 
             SmallTextRenderer.Draw(canvas, "Drag the mouse to rotate manually  Space: Pause  Tab: Mode",

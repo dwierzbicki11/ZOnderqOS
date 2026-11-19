@@ -145,6 +145,7 @@ namespace UniversalInstallerSmoke
         private static int Main()
         {
             Console.WriteLine("=== ZonderqOS Universal Graphical Installer Smoke Suite ===");
+            ZonderqOS.SecurityContext.SetAuthenticated("root", "/root", 0);
             InstallHostCosmosNativeStubs();
             typeof(StorageManager)
                 .GetMethod("Initialize", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
@@ -230,6 +231,32 @@ namespace UniversalInstallerSmoke
             // Refresh catalog after Test E mutated Disk 1 so we have a fresh identity token for Disk 1
             catalog = DiskCatalog.DiscoverPhysicalDisks();
             entry1 = catalog[1];
+
+            // Test B2: Non-root user must be rejected by SystemInstallerEngine and DiskFormattingEngine
+            ZonderqOS.SecurityContext.SetAuthenticated("alice", "/home/alice", 1000);
+            var nonRootTracker = new InstallerStepTracker();
+            var nonRootReq = new InstallationRequest
+            {
+                TargetDiskToken = entry1.IdentityToken,
+                TypedDiskConfirmation = entry1.DiskId,
+                PartitionLayout = InstallationPartitionLayout.DualEfiAndSystem,
+                Username = "alice",
+                Hostname = "zonderq-workstation",
+                PasswordBuffer = "SecurePass123".ToCharArray(),
+                PasswordLength = 13,
+                ConfirmPasswordBuffer = "SecurePass123".ToCharArray(),
+                ConfirmPasswordLength = 13,
+                TestKernelElfOverride = BuildSyntheticElfKernel(256 * 1024)
+            };
+            bool nonRootOk = SystemInstallerEngine.ExecuteInstallation(nonRootReq, nonRootTracker, null, out string nonRootErr);
+            Assert(!nonRootOk && nonRootErr != null && nonRootErr.Contains("Root privileges", StringComparison.OrdinalIgnoreCase),
+                "Non-root user was not rejected by SystemInstallerEngine!");
+            bool nonRootFmt = DiskFormattingEngine.InitializeDiskWithSingleFat32Partition(
+                entry1.IdentityToken, entry1.DiskId, "TESTVOL", out string nonRootFmtErr);
+            Assert(!nonRootFmt && nonRootFmtErr != null && nonRootFmtErr.Contains("Root privileges", StringComparison.OrdinalIgnoreCase),
+                "Non-root user was not rejected by DiskFormattingEngine!");
+            Console.WriteLine("[Test B2] Non-root destructive disk operation rejected safely: " + nonRootErr);
+            ZonderqOS.SecurityContext.SetAuthenticated("root", "/root", 0);
 
             // 5. Test A/B/C/F: Execute complete dual-partition installation on Disk 1
             var tracker = new InstallerStepTracker();

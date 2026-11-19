@@ -23,6 +23,8 @@ namespace ZonderqOS
         private static int cachedCredentialCount;
         private static bool credentialCacheLoaded;
         private static bool credentialCacheTruncated;
+        private static bool initialRootSetupChecked;
+        private static bool initialRootSetupRequired;
 
         private const string CredentialVersion = "v2";
         private static readonly string PasswdPath = @"/etc/passwd";
@@ -58,7 +60,19 @@ namespace ZonderqOS
         {
             try
             {
-                return UserExists("root") && ValidateCredentials("root", "root");
+                lock (CredentialCacheSync)
+                {
+                    if (initialRootSetupChecked)
+                        return initialRootSetupRequired;
+                }
+
+                bool required = UserExists("root") && ValidateCredentials("root", "root");
+                lock (CredentialCacheSync)
+                {
+                    initialRootSetupRequired = required;
+                    initialRootSetupChecked = true;
+                }
+                return required;
             }
             catch
             {
@@ -266,6 +280,8 @@ namespace ZonderqOS
                 cachedCredentialCount = 0;
                 credentialCacheLoaded = false;
                 credentialCacheTruncated = false;
+                initialRootSetupChecked = false;
+                initialRootSetupRequired = false;
             }
         }
 

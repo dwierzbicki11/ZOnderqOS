@@ -71,6 +71,14 @@ namespace ZonderqOS.Storage
                 onProgressUpdated?.Invoke();
             }
 
+            if (!SecurityContext.IsAuthenticated || SecurityContext.CurrentUid != 0)
+            {
+                error = "Root privileges are required to install ZonderqOS.";
+                tracker.Fail(error);
+                onProgressUpdated?.Invoke();
+                return false;
+            }
+
             if (request == null)
             {
                 error = "Installation request is null.";
@@ -215,19 +223,24 @@ namespace ZonderqOS.Storage
                     CreateDirVfs(EfiMountPoint + "/boot");
                     CreateDirVfs(EfiMountPoint + "/boot/limine");
 
+                    // Do not write limine.conf on ESP so UEFI Limine uses the single authoritative
+                    // A/B BootSlotManager configuration on ZONDERQDATA (no shadowing config on ESP).
                     if (!WriteBytesVfs(EfiMountPoint + "/EFI/BOOT/BOOTX64.EFI", bootGuardBytes, out error) ||
                         !WriteBytesVfs(EfiMountPoint + "/EFI/BOOT/LIMINE.EFI", limineEfiBytes, out error) ||
-                        !WriteBytesVfs(EfiMountPoint + "/boot/limine/limine-bios.sys", limineBiosSysBytes, out error) ||
-                        !WriteTextVfs(EfiMountPoint + "/boot/limine/limine.conf", limineConfigText, out error) ||
-                        !WriteTextVfs(EfiMountPoint + "/boot/limine.conf", limineConfigText, out error) ||
-                        !WriteTextVfs(EfiMountPoint + "/limine.conf", limineConfigText, out error))
+                        !WriteBytesVfs(EfiMountPoint + "/boot/limine/limine-bios.sys", limineBiosSysBytes, out error))
                     {
                         tracker.Fail("EFI partition bootloader write failed: " + error);
                         onProgressUpdated?.Invoke();
                         return false;
                     }
 
-                    VfsManager.TryUnmount(EfiMountPoint);
+                    if (!VfsManager.TryUnmount(EfiMountPoint))
+                    {
+                        error = "Failed to cleanly unmount EFI System Partition after bootloader installation.";
+                        tracker.Fail(error);
+                        onProgressUpdated?.Invoke();
+                        return false;
+                    }
                     efiMounted = false;
                     DiskFormattingEngine.MirrorPrimaryFatToSecondaryFat(prepared.EfiPartition);
                     prepared.EfiPartition.Flush();
@@ -450,115 +463,132 @@ namespace ZonderqOS.Storage
                 return false;
             }
 
-            if (!VfsManager.TryCreateFile(rootBootDestPath, VfsMode.RegularFile) ||
-                !VfsManager.TryOpenFile(rootBootDestPath, out IVfsFileHandle rootBootHandle))
+            IVfsFileHandle rootBootHandle = null;
+            IVfsFileHandle srcHandle = null;
+            try
             {
-                error = "Could not create fallback kernel image at " + rootBootDestPath;
-                return false;
-            }
-
-            if (request.TestKernelElfOverride != null && request.TestKernelElfOverride.Length >= 128)
-            {
-                byte[] src = request.TestKernelElfOverride;
-                int total = src.Length;
-                int offset = 0;
-                while (offset < total)
+                if (!VfsManager.TryCreateFile(rootBootDestPath, VfsMode.RegularFile) ||
+                    !VfsManager.TryOpenFile(rootBootDestPath, out rootBootHandle))
                 {
-                    if (request.SimulateInterruptedCopyError && offset >= total / 2)
-                    {
-                        error = "Simulated disk write error during system file copy.";
-                        return false;
-                    }
-
-                    int len = Math.Min(CopyChunkSize, total - offset);
-                    ReadOnlySpan<byte> slice = src.AsSpan(offset, len);
-                    if (slotAHandle.Write(slice) != len || rootBootHandle.Write(slice) != len)
-                    {
-                        error = "Disk write error while copying kernel image.";
-                        return false;
-                    }
-
-                    digest.BlockUpdate(src, offset, len);
-                    offset += len;
-                    totalBytesWritten += len;
-                    int pct = 56 + (int)((offset * 18L) / Math.Max(1, total));
-                    progressPctCallback?.Invoke(pct);
-                }
-            }
-            else if (LimineBootMediaDetector.TryGetBootKernelElf(out IntPtr elfAddr, out int elfSize))
-            {
-                byte* basePtr = (byte*)elfAddr;
-                int offset = 0;
-                while (offset < elfSize)
-                {
-                    if (request.SimulateInterruptedCopyError && offset >= elfSize / 2)
-                    {
-                        error = "Simulated disk write error during system file copy.";
-                        return false;
-                    }
-
-                    int len = Math.Min(CopyChunkSize, elfSize - offset);
-                    for (int i = 0; i < len; i++)
-                        chunk[i] = basePtr[offset + i];
-
-                    ReadOnlySpan<byte> slice = chunk.AsSpan(0, len);
-                    if (slotAHandle.Write(slice) != len || rootBootHandle.Write(slice) != len)
-                    {
-                        error = "Disk write error while streaming kernel image from memory.";
-                        return false;
-                    }
-
-                    digest.BlockUpdate(chunk, 0, len);
-                    offset += len;
-                    totalBytesWritten += len;
-                    int pct = 56 + (int)((offset * 18L) / Math.Max(1, elfSize));
-                    progressPctCallback?.Invoke(pct);
-                }
-            }
-            else
-            {
-                string srcPath = VfsFileExistsWithMinSize("/boot/slot_a/ZonderqOS.elf", 1024)
-                    ? "/boot/slot_a/ZonderqOS.elf"
-                    : "/boot/ZonderqOS.elf";
-
-                if (!VfsManager.TryStat(srcPath, out VfsStat stat) ||
-                    !VfsManager.TryOpenFile(srcPath, out IVfsFileHandle srcHandle))
-                {
-                    error = "Could not open source kernel image at " + srcPath;
+                    error = "Could not create fallback kernel image at " + rootBootDestPath;
                     return false;
                 }
 
-                int total = (int)stat.Size;
-                int offset = 0;
-                while (offset < total)
+                if (request.TestKernelElfOverride != null && request.TestKernelElfOverride.Length >= 128)
                 {
-                    if (request.SimulateInterruptedCopyError && offset >= total / 2)
+                    byte[] src = request.TestKernelElfOverride;
+                    int total = src.Length;
+                    int offset = 0;
+                    while (offset < total)
                     {
-                        error = "Simulated disk write error during system file copy.";
-                        return false;
+                        if (request.SimulateInterruptedCopyError && offset >= total / 2)
+                        {
+                            error = "Simulated disk write error during system file copy.";
+                            return false;
+                        }
+
+                        int len = Math.Min(CopyChunkSize, total - offset);
+                        ReadOnlySpan<byte> slice = src.AsSpan(offset, len);
+                        if (slotAHandle.Write(slice) != len || rootBootHandle.Write(slice) != len)
+                        {
+                            error = "Disk write error while copying kernel image.";
+                            return false;
+                        }
+
+                        digest.BlockUpdate(src, offset, len);
+                        offset += len;
+                        totalBytesWritten += len;
+                        int pct = 56 + (int)((offset * 18L) / Math.Max(1, total));
+                        progressPctCallback?.Invoke(pct);
                     }
-
-                    int n = (int)srcHandle.Read(chunk);
-                    if (n <= 0)
-                        break;
-
-                    ReadOnlySpan<byte> slice = chunk.AsSpan(0, n);
-                    if (slotAHandle.Write(slice) != n || rootBootHandle.Write(slice) != n)
-                    {
-                        error = "Disk write error while copying kernel image.";
-                        return false;
-                    }
-
-                    digest.BlockUpdate(chunk, 0, n);
-                    offset += n;
-                    totalBytesWritten += n;
-                    int pct = 56 + (int)((offset * 18L) / Math.Max(1, total));
-                    progressPctCallback?.Invoke(pct);
                 }
-            }
+                else if (LimineBootMediaDetector.TryGetBootKernelElf(out IntPtr elfAddr, out int elfSize))
+                {
+                    byte* basePtr = (byte*)elfAddr;
+                    int offset = 0;
+                    while (offset < elfSize)
+                    {
+                        if (request.SimulateInterruptedCopyError && offset >= elfSize / 2)
+                        {
+                            error = "Simulated disk write error during system file copy.";
+                            return false;
+                        }
 
-            slotAHandle.TryFlush();
-            rootBootHandle.TryFlush();
+                        int len = Math.Min(CopyChunkSize, elfSize - offset);
+                        for (int i = 0; i < len; i++)
+                            chunk[i] = basePtr[offset + i];
+
+                        ReadOnlySpan<byte> slice = chunk.AsSpan(0, len);
+                        if (slotAHandle.Write(slice) != len || rootBootHandle.Write(slice) != len)
+                        {
+                            error = "Disk write error while streaming kernel image from memory.";
+                            return false;
+                        }
+
+                        digest.BlockUpdate(chunk, 0, len);
+                        offset += len;
+                        totalBytesWritten += len;
+                        int pct = 56 + (int)((offset * 18L) / Math.Max(1, elfSize));
+                        progressPctCallback?.Invoke(pct);
+                    }
+                }
+                else
+                {
+                    string srcPath = VfsFileExistsWithMinSize("/boot/slot_a/ZonderqOS.elf", 1024)
+                        ? "/boot/slot_a/ZonderqOS.elf"
+                        : "/boot/ZonderqOS.elf";
+
+                    if (!VfsManager.TryStat(srcPath, out VfsStat stat) ||
+                        !VfsManager.TryOpenFile(srcPath, out srcHandle))
+                    {
+                        error = "Could not open source kernel image at " + srcPath;
+                        return false;
+                    }
+
+                    int total = (int)stat.Size;
+                    int offset = 0;
+                    while (offset < total)
+                    {
+                        if (request.SimulateInterruptedCopyError && offset >= total / 2)
+                        {
+                            error = "Simulated disk write error during system file copy.";
+                            return false;
+                        }
+
+                        int n = (int)srcHandle.Read(chunk);
+                        if (n <= 0)
+                            break;
+
+                        ReadOnlySpan<byte> slice = chunk.AsSpan(0, n);
+                        if (slotAHandle.Write(slice) != n || rootBootHandle.Write(slice) != n)
+                        {
+                            error = "Disk write error while copying kernel image.";
+                            return false;
+                        }
+
+                        digest.BlockUpdate(chunk, 0, n);
+                        offset += n;
+                        totalBytesWritten += n;
+                        int pct = 56 + (int)((offset * 18L) / Math.Max(1, total));
+                        progressPctCallback?.Invoke(pct);
+                    }
+
+                    if (totalBytesWritten != total)
+                    {
+                        error = "Short read while copying source kernel image (" + totalBytesWritten + " / " + total + " bytes).";
+                        return false;
+                    }
+                }
+
+                slotAHandle.TryFlush();
+                rootBootHandle.TryFlush();
+            }
+            finally
+            {
+                (srcHandle as IDisposable)?.Dispose();
+                (rootBootHandle as IDisposable)?.Dispose();
+                (slotAHandle as IDisposable)?.Dispose();
+            }
 
             byte[] hashBytes = new byte[digest.GetDigestSize()];
             digest.DoFinal(hashBytes, 0);
@@ -601,11 +631,19 @@ namespace ZonderqOS.Storage
                 username + ":" + userCred + "\n";
 
             string permissionsContent =
+                "/|root|755\n" +
+                "/home|root|755\n" +
+                "/root|root|700\n" +
+                "/tmp|root|777\n" +
                 "/etc/passwd|root|644\n" +
                 "/etc/shadow|root|600\n" +
+                "/etc/acl.map|root|600\n" +
+                "/etc/firewall.cfg|root|600\n" +
+                "/etc/hostname|root|644\n" +
+                "/etc/zonderq/settings.conf|root|644\n" +
+                "/var/log/auth.log|root|600\n" +
+                "/etc/profile|root|644\n" +
                 "/etc/security|root|700\n" +
-                "/etc/security/permissions.db|root|600\n" +
-                "/root|root|700\n" +
                 "/home/" + username + "|" + username + "|700\n";
 
             string settingsContent =
@@ -646,7 +684,7 @@ namespace ZonderqOS.Storage
 
             if (!WriteTextVfs(rootPrefix + "/etc/passwd", passwdContent, out error) ||
                 !WriteTextVfs(rootPrefix + "/etc/shadow", shadowContent, out error) ||
-                !WriteTextVfs(rootPrefix + "/etc/security/permissions.db", permissionsContent, out error) ||
+                !WriteTextVfs(rootPrefix + "/etc/acl.map", permissionsContent, out error) ||
                 !WriteTextVfs(rootPrefix + "/etc/hostname", hostname + "\n", out error) ||
                 !WriteTextVfs(rootPrefix + "/etc/zonderq/settings.conf", settingsContent, out error) ||
                 !WriteTextVfs(rootPrefix + "/etc/os-release", osReleaseContent, out error) ||
@@ -688,24 +726,31 @@ namespace ZonderqOS.Storage
             var digest = new Sha256Digest();
             int totalRead = 0;
             bool checkedMagic = false;
-            while (totalRead < expectedKernelBytes)
+            try
             {
-                int n = (int)kh.Read(buf);
-                if (n <= 0)
-                    break;
-
-                if (!checkedMagic)
+                while (totalRead < expectedKernelBytes)
                 {
-                    if (n < 4 || buf[0] != 0x7F || buf[1] != (byte)'E' || buf[2] != (byte)'L' || buf[3] != (byte)'F')
-                    {
-                        error = "Installed Slot A kernel does not have a valid ELF magic header.";
-                        return false;
-                    }
-                    checkedMagic = true;
-                }
+                    int n = (int)kh.Read(buf);
+                    if (n <= 0)
+                        break;
 
-                digest.BlockUpdate(buf, 0, n);
-                totalRead += n;
+                    if (!checkedMagic)
+                    {
+                        if (n < 4 || buf[0] != 0x7F || buf[1] != (byte)'E' || buf[2] != (byte)'L' || buf[3] != (byte)'F')
+                        {
+                            error = "Installed Slot A kernel does not have a valid ELF magic header.";
+                            return false;
+                        }
+                        checkedMagic = true;
+                    }
+
+                    digest.BlockUpdate(buf, 0, n);
+                    totalRead += n;
+                }
+            }
+            finally
+            {
+                (kh as IDisposable)?.Dispose();
             }
 
             if (totalRead != expectedKernelBytes)
@@ -890,21 +935,28 @@ namespace ZonderqOS.Storage
                     return false;
                 }
 
-                int offset = 0;
-                while (offset < data.Length)
+                try
                 {
-                    int len = Math.Min(CopyChunkSize, data.Length - offset);
-                    long written = handle.Write(data.AsSpan(offset, len));
-                    if (written != len)
+                    int offset = 0;
+                    while (offset < data.Length)
                     {
-                        error = "Short write on file " + path;
-                        return false;
+                        int len = Math.Min(CopyChunkSize, data.Length - offset);
+                        long written = handle.Write(data.AsSpan(offset, len));
+                        if (written != len)
+                        {
+                            error = "Short write on file " + path;
+                            return false;
+                        }
+                        offset += len;
                     }
-                    offset += len;
-                }
 
-                handle.TryFlush();
-                return true;
+                    handle.TryFlush();
+                    return true;
+                }
+                finally
+                {
+                    (handle as IDisposable)?.Dispose();
+                }
             }
             catch (Exception ex)
             {
@@ -929,12 +981,19 @@ namespace ZonderqOS.Storage
                 if (!VfsManager.TryOpenFile(path, out IVfsFileHandle handle))
                     return string.Empty;
 
-                byte[] buf = new byte[(int)stat.Size];
-                int read = (int)handle.Read(buf);
-                if (read <= 0)
-                    return string.Empty;
+                try
+                {
+                    byte[] buf = new byte[(int)stat.Size];
+                    int read = (int)handle.Read(buf);
+                    if (read <= 0)
+                        return string.Empty;
 
-                return Encoding.UTF8.GetString(buf, 0, read);
+                    return Encoding.UTF8.GetString(buf, 0, read);
+                }
+                finally
+                {
+                    (handle as IDisposable)?.Dispose();
+                }
             }
             catch
             {

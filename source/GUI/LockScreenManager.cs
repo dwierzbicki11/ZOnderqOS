@@ -23,6 +23,7 @@ namespace ZonderqOS.GUI
         {
             cursorDamageRenderer = null;
             cursorDamageCanvas = null;
+            ReusableScreen.ClearSessionState();
         }
 
         public static bool Run(Canvas canvas)
@@ -182,6 +183,22 @@ namespace ZonderqOS.GUI
             public void ClearSensitiveData()
             {
                 ClearPassword();
+            }
+
+            public void ClearSessionState()
+            {
+                ClearPassword();
+                username = string.Empty;
+                cachedUserForLogs = string.Empty;
+                cachedSwitchLog = "Switch-user requested from lock screen.";
+                cachedFailedUnlockLog = "Failed graphical unlock attempt.";
+                cachedWaitSeconds = -1;
+                cachedWaitStatus = string.Empty;
+                cachedLockSeconds = -1;
+                cachedLockStatus = string.Empty;
+                Unlocked = false;
+                status = "SESSION LOCKED";
+                statusColor = Muted;
             }
 
             public void HandleKeyboard(KeyEvent key)
@@ -479,7 +496,7 @@ namespace ZonderqOS.GUI
                 IconManager.DrawScaled(canvas, IconType.Play,
                     layout.FieldX + 16, layout.UnlockBtnY + (layout.UnlockBtnHeight - unlockIconSize) / 2,
                     unlockIconSize, unlockIconSize);
-                SmallTextRenderer.DrawCentered(canvas, "ODBLOKUJ",
+                SmallTextRenderer.DrawCentered(canvas, "UNLOCK",
                     layout.FieldX + 50, layout.UnlockBtnY + (layout.UnlockBtnHeight - 7) / 2,
                     layout.FieldWidth - 70, Text);
 

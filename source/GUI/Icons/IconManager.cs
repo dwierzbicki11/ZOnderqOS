@@ -12,7 +12,7 @@ namespace ZonderqOS.GUI.Icons
         private const int MaxScaledCacheEntries = 256;
         // Do not replace a small cached icon with a huge, transient zoom size.
         private const int MaxReplacementArea = 128 * 128;
-        private const string CacheDirectory = "/root/.zonderq-icons";
+        private const string CacheDirectory = "/var/cache/zonderq-icons";
 
         // Source PNGs are decoded once during GUI startup and their raw pixel buffers
         // are held strongly for the whole GUI session by the hot render path.

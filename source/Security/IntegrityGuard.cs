@@ -62,9 +62,11 @@ namespace ZonderqOS.Security
                         File.Copy(DatabaseBackupPath, DatabasePath, true);
                     }
 
+                    bool createdFreshBaseline = false;
                     if (!File.Exists(DatabasePath))
                     {
                         CreateDefaultBaseline();
+                        createdFreshBaseline = true;
                     }
                     else
                     {
@@ -72,7 +74,8 @@ namespace ZonderqOS.Security
                     }
 
                     isInitialized = true;
-                    ScanAll();
+                    if (!createdFreshBaseline)
+                        ScanAll();
                 }
                 catch (Exception ex)
                 {

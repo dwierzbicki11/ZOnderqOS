@@ -64,6 +64,8 @@ namespace ZonderqOS.GUI.Apps
         private readonly string[] partitionSizeText = new string[MaxPartitions];
         private readonly ulong[] partitionSizeMb = new ulong[MaxPartitions];
         private readonly bool[] partitionProtected = new bool[MaxPartitions];
+        private readonly DiskIdentityToken[] partitionHostTokens = new DiskIdentityToken[MaxPartitions];
+        private readonly ulong[] partitionStartSectors = new ulong[MaxPartitions];
 
         private readonly string[] mountNames = new string[MaxMounts];
         private readonly string[] mountDetails = new string[MaxMounts];
@@ -85,10 +87,15 @@ namespace ZonderqOS.GUI.Apps
         // modalOperation: 0 = none, 1 = prepare/format disk, 2 = format partition FAT32, 3 = delete partition
         private int modalOperation;
         private string modalTargetCode = string.Empty;
+        private string modalPromptText = string.Empty;
         private string modalTitle = string.Empty;
         private string modalDescription = string.Empty;
+        private DiskIdentityToken modalDiskToken;
+        private ulong modalPartitionStartLba;
         private readonly char[] modalConfirmChars = new char[24];
         private int modalConfirmLen;
+        private string modalTypedText = string.Empty;
+        private string modalTypedDisplay = "_";
 
         public DiskManagerApp(int x, int y, Action onClose) : base("Disk Manager")
         {
@@ -695,12 +702,33 @@ namespace ZonderqOS.GUI.Apps
                                          DiskCatalog.IsDeviceHostingActiveRoot(part.Host) ||
                                          LimineBootMediaDetector.IsBootOrInstallationMedia(part.Host);
                     partitionProtected[slot] = hostProtected || !string.IsNullOrEmpty(mnt);
+                    partitionHostTokens[slot] = FindTokenForHostDevice(part.Host);
+                    partitionStartSectors[slot] = part.StartSector;
                 }
             }
             catch
             {
                 partitionCount = 0;
             }
+        }
+
+        private DiskIdentityToken FindTokenForHostDevice(Cosmos.Kernel.HAL.Devices.Storage.IBlockDevice host)
+        {
+            if (host == null)
+                return null;
+
+            for (int i = 0; i < deviceCount; i++)
+            {
+                if (deviceTokens[i] != null && object.ReferenceEquals(deviceTokens[i].DeviceReference, host))
+                    return deviceTokens[i];
+            }
+            return null;
+        }
+
+        private void UpdateModalTypedCache()
+        {
+            modalTypedText = modalConfirmLen > 0 ? new string(modalConfirmChars, 0, modalConfirmLen) : string.Empty;
+            modalTypedDisplay = modalTypedText + "_";
         }
 
         private void LoadMounts()
@@ -878,6 +906,12 @@ namespace ZonderqOS.GUI.Apps
 
         private void RequestPrepareSelectedDisk()
         {
+            if (!SecurityContext.IsAuthenticated || SecurityContext.CurrentUid != 0)
+            {
+                SetStatus("BLOCKED: ROOT PRIVILEGES REQUIRED FOR DISK OPERATIONS", Danger);
+                return;
+            }
+
             if (tab != 0 || deviceCount <= 0 || selection < 0 || selection >= deviceCount)
             {
                 SetStatus("NO DISK SELECTED", Danger);
@@ -892,8 +926,12 @@ namespace ZonderqOS.GUI.Apps
 
             Array.Clear(modalConfirmChars, 0, modalConfirmChars.Length);
             modalConfirmLen = 0;
+            UpdateModalTypedCache();
             modalOperation = 1;
-            modalTargetCode = deviceTokens[selection].DiskId;
+            modalDiskToken = deviceTokens[selection];
+            modalPartitionStartLba = 0UL;
+            modalTargetCode = modalDiskToken.DiskId;
+            modalPromptText = "Type '" + modalTargetCode + "' below to confirm:";
             modalTitle = "WARNING: PREPARE & FORMAT DISK (" + modalTargetCode + ")";
             modalDescription = "All existing partitions and data on " + deviceNames[selection] +
                                " (" + deviceSizeText[selection] + ") will be permanently deleted.";
@@ -902,13 +940,19 @@ namespace ZonderqOS.GUI.Apps
 
         private void RequestFormatSelectedPartition()
         {
+            if (!SecurityContext.IsAuthenticated || SecurityContext.CurrentUid != 0)
+            {
+                SetStatus("BLOCKED: ROOT PRIVILEGES REQUIRED FOR DISK OPERATIONS", Danger);
+                return;
+            }
+
             if (tab != 1 || partitionCount <= 0 || selection < 0 || selection >= partitionCount)
             {
                 SetStatus("NO PARTITION SELECTED", Danger);
                 return;
             }
 
-            if (partitionProtected[selection] || partitionSourceIndex[selection] == 0)
+            if (partitionProtected[selection] || partitionSourceIndex[selection] == 0 || partitionHostTokens[selection] == null)
             {
                 SetStatus("BLOCKED: SYSTEM, BOOTGUARD OR MOUNTED PARTITION IS PROTECTED", Danger);
                 return;
@@ -916,8 +960,12 @@ namespace ZonderqOS.GUI.Apps
 
             Array.Clear(modalConfirmChars, 0, modalConfirmChars.Length);
             modalConfirmLen = 0;
+            UpdateModalTypedCache();
             modalOperation = 2;
+            modalDiskToken = partitionHostTokens[selection];
+            modalPartitionStartLba = partitionStartSectors[selection];
             modalTargetCode = "PART-" + partitionSourceIndex[selection];
+            modalPromptText = "Type '" + modalTargetCode + "' below to confirm:";
             modalTitle = "WARNING: FORMAT PARTITION TO FAT32 (" + modalTargetCode + ")";
             modalDescription = "All files on partition " + partitionNames[selection] +
                                " (" + partitionSizeText[selection] + ") will be permanently erased.";
@@ -926,13 +974,19 @@ namespace ZonderqOS.GUI.Apps
 
         private void RequestDeleteSelectedPartition()
         {
+            if (!SecurityContext.IsAuthenticated || SecurityContext.CurrentUid != 0)
+            {
+                SetStatus("BLOCKED: ROOT PRIVILEGES REQUIRED FOR DISK OPERATIONS", Danger);
+                return;
+            }
+
             if (tab != 1 || partitionCount <= 0 || selection < 0 || selection >= partitionCount)
             {
                 SetStatus("NO PARTITION SELECTED", Danger);
                 return;
             }
 
-            if (partitionProtected[selection] || partitionSourceIndex[selection] == 0)
+            if (partitionProtected[selection] || partitionSourceIndex[selection] == 0 || partitionHostTokens[selection] == null)
             {
                 SetStatus("BLOCKED: SYSTEM, BOOTGUARD OR MOUNTED PARTITION CANNOT BE DELETED", Danger);
                 return;
@@ -940,8 +994,12 @@ namespace ZonderqOS.GUI.Apps
 
             Array.Clear(modalConfirmChars, 0, modalConfirmChars.Length);
             modalConfirmLen = 0;
+            UpdateModalTypedCache();
             modalOperation = 3;
+            modalDiskToken = partitionHostTokens[selection];
+            modalPartitionStartLba = partitionStartSectors[selection];
             modalTargetCode = "DEL-" + partitionSourceIndex[selection];
+            modalPromptText = "Type '" + modalTargetCode + "' below to confirm:";
             modalTitle = "WARNING: DELETE PARTITION (" + partitionNames[selection] + ")";
             modalDescription = "Partition " + partitionNames[selection] +
                                " (" + partitionSizeText[selection] + ") will be removed from the partition table.";
@@ -953,7 +1011,9 @@ namespace ZonderqOS.GUI.Apps
             if (key.Key == ConsoleKeyEx.Escape)
             {
                 modalOperation = 0;
+                modalDiskToken = null;
                 modalConfirmLen = 0;
+                UpdateModalTypedCache();
                 SetStatus("OPERATION CANCELLED", Warning);
                 return;
             }
@@ -961,7 +1021,10 @@ namespace ZonderqOS.GUI.Apps
             if (key.Key == ConsoleKeyEx.Backspace)
             {
                 if (modalConfirmLen > 0)
+                {
                     modalConfirmChars[--modalConfirmLen] = '\0';
+                    UpdateModalTypedCache();
+                }
                 return;
             }
 
@@ -973,7 +1036,10 @@ namespace ZonderqOS.GUI.Apps
 
             char ch = key.KeyChar;
             if (ch >= 32 && ch <= 126 && modalConfirmLen < modalConfirmChars.Length)
+            {
                 modalConfirmChars[modalConfirmLen++] = char.ToUpperInvariant(ch);
+                UpdateModalTypedCache();
+            }
         }
 
         private void HandleModalMouse(int mouseX, int mouseY)
@@ -987,7 +1053,9 @@ namespace ZonderqOS.GUI.Apps
             if (Hit(mouseX, mouseY, mx + 24, btnY, 160, 38))
             {
                 modalOperation = 0;
+                modalDiskToken = null;
                 modalConfirmLen = 0;
+                UpdateModalTypedCache();
                 SetStatus("OPERATION CANCELLED", Warning);
             }
             else if (Hit(mouseX, mouseY, mx + mw - 224, btnY, 200, 38))
@@ -998,7 +1066,15 @@ namespace ZonderqOS.GUI.Apps
 
         private void ExecuteConfirmedModalOperation()
         {
-            string typed = modalConfirmLen > 0 ? new string(modalConfirmChars, 0, modalConfirmLen) : string.Empty;
+            if (!SecurityContext.IsAuthenticated || SecurityContext.CurrentUid != 0)
+            {
+                modalOperation = 0;
+                modalDiskToken = null;
+                SetStatus("BLOCKED: ROOT PRIVILEGES REQUIRED", Danger);
+                return;
+            }
+
+            string typed = modalTypedText;
             if (!InstallerInputValidator.ValidateDiskConfirmation(modalTargetCode, typed))
             {
                 SetStatus("CONFIRMATION MISMATCH: TYPE " + modalTargetCode + " EXACTLY", Danger);
@@ -1006,19 +1082,24 @@ namespace ZonderqOS.GUI.Apps
             }
 
             int op = modalOperation;
+            DiskIdentityToken targetToken = modalDiskToken;
+            ulong targetStartLba = modalPartitionStartLba;
+            string expectedCode = modalTargetCode;
             modalOperation = 0;
+            modalDiskToken = null;
             modalConfirmLen = 0;
+            UpdateModalTypedCache();
+
+            if (targetToken == null)
+            {
+                SetStatus("TARGET DISK IDENTITY UNAVAILABLE", Danger);
+                return;
+            }
 
             if (op == 1)
             {
-                if (selection < 0 || selection >= deviceCount || deviceProtected[selection] || deviceTokens[selection] == null)
-                {
-                    SetStatus("DISK PROTECTED OR UNAVAILABLE", Danger);
-                    return;
-                }
-
                 if (DiskFormattingEngine.InitializeDiskWithSingleFat32Partition(
-                    deviceTokens[selection], typed, "ZONDERQVOL", out string err))
+                    targetToken, typed, "ZONDERQVOL", out string err))
                 {
                     RefreshSnapshot();
                     SetStatus("DISK PREPARED AND FORMATTED AS FAT32 (ZONDERQVOL)", Good);
@@ -1030,21 +1111,8 @@ namespace ZonderqOS.GUI.Apps
             }
             else if (op == 2)
             {
-                if (selection < 0 || selection >= partitionCount || partitionProtected[selection])
-                {
-                    SetStatus("PARTITION PROTECTED", Danger);
-                    return;
-                }
-
-                int srcIdx = partitionSourceIndex[selection];
-                if (srcIdx <= 0 || srcIdx >= StorageManager.Partitions.Count)
-                {
-                    SetStatus("INVALID PARTITION TARGET", Danger);
-                    return;
-                }
-
-                Partition part = StorageManager.Partitions[srcIdx];
-                if (DiskFormattingEngine.FormatAndVerifyFat32(part, "ZONDERQVOL ", false, out string err))
+                if (DiskFormattingEngine.FormatPartitionWithIdentity(
+                    targetToken, targetStartLba, expectedCode, typed, "ZONDERQVOL ", out string err))
                 {
                     RefreshSnapshot();
                     SetStatus("PARTITION FORMATTED AND VERIFIED AS FAT32", Good);
@@ -1056,54 +1124,28 @@ namespace ZonderqOS.GUI.Apps
             }
             else if (op == 3)
             {
-                if (selection < 0 || selection >= partitionCount || partitionProtected[selection])
+                if (!DiskCatalog.VerifyIdentityBeforeWrite(targetToken, out string idErr))
                 {
-                    SetStatus("PARTITION PROTECTED", Danger);
+                    SetStatus(idErr ?? "DISK IDENTITY CHANGED - ABORTED", Danger);
                     return;
                 }
 
-                int srcIdx = partitionSourceIndex[selection];
-                if (srcIdx <= 0 || srcIdx >= StorageManager.Partitions.Count)
+                int mbrSlot = DiskFormattingEngine.FindRawMbrSlotByStartLba(targetToken.DeviceReference, targetStartLba);
+                if (mbrSlot < 0)
                 {
-                    SetStatus("INVALID PARTITION TARGET", Danger);
+                    SetStatus("COULD NOT LOCATE MBR PARTITION SLOT", Danger);
                     return;
                 }
 
-                Partition part = StorageManager.Partitions[srcIdx];
-                if (part?.Host == null || DiskCatalog.IsDeviceHostingActiveRoot(part.Host))
+                if (DiskFormattingEngine.DeletePartitionFromDisk(
+                    targetToken, mbrSlot, expectedCode, typed, out string delErr))
                 {
-                    SetStatus("CANNOT MODIFY ACTIVE SYSTEM DISK", Danger);
-                    return;
-                }
-
-                try
-                {
-                    var entries = Mbr.Parse(part.Host);
-                    int mbrSlot = -1;
-                    for (int i = 0; i < entries.Count; i++)
-                    {
-                        if (entries[i].StartSector == part.StartSector)
-                        {
-                            mbrSlot = i;
-                            break;
-                        }
-                    }
-
-                    if (mbrSlot < 0)
-                    {
-                        SetStatus("COULD NOT LOCATE MBR PARTITION ENTRY", Danger);
-                        return;
-                    }
-
-                    Mbr.RemovePartition(part.Host, mbrSlot);
-                    part.Host.Flush();
-                    StorageManager.RescanPartitions(part.Host);
                     RefreshSnapshot();
                     SetStatus("PARTITION DELETED", Good);
                 }
-                catch (Exception ex)
+                else
                 {
-                    SetStatus("DELETE FAILED: " + ex.Message, Danger);
+                    SetStatus(delErr ?? "DELETE FAILED", Danger);
                 }
             }
         }
@@ -1122,19 +1164,18 @@ namespace ZonderqOS.GUI.Apps
 
             SmallTextRenderer.DrawClipped(canvas, modalDescription, mx + 20, my + 52, mw - 40, Text);
             SmallTextRenderer.Draw(canvas, "This operation will destroy data and cannot be undone.", mx + 20, my + 74, Warning);
-            SmallTextRenderer.Draw(canvas, "Type '" + modalTargetCode + "' below to confirm:", mx + 20, my + 102, Text);
+            SmallTextRenderer.Draw(canvas, modalPromptText, mx + 20, my + 102, Text);
 
             canvas.DrawFilledRectangle(Surface, mx + 20, my + 124, 280, 34);
             canvas.DrawRectangle(SystemTheme.AccentBorder, mx + 20, my + 124, 280, 34);
-            string typed = modalConfirmLen > 0 ? new string(modalConfirmChars, 0, modalConfirmLen) : string.Empty;
-            SmallTextRenderer.Draw(canvas, typed + "_", mx + 30, my + 135, Text);
+            SmallTextRenderer.Draw(canvas, modalTypedDisplay, mx + 30, my + 135, Text);
 
             int btnY = my + mh - 52;
             canvas.DrawFilledRectangle(Panel, mx + 24, btnY, 160, 38);
             canvas.DrawRectangle(Border, mx + 24, btnY, 160, 38);
             SmallTextRenderer.DrawCentered(canvas, "CANCEL (ESC)", mx + 28, btnY + 12, 152, Text);
 
-            bool match = InstallerInputValidator.ValidateDiskConfirmation(modalTargetCode, typed);
+            bool match = InstallerInputValidator.ValidateDiskConfirmation(modalTargetCode, modalTypedText);
             canvas.DrawFilledRectangle(match ? Danger : Panel, mx + mw - 224, btnY, 200, 38);
             canvas.DrawRectangle(match ? Danger : Border, mx + mw - 224, btnY, 200, 38);
             SmallTextRenderer.DrawCentered(canvas, "CONFIRM & ERASE", mx + mw - 220, btnY + 12, 192, match ? Text : Muted);

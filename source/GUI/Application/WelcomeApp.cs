@@ -104,7 +104,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (relX >= 30 && relX <= 280)
                 {
-                    global::ZonderqOS.Localization.LocalizationManager.SetLanguage(global::ZonderqOS.Localization.Language.Polish);
+                    // Polish UI is disabled until Beta 1; keep English selected.
                     return;
                 }
                 else if (relX >= 300 && relX <= 550)

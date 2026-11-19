@@ -11,6 +11,13 @@ namespace ZonderqOS.Commands
 
         public void Execute(string[] args, ref string currentPath)
         {
+            if (!SecurityContext.IsAuthenticated)
+            {
+                WriteMessage.WriteError("Authentication required.", "SEC");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             string path = args.Length > 1
                 ? PathResolver.GetAbsolutePath(currentPath, args[1])
                 : PathResolver.GetAbsolutePath(currentPath, "zonderq-diagnostic.txt");
@@ -23,9 +30,9 @@ namespace ZonderqOS.Commands
             }
 
             bool existed = File.Exists(path);
-            if (existed && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
+            if (!PermissionManager.CanCreate(path, SecurityContext.CurrentUser))
             {
-                WriteMessage.WriteError("Permission denied: cannot overwrite " + path, "SEC");
+                WriteMessage.WriteError("Permission denied: cannot write " + path, "SEC");
                 CommandIO.LastCommandSuccess = false;
                 return;
             }

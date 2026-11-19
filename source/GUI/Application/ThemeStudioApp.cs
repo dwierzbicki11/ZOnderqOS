@@ -253,7 +253,7 @@ namespace ZonderqOS.GUI.Apps
             if (curBg != cachedPreviewBg)
             {
                 cachedPreviewBg = curBg;
-                cachedBgLine = "Pulpit: " + global::ZonderqOS.SystemSettings.DesktopBackgroundName;
+                cachedBgLine = "Desktop: " + global::ZonderqOS.SystemSettings.DesktopBackgroundName;
             }
             SmallTextRenderer.Draw(canvas, cachedAccentLine, prevX + 8, prevY + 22, TextColor);
             SmallTextRenderer.Draw(canvas, cachedBgLine, prevX + 8, prevY + 36, MutedColor);

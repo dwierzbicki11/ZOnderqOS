@@ -64,16 +64,15 @@ namespace ZonderqOS.GUI
                     previousMouseX = mouseX;
                     previousMouseY = mouseY;
 
-                    bool heartbeat = frame % 134 == 0;
                     if (!SecurityContext.IsAuthenticated &&
-                        (keyboardActivity || pointerMoved || buttonChanged || heartbeat))
+                        (keyboardActivity || pointerMoved || buttonChanged))
                     {
                         screen.Render(canvas);
                         Cursor.Draw(canvas, mouseX, mouseY);
                         canvas.Display();
                     }
 
-                    Thread.Sleep(15);
+                    Thread.Sleep(keyboardActivity || pointerMoved || buttonChanged ? 15 : 25);
                 }
 
                 screen.ClearSensitiveData();
@@ -524,7 +523,7 @@ namespace ZonderqOS.GUI
                         layout.AccountsCounterX + 32, layout.AccountsLabelY, Text);
                 }
 
-                canvas.DrawString("Logowanie", PCScreenFont.DefaultFont, Text, layout.InputX, layout.TitleY);
+                canvas.DrawString("Sign In", PCScreenFont.DefaultFont, Text, layout.InputX, layout.TitleY);
                 SmallTextRenderer.DrawClipped(canvas, "AUTHENTICATION REQUIRED BEFORE STARTING DESKTOP",
                     layout.InputX + 2, layout.SubtitleY, layout.InputWidth, Muted);
 

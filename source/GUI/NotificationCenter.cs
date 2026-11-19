@@ -492,7 +492,7 @@ namespace ZonderqOS.GUI
             if (tabWidth < 65)
                 return index == 0 ? "ALL" : index == 1 ? "NEW" : "!";
             if (tabWidth < 100)
-                return index == 0 ? "WSZ." : index == 1 ? "NEW" : "IMPORTANT";
+                return index == 0 ? "ALL" : index == 1 ? "NEW" : "IMPORTANT";
             return FilterLabels[index];
         }
 
@@ -617,7 +617,7 @@ namespace ZonderqOS.GUI
             DrawFooterButton(canvas, 1, buttonX, y + 9, buttonWidth, "CLEAR", IconType.Trash);
             FooterButtonBounds(2, out buttonX, out buttonWidth);
             DrawFooterButton(canvas, 2, buttonX, y + 9, buttonWidth,
-                NotificationService.DoNotDisturb ? "DND: WL." : "DND: WYL.", IconType.Settings);
+                NotificationService.DoNotDisturb ? "DND: ON" : "DND: OFF", IconType.Settings);
         }
 
         // Render and hit-test share the same geometry, including narrow panels.

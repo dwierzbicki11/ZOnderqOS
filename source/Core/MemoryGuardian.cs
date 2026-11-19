@@ -66,92 +66,101 @@ namespace ZonderqOS.SystemCore
                 startedFlag = 1;
             }
 
-            ProcessManager.Start("sys_guardian", token =>
+            try
             {
-                long freq = System.Diagnostics.Stopwatch.Frequency > 0
-                    ? System.Diagnostics.Stopwatch.Frequency
-                    : 1000000L;
-                long warningIntervalTicks = (long)RamWarningInterval.TotalSeconds * freq;
-                long criticalIntervalTicks = (long)RamCriticalInterval.TotalSeconds * freq;
-                long lastWarningMono = -warningIntervalTicks;
-                long lastCriticalMono = -criticalIntervalTicks;
-
-                SystemLogger.Log(SystemLogLevel.Info, "GUARDIAN", "System guardian started.");
-
-                int guardianTick = 0;
-                while (!token.IsCancellationRequested)
+                ProcessManager.Start("sys_guardian", token =>
                 {
-                    long monoNow = System.Diagnostics.Stopwatch.GetTimestamp();
+                    long freq = System.Diagnostics.Stopwatch.Frequency > 0
+                        ? System.Diagnostics.Stopwatch.Frequency
+                        : 1000000L;
+                    long warningIntervalTicks = (long)RamWarningInterval.TotalSeconds * freq;
+                    long criticalIntervalTicks = (long)RamCriticalInterval.TotalSeconds * freq;
+                    long lastWarningMono = -warningIntervalTicks;
+                    long lastCriticalMono = -criticalIntervalTicks;
 
-                    // Existing memory alarms keep their 4-second cadence.
-                    if ((guardianTick++ & 1) == 0)
+                    SystemLogger.Log(SystemLogLevel.Info, "GUARDIAN", "System guardian started.");
+
+                    int guardianTick = 0;
+                    while (!token.IsCancellationRequested)
                     {
-                    try
-                    {
-                        ulong totalPages = PageAllocator.TotalPageCount;
-                        ulong freePages = PageAllocator.FreePageCount;
-                        DateTime now = DateTime.UtcNow;
+                        long monoNow = System.Diagnostics.Stopwatch.GetTimestamp();
 
-                        if (freePages > totalPages)
-                            freePages = totalPages;
-
-                        ulong freePercent = totalPages == 0
-                            ? 0
-                            : (freePages * 100) / totalPages;
-
-                        lock (StatusLock)
+                        // Existing memory alarms keep their 4-second cadence.
+                        if ((guardianTick++ & 1) == 0)
                         {
-                            cycleCount++;
-                            lastFreePercent = freePercent;
-                            lastCheckTimeUtc = now;
-                        }
+                        try
+                        {
+                            ulong totalPages = PageAllocator.TotalPageCount;
+                            ulong freePages = PageAllocator.FreePageCount;
+                            DateTime now = DateTime.UtcNow;
 
-                        if (totalPages == 0)
-                        {
-                            RecordFault("Page allocator reports zero total pages.");
-                        }
-                        else if (freePercent <= RamCriticalThresholdPercent &&
-                                 (monoNow - lastCriticalMono) >= criticalIntervalTicks)
-                        {
+                            if (freePages > totalPages)
+                                freePages = totalPages;
+
+                            ulong freePercent = totalPages == 0
+                                ? 0
+                                : (freePages * 100) / totalPages;
+
                             lock (StatusLock)
-                                criticalCount++;
-                            lastCriticalMono = monoNow;
+                            {
+                                cycleCount++;
+                                lastFreePercent = freePercent;
+                                lastCheckTimeUtc = now;
+                            }
+
+                            if (totalPages == 0)
+                            {
+                                RecordFault("Page allocator reports zero total pages.");
+                            }
+                            else if (freePercent <= RamCriticalThresholdPercent &&
+                                     (monoNow - lastCriticalMono) >= criticalIntervalTicks)
+                            {
+                                lock (StatusLock)
+                                    criticalCount++;
+                                lastCriticalMono = monoNow;
+                            }
+                            else if (freePercent <= RamWarningThresholdPercent &&
+                                     (monoNow - lastWarningMono) >= warningIntervalTicks)
+                            {
+                                lock (StatusLock)
+                                    warningCount++;
+                                lastWarningMono = monoNow;
+                            }
+
+                            // OrionGC performs its own collection from the allocator slow path.
+                            // Do not call or request a manual collection from a scheduled thread:
+                            // forcing a full mark/sweep outside the allocator path has caused
+                            // #PF/#GP crashes in the GUI/input workload. Memory stability here is
+                            // maintained by bounded buffers and reusable render/snapshot objects.
                         }
-                        else if (freePercent <= RamWarningThresholdPercent &&
-                                 (monoNow - lastWarningMono) >= warningIntervalTicks)
+                        catch (Exception ex)
                         {
-                            lock (StatusLock)
-                                warningCount++;
-                            lastWarningMono = monoNow;
+                            RecordFault(ex.Message);
                         }
 
-                        // OrionGC performs its own collection from the allocator slow path.
-                        // Do not call or request a manual collection from a scheduled thread:
-                        // forcing a full mark/sweep outside the allocator path has caused
-                        // #PF/#GP crashes in the GUI/input workload. Memory stability here is
-                        // maintained by bounded buffers and reusable render/snapshot objects.
-                    }
-                    catch (Exception ex)
-                    {
-                        RecordFault(ex.Message);
-                    }
+                        }
 
-                    }
+                        // 10-second optimizer sample on the existing guardian thread.
+                        try
+                        {
+                            MemoryOptimizer.SampleIfDue(monoNow, freq);
+                        }
+                        catch (Exception ex)
+                        {
+                            RecordFault(ex.Message);
+                        }
 
-                    // 10-second optimizer sample on the existing guardian thread.
-                    try
-                    {
-                        MemoryOptimizer.SampleIfDue(monoNow, freq);
+                        if (token.WaitHandle.WaitOne(2000))
+                            break;
                     }
-                    catch (Exception ex)
-                    {
-                        RecordFault(ex.Message);
-                    }
-
-                    if (token.WaitHandle.WaitOne(2000))
-                        break;
-                }
-            });
+                });
+            }
+            catch (Exception ex)
+            {
+                lock (StatusLock)
+                    startedFlag = 0;
+                RecordFault(ex.Message);
+            }
         }
         private static void RecordFault(string message)
         {

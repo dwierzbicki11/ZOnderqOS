@@ -104,11 +104,11 @@ namespace ZonderqOS.GUI.Apps
                     catch { targetDir = "0:/"; }
                 }
 
-                string filePath = Path.Combine(targetDir, "rysunek_" + saveCounter + ".bmp");
+                string filePath = Path.Combine(targetDir, "drawing_" + saveCounter + ".bmp");
                 while (File.Exists(filePath) && saveCounter < 999)
                 {
                     saveCounter++;
-                    filePath = Path.Combine(targetDir, "rysunek_" + saveCounter + ".bmp");
+                    filePath = Path.Combine(targetDir, "drawing_" + saveCounter + ".bmp");
                 }
 
                 bool saved;
@@ -161,8 +161,8 @@ namespace ZonderqOS.GUI.Apps
             int contentY = Window.Y + 38;
             int contentWidth = Math.Max(1, Window.Width - 16);
 
-            // 1. Tool Bar Click Check (Y: contentY + 6, H: 26)
-            int tbY = contentY + 6;
+            // 1. Tool Bar Click Check (Y: contentY + 4, H: 26 — matches Render)
+            int tbY = contentY + 4;
             if (leftClicked && !leftWasClicked && mouseY >= tbY && mouseY < tbY + 26)
             {
                 int curX = contentX + 6;
@@ -172,13 +172,13 @@ namespace ZonderqOS.GUI.Apps
                     if (mouseX >= curX && mouseX < curX + 28)
                     {
                         activeTool = (Tool)t;
-                        statusMessage = "Narzedzie: " + GetToolName(activeTool);
+                        statusMessage = "Tool: " + GetToolName(activeTool);
                         return;
                     }
                     curX += 32;
                 }
 
-                // Action buttons: [WYCZYSC] (62px), [ZAPISZ] (62px)
+                // Action buttons: [CLEAR] (66px), [SAVE] (66px)
                 curX += 16;
                 if (mouseX >= curX && mouseX < curX + 66)
                 {
@@ -193,8 +193,8 @@ namespace ZonderqOS.GUI.Apps
                 }
             }
 
-            // 2. Palette Click Check (Y: contentY + 36, H: 22)
-            int palY = contentY + 36;
+            // 2. Palette Click Check (Y: contentY + 34, H: 22 — matches Render)
+            int palY = contentY + 34;
             if (leftClicked && !leftWasClicked && mouseY >= palY && mouseY < palY + 22)
             {
                 int px = contentX + 6;
@@ -210,9 +210,9 @@ namespace ZonderqOS.GUI.Apps
                 }
             }
 
-            // 3. Canvas Area Interaction
+            // 3. Canvas Area Interaction (Y: contentY + 62 — matches Render)
             int canvasOriginX = contentX + (contentWidth - CanvasWidth) / 2;
-            int canvasOriginY = contentY + 64;
+            int canvasOriginY = contentY + 62;
 
             int cx = mouseX - canvasOriginX;
             int cy = mouseY - canvasOriginY;
@@ -301,13 +301,13 @@ namespace ZonderqOS.GUI.Apps
         {
             switch (tool)
             {
-                case Tool.Pencil: return "Olowek (1px)";
-                case Tool.Brush: return "Pedzel (3px)";
+                case Tool.Pencil: return "Pencil (1px)";
+                case Tool.Brush: return "Brush (3px)";
                 case Tool.Eraser: return "Eraser";
                 case Tool.Line: return "Line";
-                case Tool.Rectangle: return "Prostokat";
-                case Tool.FilledRectangle: return "Wypelniony prostokat";
-                case Tool.Bucket: return "Wypelnienie";
+                case Tool.Rectangle: return "Rectangle";
+                case Tool.FilledRectangle: return "Filled rectangle";
+                case Tool.Bucket: return "Fill bucket";
                 default: return string.Empty;
             }
         }
@@ -424,7 +424,7 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
-        private static readonly string[] ToolLabels = { "OLW", "PED", "GUM", "LIN", "REC", "WPR", "WIA" };
+        private static readonly string[] ToolLabels = { "PEN", "BRS", "ERS", "LIN", "REC", "FIL", "BKT" };
 
         private void FloodFill(int startX, int startY, uint targetColor)
         {

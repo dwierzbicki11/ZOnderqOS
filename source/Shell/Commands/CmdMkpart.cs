@@ -9,6 +9,13 @@ namespace ZonderqOS.Commands
 
         public void Execute(string[] args, ref string currentPath)
         {
+            if (!SecurityContext.IsAuthenticated || SecurityContext.CurrentUid != 0)
+            {
+                WriteMessage.WriteError("mkpart requires root privileges.", "SEC");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             if (args.Length > 1 && int.TryParse(args[1], out int diskId))
             {
                 Disk.PartitionDisk(diskId);

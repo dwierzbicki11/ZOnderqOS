@@ -1,3 +1,5 @@
+using ZonderqOS.SystemCore;
+
 namespace ZonderqOS.Commands
 {
     public class CmdStat : ICommand
@@ -8,7 +10,15 @@ namespace ZonderqOS.Commands
         {
             if (args.Length > 1) 
             {
-                Disk.FileStat(PathResolver.GetAbsolutePath(currentPath, args[1]));
+                string target = PathResolver.GetAbsolutePath(currentPath, args[1]);
+                if (!VirtualFs.IsVirtualPath(target) && !PermissionManager.CanRead(target, SecurityContext.CurrentUser))
+                {
+                    WriteMessage.WriteError($"Permission denied: {target}", "SEC");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                Disk.FileStat(target);
                 CommandIO.LastCommandSuccess = true;
             }
             else 

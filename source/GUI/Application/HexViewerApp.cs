@@ -274,7 +274,7 @@ namespace ZonderqOS.GUI.Apps
             int gridTop = contentY + 34;
             SmallTextRenderer.Draw(canvas, "OFFSET", contentX + 8, gridTop, MutedColor);
             SmallTextRenderer.Draw(canvas, "00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F", contentX + 80, gridTop, MutedColor);
-            SmallTextRenderer.Draw(canvas, "DEKODOWANIE ASCII", contentX + 380, gridTop, MutedColor);
+            SmallTextRenderer.Draw(canvas, "ASCII DECODING", contentX + 380, gridTop, MutedColor);
 
             canvas.DrawFilledRectangle(Border, contentX + 4, gridTop + 13, contentWidth - 8, 1);
 
