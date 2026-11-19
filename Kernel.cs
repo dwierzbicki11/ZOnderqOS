@@ -26,6 +26,7 @@ namespace ZonderqOS
             try
             {
                 BootTelemetry.Initialize();
+                ZonderqOS.Storage.LimineBootMediaDetector.Initialize();
                 Console.Clear();
 #if ZONDERQ_READONLY_HARDWARE_PROBE
                 Console.WriteLine("ZOnderqOS / Cosmos 3.0.95 - USB/PCI input probe");
@@ -125,28 +126,35 @@ namespace ZonderqOS
                     {
                         sessionUser = null;
 
-                        if (UserManager.RequiresInitialRootPasswordSetup())
+                        if (Disk.IsLiveSession)
                         {
-                            if (!InitialSetupManager.Run())
+                            SecurityContext.SetAuthenticated("root", "/root", 0);
+                        }
+                        else
+                        {
+                            if (UserManager.RequiresInitialRootPasswordSetup())
                             {
-                                EnterConsoleRecovery("graphical initial setup failed");
+                                if (!InitialSetupManager.Run())
+                                {
+                                    EnterConsoleRecovery("graphical initial setup failed");
+                                    return;
+                                }
+
+                                UserManager.PrepareLogin();
                                 return;
                             }
 
-                            UserManager.PrepareLogin();
-                            return;
-                        }
+                            if (!LoginScreenManager.Run())
+                            {
+                                EnterConsoleRecovery("graphical login failed");
+                                return;
+                            }
 
-                        if (!LoginScreenManager.Run())
-                        {
-                            EnterConsoleRecovery("graphical login failed");
-                            return;
-                        }
-
-                        if (!SecurityContext.IsAuthenticated)
-                        {
-                            EnterConsoleRecovery("graphical login returned without an authenticated session");
-                            return;
+                            if (!SecurityContext.IsAuthenticated)
+                            {
+                                EnterConsoleRecovery("graphical login returned without an authenticated session");
+                                return;
+                            }
                         }
                     }
 

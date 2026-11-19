@@ -24,7 +24,7 @@ if [ ! -f "$WORK_DIR/iso_root/EFI/BOOT/LIMINE.EFI" ]; then
     cp "$WORK_DIR/iso_root/EFI/BOOT/BOOTX64.EFI" "$WORK_DIR/iso_root/EFI/BOOT/LIMINE.EFI"
 fi
 cp "$BOOTGUARD_EFI" "$WORK_DIR/iso_root/EFI/BOOT/BOOTX64.EFI"
-cp "$ROOT_DIR/Bootloader/limine.conf" "$WORK_DIR/iso_root/boot/limine/limine.conf"
+sed 's/^default_entry: 1$/default_entry: 3/' "$ROOT_DIR/Bootloader/limine.conf" > "$WORK_DIR/iso_root/boot/limine/limine.conf"
 
 if [ -f "$WORK_DIR/iso_root/boot/limine/limine-uefi-cd.bin" ]; then
     mcopy -o -i "$WORK_DIR/iso_root/boot/limine/limine-uefi-cd.bin" "$WORK_DIR/iso_root/EFI/BOOT/LIMINE.EFI" ::/EFI/BOOT/LIMINE.EFI

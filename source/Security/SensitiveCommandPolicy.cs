@@ -14,7 +14,7 @@ namespace ZonderqOS
             if (string.IsNullOrWhiteSpace(input))
                 return false;
 
-            return ContainsToken(input, "su") || ContainsToken(input, "useradd");
+            return ContainsToken(input, "su") || ContainsToken(input, "useradd") || ContainsToken(input, "zinstall");
         }
 
         private static bool ContainsToken(string input, string command)

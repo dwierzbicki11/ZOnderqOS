@@ -13,6 +13,7 @@ namespace ZonderqOS
         private static FatFileSystemType fat;
         private static VfsMount _currentMount;
         private static bool _verifiedPersistentDataRootMounted;
+        private static bool _isLiveSession;
 
         // This is set only after DataVolumePolicy approves exactly one
         // ZONDERQDATA partition and VFS successfully mounts it at "/".
@@ -21,9 +22,13 @@ namespace ZonderqOS
         public static bool IsVerifiedPersistentDataRootMounted =>
             _verifiedPersistentDataRootMounted;
 
+        // True when booted from ISO into the ephemeral RAM-backed Live/Installer environment.
+        public static bool IsLiveSession => _isLiveSession;
+
         public static bool Initialize()
         {
             _verifiedPersistentDataRootMounted = false;
+            _isLiveSession = false;
             try
             {
                 fat = new FatFileSystemType();
@@ -46,10 +51,29 @@ namespace ZonderqOS
                     return false;
                 }
 #else
-                if (!DataVolumePolicy.TryFindDataPartition(out Partition data, out string error))
+                bool liveCmdline = ZonderqOS.Storage.LimineBootMediaDetector.IsLiveModeRequestedByCmdline();
+                Partition data = null;
+                string error = null;
+                if (liveCmdline || !DataVolumePolicy.TryFindDataPartition(out data, out error))
                 {
-                    WriteMessage.WriteError(error, "VFS");
-                    return false;
+                    if (!liveCmdline && error != null && error.IndexOf("Multiple FAT32 ZONDERQDATA", StringComparison.Ordinal) >= 0)
+                    {
+                        WriteMessage.WriteError(error, "VFS");
+                        return false;
+                    }
+
+                    if (!TryMountLiveRamRoot(out var liveMount))
+                    {
+                        WriteMessage.WriteError(error ?? "Failed to initialize live RAM root.", "VFS");
+                        return false;
+                    }
+
+                    _currentMount = liveMount;
+                    _verifiedPersistentDataRootMounted = false;
+                    _isLiveSession = true;
+                    WriteMessage.WriteOK("Mounted ephemeral ZonderqOS Live/Installer FAT32 RAM root at '/' (no physical writes).", "VFS");
+                    CreateStandardHierarchy();
+                    return true;
                 }
 #endif
 
@@ -101,6 +125,18 @@ namespace ZonderqOS
                 WriteMessage.WriteError($"Storage init failed closed: {ex.Message}", "VFS");
                 return false;
             }
+        }
+
+        private static bool TryMountLiveRamRoot(out VfsMount mount)
+        {
+            mount = null;
+            if (!RamRootVolume.TryCreate(out Partition ramData))
+                return false;
+
+            if (!VfsManager.RegisterFileSystem("ramfat", new FatFileSystemType(ramData)))
+                return false;
+
+            return VfsManager.TryMount("ramfat", ReadOnlySpan<char>.Empty, MountFlags.None, "/", out mount);
         }
 
         private static void CreateStandardHierarchy()

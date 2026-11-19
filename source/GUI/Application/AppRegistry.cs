@@ -59,6 +59,7 @@ namespace ZonderqOS.GUI.Apps
         public const string Chiptune = "chiptune";
         public const string Battleship = "battleship";
         public const string Welcome = "welcome";
+        public const string Installer = "zonderq-installer";
     }
 
     public sealed class AppDescriptor

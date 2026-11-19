@@ -51,7 +51,7 @@ namespace ZonderqOS
             Register(new CmdFind()); Register(new CmdTail());
             Register(new CmdWc()); Register(new CmdWhich());
             Register(new CmdNeofetch()); Register(new CmdMatrix());
-            Register(new CmdSysbench());
+            Register(new CmdSysbench()); Register(new CmdInstall());
         }
 
         internal static string[] GetCommandNames()

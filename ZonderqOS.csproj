@@ -107,6 +107,9 @@
     <EmbeddedResource Include="source/Wallpapers/*.png">
       <LogicalName>Wallpapers.%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="Bootloader/Assets/*">
+      <LogicalName>Bootloader.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <Target Name="GuardRamRootProfile" BeforeTargets="CoreCompile">

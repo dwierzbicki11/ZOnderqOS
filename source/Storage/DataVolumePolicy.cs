@@ -24,6 +24,8 @@ namespace ZonderqOS
             for (int i = 0; i < partitions.Count; i++)
             {
                 Partition partition = partitions[i];
+                if (RamRootVolume.IsRamPartition(partition))
+                    continue;
                 if (!IsApprovedDataPartition(partition))
                     continue;
 
@@ -131,6 +133,9 @@ namespace ZonderqOS
             // even if its FAT label is spoofed to ZONDERQDATA.
             return RamRootVolume.IsRamPartition(partition);
 #else
+            if (Disk.IsLiveSession)
+                return RamRootVolume.IsRamPartition(partition);
+
             if (partition == null || !IsApprovedDataPartition(partition))
                 return false;
 

@@ -163,10 +163,19 @@ namespace ZonderqOS.GUI
                         "System updated! Check out the new applications and release notes.");
                 }
 
-                // Show Welcome App on desktop startup
-                int welcomeX = System.Math.Max(20, ((int)canvas.Width - 620) / 2);
-                int welcomeY = System.Math.Max(20, ((int)canvas.Height - 420) / 2);
-                LaunchWelcome(welcomeX, welcomeY);
+                if (global::ZonderqOS.Disk.IsLiveSession)
+                {
+                    int instX = System.Math.Max(12, ((int)canvas.Width - 960) / 2);
+                    int instY = System.Math.Max(12, ((int)canvas.Height - TaskbarHeight - 640) / 2);
+                    LaunchInstaller(instX, instY);
+                }
+                else
+                {
+                    // Show Welcome App on desktop startup
+                    int welcomeX = System.Math.Max(20, ((int)canvas.Width - 620) / 2);
+                    int welcomeY = System.Math.Max(20, ((int)canvas.Height - 420) / 2);
+                    LaunchWelcome(welcomeX, welcomeY);
+                }
 
                 bool previousLeftButtonState = false;
                 bool previousRightButtonState = false;
@@ -1027,6 +1036,12 @@ namespace ZonderqOS.GUI
                 "Welcome center and ZOnderqOS Alpha 1 release guide",
                 AppCategory.System, IconType.About, () => LaunchWelcome(120, 35),
                 StartMenuPlacement.Tool, 29, 15, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Installer, "ZonderqOS Installer", "Install OS", "Install OS",
+                "Install ZonderqOS onto a physical or virtual disk",
+                AppCategory.System, IconType.Install, () => LaunchInstaller(96, 36),
+                StartMenuPlacement.Tool, 30, 16, true));
         }
 
         private void PopulateStartMenu()
@@ -1642,6 +1657,11 @@ namespace ZonderqOS.GUI
         private void LaunchWelcome(int x, int y)
         {
             applicationManager.Launch(new WelcomeApp(x, y, null, (appId) => LaunchRegisteredApp(appId)));
+        }
+
+        private void LaunchInstaller(int x, int y)
+        {
+            applicationManager.Launch(new ZonderqInstallerApp(x, y, null));
         }
 
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,

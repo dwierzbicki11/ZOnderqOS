@@ -1,4 +1,3 @@
-#if ZONDERQ_3094_RAM_ROOT
 using System;
 using Cosmos.Kernel.HAL.Devices.Storage;
 using Cosmos.Kernel.System.FileSystem.Fat;
@@ -75,6 +74,12 @@ namespace ZonderqOS
     {
         private static RamRootBlockDevice disk;
 
+        internal static bool IsRamDevice(IBlockDevice candidate)
+        {
+            return disk != null && candidate != null &&
+                object.ReferenceEquals(candidate, disk);
+        }
+
         internal static bool IsRamPartition(Partition partition)
         {
             return disk != null && partition != null &&
@@ -142,4 +147,3 @@ namespace ZonderqOS
         }
     }
 }
-#endif
