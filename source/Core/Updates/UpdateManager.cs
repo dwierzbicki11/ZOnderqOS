@@ -54,6 +54,8 @@ namespace ZonderqOS.SystemCore.Updates
         public int TargetTheme { get; set; } = 0;
         public string TargetThemeName { get; set; } = "COSMOS BLUE";
         public int TargetWallpaper { get; set; } = 0;
+        public bool IsRemotePendingDownload { get; set; } = false;
+        public string RemoteBaseUrl { get; set; } = string.Empty;
         public List<UpdateFileEntry> Files { get; set; } = new List<UpdateFileEntry>();
         public string[] Changelog { get; set; } = Array.Empty<string>();
         public string[] Components { get; set; } = Array.Empty<string>();
@@ -90,12 +92,13 @@ namespace ZonderqOS.SystemCore.Updates
         public static string InstalledVersion { get; private set; } = string.Empty;
         public static string InstalledBuild { get; private set; } = string.Empty;
         public static UpdateChannel Channel { get; private set; } = UpdateChannel.Stable;
-        public static UpdateSourceMode SourceMode { get; private set; } = UpdateSourceMode.UsbOffline;
-        public static string CloudServerUrl { get; private set; } = "https://updates.zonderqos.org/v1";
+        public static UpdateSourceMode SourceMode { get; private set; } = UpdateSourceMode.CloudAuto;
+        public static string CloudServerUrl { get; private set; } = OtaUpdateClient.DefaultGitHubOtaUrl;
         public static UpdateStatus Status { get; private set; } = UpdateStatus.UpToDate;
         public static string LastCheckTime { get; private set; } = "No information";
         public static bool IsRebootRequired { get; private set; } = false;
         public static UpdatePackageInfo AvailablePackage { get; private set; } = null;
+        private static OtaCheckResult pendingOtaCheck;
         private static string cachedUpToDateMessage;
         private static string cachedUpToDateVersionMessage;
         private static string lastLoggedDiscoveredVersion = string.Empty;
@@ -172,6 +175,19 @@ namespace ZonderqOS.SystemCore.Updates
                         {
                             lastNotifiedVersion = line.Substring(14).Trim();
                         }
+                        else if (line.StartsWith("SOURCE_MODE=", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string sm = line.Substring(12).Trim().ToLowerInvariant();
+                            if (sm == "usboffline" || sm == "usb") SourceMode = UpdateSourceMode.UsbOffline;
+                            else if (sm == "cloudonly" || sm == "cloud") SourceMode = UpdateSourceMode.CloudOnly;
+                            else SourceMode = UpdateSourceMode.CloudAuto;
+                        }
+                        else if (line.StartsWith("OTA_URL=", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string url = line.Substring(8).Trim();
+                            if (ZonderqOS.SystemCore.Networking.OtaUrlParser.TryParse(url, false, out _, out _))
+                                CloudServerUrl = url;
+                        }
                     }
                     return;
                 }
@@ -191,8 +207,10 @@ namespace ZonderqOS.SystemCore.Updates
                 try
                 {
                     string content = "CHANNEL=" + Channel.ToString().ToLowerInvariant() + "\n" +
+                                     "SOURCE_MODE=" + SourceMode.ToString().ToLowerInvariant() + "\n" +
+                                     "OTA_URL=" + CloudServerUrl + "\n" +
                                      "LAST_CHECK=" + LastCheckTime + "\n" +
-                                     "UPDATER_VERSION=3.0\n" +
+                                     "UPDATER_VERSION=3.1\n" +
                                      "INSTALLED_VERSION=" + (string.IsNullOrEmpty(InstalledVersion) ? CurrentVersion : InstalledVersion) + "\n" +
                                      "INSTALLED_BUILD=" + (string.IsNullOrEmpty(InstalledBuild) ? CurrentBuild : InstalledBuild) + "\n" +
                                      "LAST_NOTIFIED=" + lastNotifiedVersion + "\n";
@@ -248,19 +266,108 @@ namespace ZonderqOS.SystemCore.Updates
             SecurityLogger.LogEvent("INFO", "Update source mode changed to " + newMode.ToString());
         }
 
+        public static bool SetOtaServerUrl(string newUrl, out string error)
+        {
+            error = string.Empty;
+            if (SecurityContext.IsAuthenticated && SecurityContext.CurrentUid != 0)
+            {
+                error = "Root privileges are required to change the OTA server URL.";
+                return false;
+            }
+
+            if (!ZonderqOS.SystemCore.Networking.OtaUrlParser.TryParse(newUrl, false, out _, out error))
+                return false;
+
+            lock (_lock)
+            {
+                CloudServerUrl = newUrl.Trim();
+                pendingOtaCheck = null;
+                ResetNotificationFlag();
+                SaveConfig();
+            }
+            SecurityLogger.LogEvent("INFO", "OTA server URL changed to " + CloudServerUrl);
+            return true;
+        }
+
         /// <summary>
-        /// Explicitly unhandled online downloading on Cosmos stock without full HTTPS network stack.
-        /// Does NOT fabricate a fake download or mock payload.
+        /// Downloads an Ed25519-verified OTA update package over HTTPS (TLS 1.2/1.3)
+        /// into /var/updates/incoming/ using bounded 16 KiB streaming, then validates
+        /// the staged package through the P0 trust gate.
         /// </summary>
         public static bool DownloadOnlinePackage(UpdatePackageInfo pkg, Action<int, string> progress, out string error)
         {
             lock (_lock)
             {
-                error = "OTA downloading is unavailable in this version: " +
-                        "HTTPS networking is not enabled in stock Cosmos 3.0.97 x64. " +
-                        "Use a valid package from the dedicated USB drive (/updates/update.manifest).";
-                Status = UpdateStatus.Error;
-                return false;
+                Initialize();
+                error = string.Empty;
+
+                if (SecurityContext.IsAuthenticated && SecurityContext.CurrentUid != 0)
+                {
+                    error = "Root privileges are required to download OTA updates.";
+                    Status = UpdateStatus.Error;
+                    return false;
+                }
+
+                if (!OtaUpdateClient.TryEnsureNetworkConnected())
+                {
+                    error = "Network is not connected. Configure Ethernet via 'net dhcp' or Network Center.";
+                    Status = UpdateStatus.Error;
+                    return false;
+                }
+
+                Status = UpdateStatus.Downloading;
+                progress?.Invoke(2, "Checking signed OTA release metadata over HTTPS...");
+
+                string targetUrl = pkg != null && !string.IsNullOrEmpty(pkg.RemoteBaseUrl)
+                    ? pkg.RemoteBaseUrl : CloudServerUrl;
+
+                OtaCheckResult check = pendingOtaCheck;
+                if (check == null || !check.Success || !string.Equals(check.BaseUrl, targetUrl, StringComparison.Ordinal))
+                {
+                    var checkOpts = OtaUpdateClient.CreateDefaultOptions();
+                    if (!OtaUpdateClient.CheckRemoteRelease(
+                            targetUrl, CurrentVersion, CurrentBuild, true, checkOpts, null, out check) ||
+                        check == null || !check.Success)
+                    {
+                        error = check != null && !string.IsNullOrEmpty(check.Error)
+                            ? check.Error : "Failed to fetch verified OTA release metadata.";
+                        Status = UpdateStatus.Error;
+                        return false;
+                    }
+                    pendingOtaCheck = check;
+                }
+
+                var dlOpts = OtaUpdateClient.CreateDefaultOptions();
+                if (!OtaUpdateClient.DownloadVerifiedPackageToDirectory(
+                        check, IncomingDir, dlOpts, progress, out string stagedManifestPath, out error))
+                {
+                    Status = UpdateStatus.Error;
+                    return false;
+                }
+
+                if (!TryLoadManifestFile(stagedManifestPath, out UpdatePackageInfo stagedPkg) || stagedPkg == null)
+                {
+                    error = "Downloaded OTA manifest could not be loaded from staging.";
+                    Status = UpdateStatus.Error;
+                    return false;
+                }
+
+                if (!TryVerifyTrustedPackage(stagedPkg, out string verifyErr))
+                {
+                    error = "Staged OTA package failed P0 verification: " + verifyErr;
+                    Status = UpdateStatus.Error;
+                    return false;
+                }
+
+                stagedPkg.IsSigned = true;
+                stagedPkg.IsSignatureValid = true;
+                stagedPkg.IsRemotePendingDownload = false;
+                AvailablePackage = stagedPkg;
+                pendingOtaCheck = null;
+                Status = UpdateStatus.Available;
+                SecurityLogger.LogEvent("INFO", "Downloaded and verified OTA package " +
+                    stagedPkg.Version + " (Build " + stagedPkg.BuildNumber + ") from " + targetUrl);
+                return true;
             }
         }
 
@@ -356,31 +463,59 @@ namespace ZonderqOS.SystemCore.Updates
                     SaveConfig();
 
                 UpdatePackageInfo pkg = null;
-                bool fromDisk = TryLoadDiskManifest(out UpdatePackageInfo diskPkg);
-
+                UpdatePackageInfo diskPkg = null;
+                bool tryDisk = SourceMode != UpdateSourceMode.CloudOnly;
+                bool fromDisk = tryDisk && TryLoadDiskManifest(out diskPkg);
                 if (fromDisk && diskPkg != null)
                 {
                     pkg = diskPkg;
                 }
                 else
                 {
-                    // No disk package found
+                    // Explicit user check (persistCheckTime=true) can query HTTPS OTA in CloudAuto/CloudOnly.
+                    // Never perform blocking network I/O from periodic PollBackground().
+                    if (persistCheckTime && SourceMode != UpdateSourceMode.UsbOffline)
+                    {
+                        if (!OtaUpdateClient.IsNetworkReady())
+                        {
+                            if (SourceMode == UpdateSourceMode.CloudOnly)
+                            {
+                                Status = UpdateStatus.Error;
+                                AvailablePackage = null;
+                                package = null;
+                                message = "Network is not connected. Run 'net dhcp' or open Network Center.";
+                                return false;
+                            }
+                        }
+                        else if (TryCheckOtaRemoteLocked(forceRefresh, out UpdatePackageInfo remotePkg, out string remoteMsg))
+                        {
+                            AvailablePackage = remotePkg;
+                            package = remotePkg;
+                            Status = UpdateStatus.Available;
+                            message = remoteMsg;
+                            return true;
+                        }
+                        else if (SourceMode == UpdateSourceMode.CloudOnly)
+                        {
+                            AvailablePackage = null;
+                            package = null;
+                            Status = remoteMsg.StartsWith("ZonderqOS is up to date", StringComparison.Ordinal)
+                                ? UpdateStatus.UpToDate : UpdateStatus.Error;
+                            message = remoteMsg;
+                            return false;
+                        }
+                    }
+
+                    // No disk or remote package found
                     Status = UpdateStatus.UpToDate;
                     AvailablePackage = null;
                     package = null;
 
-                    if (SourceMode == UpdateSourceMode.CloudOnly)
+                    if (cachedUpToDateMessage == null)
                     {
-                        message = "CloudOnly mode: HTTPS networking is disabled in the kernel. No packages available.";
+                        cachedUpToDateMessage = "ZonderqOS is up to date (" + KernelBuildInfo.KernelVersion + ", build " + KernelBuildInfo.KernelBuild + "). No newer USB or OTA packages.";
                     }
-                    else
-                    {
-                        if (cachedUpToDateMessage == null)
-                        {
-                            cachedUpToDateMessage = "ZonderqOS is up to date (" + KernelBuildInfo.KernelVersion + ", build " + KernelBuildInfo.KernelBuild + "). No newer USB packages in /updates.";
-                        }
-                        message = cachedUpToDateMessage;
-                    }
+                    message = cachedUpToDateMessage;
                     return false;
                 }
 
@@ -618,77 +753,135 @@ namespace ZonderqOS.SystemCore.Updates
 
                 for (int p = 0; p < ManifestCandidatePaths.Length; p++)
                 {
-                    string path = ManifestCandidatePaths[p];
-                    if (!File.Exists(path)) continue;
-
-                    try
-                    {
-                        FileInfo manifestInfo = new FileInfo(path);
-                        if (manifestInfo.Length <= 0 || manifestInfo.Length > 1024 * 1024)
-                            continue;
-
-                        string content = File.ReadAllText(path);
-                    if (UpdateManifest.TryParse(content, out UpdateManifest manifest, out string error))
-                    {
-                        var info = new UpdatePackageInfo
-                        {
-                            Version = manifest.Version,
-                            BuildNumber = manifest.BuildNumber,
-                            Architecture = manifest.Architecture,
-                            Title = manifest.Title,
-                            ReleaseDate = manifest.ReleaseDate,
-                            Severity = manifest.Severity,
-                            TargetTheme = manifest.TargetTheme,
-                            TargetThemeName = manifest.TargetThemeName,
-                            TargetWallpaper = manifest.TargetWallpaper,
-                            ManifestPath = path,
-                            Signature = manifest.Signature,
-                            KernelSha256 = manifest.KernelSha256,
-                            Files = manifest.Files,
-                            Changelog = manifest.Changelog.ToArray(),
-                            Components = manifest.Components.ToArray()
-                        };
-
-                        // Parsing is not authentication. Detached Ed25519
-                        // verification happens in TryVerifyTrustedPackage
-                        // before the package can be advertised or installed.
-                        info.IsSigned = false;
-                        info.IsSignatureValid = false;
-
-                        // Determine kernel image location using a single VFS stat lookup
-                        string baseDir = Path.GetDirectoryName(path);
-                        string kernelCandidate = Path.Combine(baseDir, manifest.KernelImage);
-                        try
-                        {
-                            FileInfo fi = new FileInfo(kernelCandidate);
-                            if (fi.Exists)
-                            {
-                                info.KernelImagePath = kernelCandidate;
-                                info.SizeKb = (int)(fi.Length / 1024);
-                            }
-                        }
-                        catch { }
-                        // Never substitute a kernel from another USB location:
-                        // the manifest and all binaries must come from the same
-                        // update package. Missing file is a verification error.
-
-                        // Determine payload directory
-                        if (!string.IsNullOrEmpty(manifest.PayloadDirectory))
-                        {
-                            string payloadCand = Path.Combine(baseDir, manifest.PayloadDirectory);
-                            if (Directory.Exists(payloadCand))
-                                info.PayloadPath = payloadCand;
-                        }
-
-                            pkg = info;
-                            return true;
-                        }
-                    }
-                    catch { }
+                    if (TryLoadManifestFile(ManifestCandidatePaths[p], out pkg))
+                        return true;
                 }
 
                 return false;
             }
+        }
+
+        private static bool TryCheckOtaRemoteLocked(bool forceRefresh, out UpdatePackageInfo remotePkg, out string message)
+        {
+            remotePkg = null;
+            message = string.Empty;
+            pendingOtaCheck = null;
+
+            var opts = OtaUpdateClient.CreateDefaultOptions();
+            if (!OtaUpdateClient.CheckRemoteRelease(
+                    CloudServerUrl, KernelBuildInfo.KernelVersion, KernelBuildInfo.KernelBuild.ToString(),
+                    forceRefresh, opts, null, out OtaCheckResult check) || check == null || !check.Success)
+            {
+                message = "OTA check failed: " + (check != null && !string.IsNullOrEmpty(check.Error) ? check.Error : "unknown error");
+                return false;
+            }
+
+            if (!check.UpdateAvailable || check.Manifest == null)
+            {
+                message = "ZonderqOS is up to date (" + KernelBuildInfo.KernelVersion + ", build " + KernelBuildInfo.KernelBuild + ").";
+                return false;
+            }
+
+            UpdateManifest m = check.Manifest;
+            pendingOtaCheck = check;
+            remotePkg = new UpdatePackageInfo
+            {
+                Version = m.Version,
+                BuildNumber = m.BuildNumber,
+                Architecture = m.Architecture,
+                Title = m.Title,
+                ReleaseDate = m.ReleaseDate,
+                Severity = m.Severity,
+                TargetTheme = m.TargetTheme,
+                TargetThemeName = m.TargetThemeName,
+                TargetWallpaper = m.TargetWallpaper,
+                KernelSha256 = m.KernelSha256,
+                Files = m.Files,
+                Changelog = m.Changelog.ToArray(),
+                Components = m.Components.ToArray(),
+                IsSigned = true,
+                IsSignatureValid = true,
+                IsRemotePendingDownload = true,
+                RemoteBaseUrl = CloudServerUrl
+            };
+
+            message = "Verified OTA update available: " + m.Version + " (Build " + m.BuildNumber + ") - " + m.Title + " [ED25519 TRUSTED]";
+            SecurityLogger.LogEvent("INFO", "Verified OTA update discovered: " + m.Version + " from " + CloudServerUrl);
+            return true;
+        }
+
+        private static bool TryLoadManifestFile(string path, out UpdatePackageInfo pkg)
+        {
+            pkg = null;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                return false;
+
+            try
+            {
+                FileInfo manifestInfo = new FileInfo(path);
+                if (manifestInfo.Length <= 0 || manifestInfo.Length > 1024 * 1024)
+                    return false;
+
+                string content = File.ReadAllText(path);
+                if (UpdateManifest.TryParse(content, out UpdateManifest manifest, out string error))
+                {
+                    var info = new UpdatePackageInfo
+                    {
+                        Version = manifest.Version,
+                        BuildNumber = manifest.BuildNumber,
+                        Architecture = manifest.Architecture,
+                        Title = manifest.Title,
+                        ReleaseDate = manifest.ReleaseDate,
+                        Severity = manifest.Severity,
+                        TargetTheme = manifest.TargetTheme,
+                        TargetThemeName = manifest.TargetThemeName,
+                        TargetWallpaper = manifest.TargetWallpaper,
+                        ManifestPath = path,
+                        Signature = manifest.Signature,
+                        KernelSha256 = manifest.KernelSha256,
+                        Files = manifest.Files,
+                        Changelog = manifest.Changelog.ToArray(),
+                        Components = manifest.Components.ToArray()
+                    };
+
+                    // Parsing is not authentication. Detached Ed25519
+                    // verification happens in TryVerifyTrustedPackage
+                    // before the package can be advertised or installed.
+                    info.IsSigned = false;
+                    info.IsSignatureValid = false;
+
+                    // Determine kernel image location using a single VFS stat lookup
+                    string baseDir = Path.GetDirectoryName(path);
+                    string kernelCandidate = Path.Combine(baseDir, manifest.KernelImage);
+                    try
+                    {
+                        FileInfo fi = new FileInfo(kernelCandidate);
+                        if (fi.Exists)
+                        {
+                            info.KernelImagePath = kernelCandidate;
+                            info.SizeKb = (int)(fi.Length / 1024);
+                        }
+                    }
+                    catch { }
+                    // Never substitute a kernel from another USB location:
+                    // the manifest and all binaries must come from the same
+                    // update package. Missing file is a verification error.
+
+                    // Determine payload directory
+                    if (!string.IsNullOrEmpty(manifest.PayloadDirectory))
+                    {
+                        string payloadCand = Path.Combine(baseDir, manifest.PayloadDirectory);
+                        if (Directory.Exists(payloadCand))
+                            info.PayloadPath = payloadCand;
+                    }
+
+                    pkg = info;
+                    return true;
+                }
+            }
+            catch { }
+
+            return false;
         }
 
         /// <summary>

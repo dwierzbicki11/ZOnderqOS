@@ -27,10 +27,10 @@ namespace ZonderqOS.GUI.Apps
         private int activeTab = 0; // 0 = Changelog, 1 = Files/Payload, 2 = Storage/Slots, 3 = History
         private readonly Action closeCallback;
 
-        private string statusMessage = "Ready to install an update from USB.";
+        private string statusMessage = "Ready to check USB or HTTPS OTA updates.";
         private Color statusColor = MutedColor;
 
-        private enum UpdateOp { None, Checking, Installing, RollingBack }
+        private enum UpdateOp { None, Checking, Downloading, Installing, RollingBack }
         private UpdateOp currentOp = UpdateOp.None;
         private int currentOpStep = 0;
 
@@ -266,6 +266,46 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            if (currentOp == UpdateOp.Downloading)
+            {
+                if (!IsRootAuthorized())
+                {
+                    isBusy = false;
+                    currentOp = UpdateOp.None;
+                    statusMessage = "Permission denied: administrator (root) privileges required.";
+                    statusColor = RedColor;
+                    return;
+                }
+
+                UpdatePackageInfo pkg = UpdateManager.AvailablePackage;
+                string dlErr;
+                bool ok = UpdateManager.DownloadOnlinePackage(pkg, (pct, txt) =>
+                {
+                    currentProgress = pct;
+                    currentStepText = txt;
+                    GuiManager.PumpFrame();
+                }, out dlErr);
+
+                if (!ok)
+                {
+                    isBusy = false;
+                    currentOp = UpdateOp.None;
+                    statusMessage = "OTA download failed: " + dlErr;
+                    statusColor = RedColor;
+                    RefreshCachedState();
+                    return;
+                }
+
+                currentOp = UpdateOp.Installing;
+                currentOpStep = 0;
+                currentProgress = 5;
+                currentStepText = "Installing verified OTA package...";
+                statusMessage = "Installing verified OTA package...";
+                statusColor = AccentColor;
+                RefreshCachedState();
+                return;
+            }
+
             if (currentOp == UpdateOp.Installing)
             {
                 if (!IsRootAuthorized())
@@ -361,8 +401,10 @@ namespace ZonderqOS.GUI.Apps
             isBusy = true;
             currentOp = UpdateOp.Checking;
             currentProgress = 100;
-            currentStepText = "Scanning USB drive for update packages...";
-            statusMessage = "Checking USB for updates...";
+            currentStepText = UpdateManager.SourceMode == UpdateSourceMode.UsbOffline
+                ? "Scanning USB drive for update packages..."
+                : "Checking USB and HTTPS OTA release server...";
+            statusMessage = "Checking for updates...";
             statusColor = AccentColor;
         }
 
@@ -375,12 +417,24 @@ namespace ZonderqOS.GUI.Apps
             if (pkg == null) return;
 
             isBusy = true;
-            currentOp = UpdateOp.Installing;
-            currentOpStep = 0;
-            currentProgress = 5;
-            currentStepText = "Initializing update installer...";
-            statusMessage = "Installing update package...";
-            statusColor = AccentColor;
+            if (pkg.IsRemotePendingDownload)
+            {
+                currentOp = UpdateOp.Downloading;
+                currentOpStep = 0;
+                currentProgress = 2;
+                currentStepText = "Connecting over HTTPS (TLS 1.2/1.3)...";
+                statusMessage = "Downloading verified OTA package...";
+                statusColor = AccentColor;
+            }
+            else
+            {
+                currentOp = UpdateOp.Installing;
+                currentOpStep = 0;
+                currentProgress = 5;
+                currentStepText = "Initializing update installer...";
+                statusMessage = "Installing update package...";
+                statusColor = AccentColor;
+            }
         }
 
         private void PerformRollback()
@@ -511,7 +565,7 @@ namespace ZonderqOS.GUI.Apps
             };
             DrawButton(canvas, srcText, x + 110, y, 115, h, Panel, Border, GoldColor);
 
-            DrawButton(canvas, "CHECK USB", x + w - 245, y, 115, h, AccentColor, AccentColor, TextColor);
+            DrawButton(canvas, "CHECK UPDATES", x + w - 245, y, 115, h, AccentColor, AccentColor, TextColor);
 
             bool hasBackup = cachedHasRollback;
             DrawButton(canvas, "RESTORE SNAPSHOT", x + w - 124, y, 120, h, hasBackup ? RedColor : Panel, Border, hasBackup ? TextColor : MutedColor);
@@ -546,9 +600,10 @@ namespace ZonderqOS.GUI.Apps
             {
                 UpdatePackageInfo pkg = UpdateManager.AvailablePackage;
                 UiPainter.RoundedPanel(canvas, x, y, w, h, 4, Panel, AccentColor);
+                string prefix = pkg.IsRemotePendingDownload ? "OTA update: " : "USB/Local package: ";
                 string signText = pkg.IsSigned ? (pkg.IsSignatureValid ? " [SIGNATURE OK]" : " [INVALID SIGNATURE]") : "";
-                SmallTextRenderer.Draw(canvas, "USB package: " + pkg.Version + " - " + pkg.Title + signText, x + 12, y + 11, TextColor);
-                DrawButton(canvas, "INSTALL NOW", x + w - 158, y + 4, 150, 28, AccentColor, AccentColor, TextColor);
+                SmallTextRenderer.DrawClipped(canvas, prefix + pkg.Version + " - " + pkg.Title + signText, x + 12, y + 11, w - 180, TextColor);
+                DrawButton(canvas, pkg.IsRemotePendingDownload ? "DOWNLOAD & INSTALL" : "INSTALL NOW", x + w - 158, y + 4, 150, 28, AccentColor, AccentColor, TextColor);
             }
             else if (UpdateManager.IsRebootRequired)
             {
@@ -559,7 +614,7 @@ namespace ZonderqOS.GUI.Apps
             else
             {
                 UiPainter.RoundedPanel(canvas, x, y, w, h, 4, Panel, Border);
-                SmallTextRenderer.Draw(canvas, "No pending updates. Press F5 or [CHECK USB] to refresh.", x + 12, y + 11, MutedColor);
+                SmallTextRenderer.Draw(canvas, "No pending updates. Press F5 or [CHECK UPDATES] to refresh.", x + 12, y + 11, MutedColor);
             }
         }
 

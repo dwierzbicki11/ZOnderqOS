@@ -16,10 +16,11 @@ ARM64 = (ROOT / "source/Platform/Arm64/PciSysfsProvider.cs").read_text()
 class Nic3094Safety(unittest.TestCase):
     def test_sdk_and_network_feature_gate_preserved(self):
         self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.97"' in PROJECT)
-        self.assertIn('<CosmosEnableNetwork>false</CosmosEnableNetwork>', PROJECT)
+        self.assertIn('CosmosEnableNetwork', PROJECT)
         self.assertIn('ZONDERQ_NETWORK_DISABLED', PROJECT)
-        self.assertIn('public static bool IsReady => false;', NETWORK)
-        self.assertIn('public static bool ConfigureDhcp() => false;', NETWORK)
+        self.assertIn('#if ZONDERQ_NETWORK_DISABLED', NETWORK)
+        self.assertIn('public static bool IsReady => isReady;', NETWORK)
+        self.assertIn('public static bool ConfigureDhcp()', NETWORK)
 
     def test_real_pci_scan_not_fabricated(self):
         self.assertIn('PciSysfsProvider.TryDiscover(out devices)', DIAG)

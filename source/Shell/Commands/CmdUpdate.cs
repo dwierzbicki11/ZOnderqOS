@@ -130,9 +130,24 @@ namespace ZonderqOS.Commands
 
                 if (pkg == null)
                 {
-                    WriteMessage.WriteInfo("No pending USB updates. Run 'zupdate check --force'.", "UPDATE");
+                    WriteMessage.WriteInfo("No pending USB or OTA updates. Run 'zupdate check --force'.", "UPDATE");
                     CommandIO.LastCommandSuccess = false;
                     return;
+                }
+
+                if (pkg.IsRemotePendingDownload)
+                {
+                    CommandIO.WriteLine("Downloading verified OTA update " + pkg.Version + " over HTTPS...");
+                    if (!UpdateManager.DownloadOnlinePackage(pkg, (pct, status) =>
+                    {
+                        CommandIO.WriteLine(string.Format("  [{0,3}%] {1}", pct, status));
+                    }, out string dlError))
+                    {
+                        WriteMessage.WriteError("OTA download failed: " + dlError, "UPDATE");
+                        CommandIO.LastCommandSuccess = false;
+                        return;
+                    }
+                    pkg = UpdateManager.AvailablePackage;
                 }
 
                 string inactiveSlot = BootSlotManager.GetInactiveSlot();
@@ -226,6 +241,72 @@ namespace ZonderqOS.Commands
                 return;
             }
 
+            if (subcmd == "source")
+            {
+                if (!RequireRootPrivilege(subcmd, "Root permissions are required to change update source mode."))
+                    return;
+                if (args.Length < 3)
+                {
+                    CommandIO.WriteLine("Current source: " + UpdateManager.SourceMode + " (usage: zupdate source <usb|auto|cloud>)");
+                    CommandIO.LastCommandSuccess = true;
+                    return;
+                }
+                string modeArg = args[2].Trim().ToLowerInvariant();
+                if (modeArg == "usb") UpdateManager.SetSourceMode(UpdateSourceMode.UsbOffline);
+                else if (modeArg == "auto") UpdateManager.SetSourceMode(UpdateSourceMode.CloudAuto);
+                else if (modeArg == "cloud" || modeArg == "ota") UpdateManager.SetSourceMode(UpdateSourceMode.CloudOnly);
+                else
+                {
+                    WriteMessage.WriteError("Invalid source mode. Use: usb | auto | cloud", "UPDATE");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+                WriteMessage.WriteOK("Update source set to: " + UpdateManager.SourceMode, "UPDATE");
+                CommandIO.LastCommandSuccess = true;
+                return;
+            }
+
+            if (subcmd == "set-url")
+            {
+                if (!RequireRootPrivilege(subcmd, "Root permissions are required to change OTA server URL."))
+                    return;
+                if (args.Length < 3)
+                {
+                    CommandIO.WriteLine("Current OTA URL: " + UpdateManager.CloudServerUrl);
+                    CommandIO.WriteLine("Usage: zupdate set-url <https://...>");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+                if (!UpdateManager.SetOtaServerUrl(args[2], out string urlErr))
+                {
+                    WriteMessage.WriteError("Invalid OTA URL: " + urlErr, "UPDATE");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+                WriteMessage.WriteOK("OTA server URL updated: " + UpdateManager.CloudServerUrl, "UPDATE");
+                CommandIO.LastCommandSuccess = true;
+                return;
+            }
+
+            if (subcmd == "ota-download" || subcmd == "download")
+            {
+                if (!RequireRootPrivilege(subcmd, "Root permissions are required to download OTA updates."))
+                    return;
+                CommandIO.WriteLine("Downloading verified OTA update from " + UpdateManager.CloudServerUrl + "...");
+                if (!UpdateManager.DownloadOnlinePackage(UpdateManager.AvailablePackage, (pct, status) =>
+                {
+                    CommandIO.WriteLine(string.Format("  [{0,3}%] {1}", pct, status));
+                }, out string dlError))
+                {
+                    WriteMessage.WriteError("OTA download failed: " + dlError, "UPDATE");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+                WriteMessage.WriteOK("OTA package downloaded and verified in /var/updates/incoming/. Run 'zupdate install'.", "UPDATE");
+                CommandIO.LastCommandSuccess = true;
+                return;
+            }
+
             if (subcmd == "stage" || subcmd == "confirm" || subcmd == "clean")
             {
                 if (!RequireRootPrivilege(subcmd, "Root permissions are required for update operations."))
@@ -281,6 +362,8 @@ namespace ZonderqOS.Commands
             CommandIO.WriteLine("");
             CommandIO.WriteLine("  Last check:            " + UpdateManager.LastCheckTime);
             CommandIO.WriteLine("  Update source:         " + UpdateManager.SourceMode.ToString().ToUpperInvariant());
+            CommandIO.WriteLine("  OTA HTTPS URL:         " + UpdateManager.CloudServerUrl);
+            CommandIO.WriteLine("  Network status:        " + (OtaUpdateClient.IsNetworkReady() ? "ONLINE" : "OFFLINE"));
             CommandIO.WriteLine("  Restart required:      " + (UpdateManager.IsRebootRequired ? "YES (new kernel pending in slot " + BootSlotManager.ActiveSlot + ")" : "No"));
             CommandIO.WriteLine("  Restore point:         " + (UpdateManager.HasRollbackSnapshot() ? "Available (A/B snapshot)" : "None"));
             CommandIO.WriteLine("");
@@ -317,7 +400,10 @@ namespace ZonderqOS.Commands
             CommandIO.WriteLine("Available zupdate commands:");
             CommandIO.WriteLine("  zupdate status                 - Show kernel, active slot and version");
             CommandIO.WriteLine("  zupdate slots                  - Diagnose A/B boot slots");
-            CommandIO.WriteLine("  zupdate check [--force]        - Check USB update packages");
+            CommandIO.WriteLine("  zupdate check [--force]        - Check USB / HTTPS OTA update packages");
+            CommandIO.WriteLine("  zupdate ota-download           - Download & verify signed HTTPS OTA package");
+            CommandIO.WriteLine("  zupdate source <usb|auto|cloud>- Set update source mode (root)");
+            CommandIO.WriteLine("  zupdate set-url <https://...>  - Set HTTPS OTA release base URL (root)");
             CommandIO.WriteLine("  zupdate verify                 - Verify SHA-256 and package signature");
             CommandIO.WriteLine("  zupdate install                - Install to inactive slot safely");
             CommandIO.WriteLine("  zupdate rollback               - Roll back to the previous slot");

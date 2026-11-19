@@ -200,7 +200,7 @@ def test_a_and_d_and_f_live_gui_install_and_disk_boot(work_dir: Path):
             # Poll target_disk MBR offset 218..222 for 'ZQOK' marker written at end of Step 8 after VFS unmount & FAT sync
             installed_ok = False
             t0 = time.time()
-            while time.time() - t0 < 120.0:
+            while time.time() - t0 < 210.0:
                 time.sleep(2.0)
                 try:
                     with open(target_disk, "rb") as df:

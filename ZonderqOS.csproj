@@ -29,7 +29,7 @@
 
     <!-- Keep one feature profile for both architectures. Architecture-specific
          hardware setup belongs in Cosmos/HAL adapters, not throughout the app. -->
-    <CosmosEnableNetwork>false</CosmosEnableNetwork>
+    <CosmosEnableNetwork Condition="'$(CosmosEnableNetwork)' == ''">true</CosmosEnableNetwork>
     <CosmosEnableStorage>true</CosmosEnableStorage>
     <CosmosEnableMouse>true</CosmosEnableMouse>
     <CosmosEnablePCI>true</CosmosEnablePCI>
@@ -38,9 +38,8 @@
     <CosmosEnableGraphics>true</CosmosEnableGraphics>
     <CosmosEnableScheduler>true</CosmosEnableScheduler>
 
-    <!-- Make the disabled network state explicit to ZonderqOS code without
-         depending on package-internal networking types. -->
-    <DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_DISABLED</DefineConstants>
+    <!-- Define ZONDERQ_NETWORK_DISABLED only when explicitly opted out at build time. -->
+    <DefineConstants Condition="'$(CosmosEnableNetwork)' != 'true'">$(DefineConstants);ZONDERQ_NETWORK_DISABLED</DefineConstants>
 
     <!-- An obsolete experimental shim existed locally in some checkouts. Put it
          in DefaultItemExcludes as well as Compile Remove so it cannot re-enter
@@ -93,11 +92,12 @@
 
   <ItemGroup Condition="'$(CosmosEnableNetwork)' != 'true'">
     <!-- Network commands directly consume the Cosmos networking API. Keep them
-         out until the feature is re-enabled and backed by a real platform NIC. -->
+         out when networking is explicitly opted out at build time. -->
     <Compile Remove="source/Shell/Commands/CmdNetwork.cs" />
     <Compile Remove="source/Shell/Commands/CmdIp.cs" />
     <Compile Remove="source/Shell/Commands/CmdPing.cs" />
     <Compile Remove="source/Shell/Commands/CmdDns.cs" />
+    <Compile Remove="source/Shell/Commands/CmdHttpGet.cs" />
   </ItemGroup>
 
   <ItemGroup>

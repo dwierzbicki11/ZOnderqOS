@@ -68,6 +68,8 @@ namespace ZonderqOS
                 BootSessionHealth.Initialize();
                 SystemGuardian.Initialize();
                 SystemSettings.Load();
+                Network.Initialize();
+                Network.StartBackgroundAutoConfigIfLinked();
                 if (!SystemSettings.BootToGui || DiagnosticConsoleBoot)
                     Command.Initialize();
                 ZonderqOS.Localization.LocalizationManager.Initialize();

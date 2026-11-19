@@ -455,6 +455,7 @@ namespace ZonderqOS.Storage
 
             byte[] chunk = new byte[CopyChunkSize];
             var digest = new Sha256Digest();
+            int lastReportedPct = -1;
 
             if (!VfsManager.TryCreateFile(slotADestPath, VfsMode.RegularFile) ||
                 !VfsManager.TryOpenFile(slotADestPath, out IVfsFileHandle slotAHandle))
@@ -499,7 +500,11 @@ namespace ZonderqOS.Storage
                         offset += len;
                         totalBytesWritten += len;
                         int pct = 56 + (int)((offset * 18L) / Math.Max(1, total));
-                        progressPctCallback?.Invoke(pct);
+                        if (pct != lastReportedPct)
+                        {
+                            lastReportedPct = pct;
+                            progressPctCallback?.Invoke(pct);
+                        }
                     }
                 }
                 else if (LimineBootMediaDetector.TryGetBootKernelElf(out IntPtr elfAddr, out int elfSize))
@@ -529,7 +534,11 @@ namespace ZonderqOS.Storage
                         offset += len;
                         totalBytesWritten += len;
                         int pct = 56 + (int)((offset * 18L) / Math.Max(1, elfSize));
-                        progressPctCallback?.Invoke(pct);
+                        if (pct != lastReportedPct)
+                        {
+                            lastReportedPct = pct;
+                            progressPctCallback?.Invoke(pct);
+                        }
                     }
                 }
                 else
@@ -570,7 +579,11 @@ namespace ZonderqOS.Storage
                         offset += n;
                         totalBytesWritten += n;
                         int pct = 56 + (int)((offset * 18L) / Math.Max(1, total));
-                        progressPctCallback?.Invoke(pct);
+                        if (pct != lastReportedPct)
+                        {
+                            lastReportedPct = pct;
+                            progressPctCallback?.Invoke(pct);
+                        }
                     }
 
                     if (totalBytesWritten != total)

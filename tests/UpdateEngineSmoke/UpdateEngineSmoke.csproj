@@ -14,6 +14,12 @@
     <Compile Include="../../source/Core/KernelBuildInfo.cs" Link="KernelBuildInfo.cs" />
     <Compile Include="../../source/Core/NativeScratchBuffer.cs" Link="NativeScratchBuffer.cs" />
     <Compile Include="../../source/Security/SecurityContext.cs" Link="SecurityContext.cs" />
+    <Compile Include="../../source/Core/Networking/OtaUrlParser.cs" Link="OtaUrlParser.cs" />
+    <Compile Include="../../source/Core/Networking/TlsHostnameMatcher.cs" Link="TlsHostnameMatcher.cs" />
+    <Compile Include="../../source/Core/Networking/TlsTrustStore.cs" Link="TlsTrustStore.cs" />
+    <Compile Include="../../source/Core/Networking/ManagedTlsClient.cs" Link="ManagedTlsClient.cs" />
+    <Compile Include="../../source/Core/Networking/HttpStreamClient.cs" Link="HttpStreamClient.cs" />
+    <Compile Include="../../source/Core/Updates/OtaUpdateClient.cs" Link="OtaUpdateClient.cs" />
     <Compile Include="../../source/Core/Updates/UpdateManifest.cs" Link="UpdateManifest.cs" />
     <Compile Include="../../source/Core/Updates/TrustedReleaseKey.cs" Link="TrustedReleaseKey.cs" />
     <Compile Include="../../source/Core/Updates/ReleaseSignatureVerifier.cs" Link="ReleaseSignatureVerifier.cs" />
