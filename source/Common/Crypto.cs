@@ -78,11 +78,27 @@ namespace ZonderqOS
                 monotonic = 0UL;
             }
 
+            ulong extraEntropyA = 0UL;
+            ulong extraEntropyB = 0UL;
+            try
+            {
+                byte[] guidBytes = Guid.NewGuid().ToByteArray();
+                for (int i = 0; i < 8; i++)
+                {
+                    extraEntropyA |= ((ulong)guidBytes[i]) << (i * 8);
+                    extraEntropyB |= ((ulong)guidBytes[i + 8]) << (i * 8);
+                }
+            }
+            catch
+            {
+                extraEntropyA = (ulong)Environment.TickCount64;
+            }
+
             long counter = Interlocked.Increment(ref saltCounter);
-            ulong mixed = rtcValue ^ RotateLeft64(monotonic, 17) ^
+            ulong mixed = rtcValue ^ RotateLeft64(monotonic, 17) ^ extraEntropyA ^
                           ((ulong)counter * 0x9E3779B97F4A7C15UL);
             mixed = Mix64(mixed);
-            ulong second = Mix64(mixed ^ monotonic ^ 0xD6E8FEB86659FD93UL);
+            ulong second = Mix64(mixed ^ monotonic ^ extraEntropyB ^ 0xD6E8FEB86659FD93UL);
             return mixed.ToString("X16") + second.ToString("X16");
         }
 

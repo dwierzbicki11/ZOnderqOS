@@ -27,18 +27,26 @@ namespace ZonderqOS.Commands
             }
 
             string username = args[1];
-            string password = args[2];
+            char[] passwordChars = args[2] != null ? args[2].ToCharArray() : Array.Empty<char>();
+            args[2] = string.Empty;
             int retryAfter;
             if (!AuthenticationGuard.CanAttempt(username, out retryAfter))
             {
-                password = null;
+                Array.Clear(passwordChars, 0, passwordChars.Length);
                 WriteMessage.WriteError("Authentication temporarily blocked for " + retryAfter + " s.", "AUTH");
                 CommandIO.LastCommandSuccess = false;
                 return;
             }
 
-            bool valid = UserManager.ValidateCredentials(username, password);
-            password = null;
+            bool valid;
+            try
+            {
+                valid = UserManager.ValidateCredentialsChars(username, passwordChars, passwordChars.Length);
+            }
+            finally
+            {
+                Array.Clear(passwordChars, 0, passwordChars.Length);
+            }
             if (valid && UserManager.ActivateSession(username))
             {
                 AuthenticationGuard.RecordSuccess(username);

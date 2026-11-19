@@ -344,10 +344,18 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Panel, wx + 16, dispY, ww - 32, dispH);
             canvas.DrawRectangle(Border, wx + 16, dispY, ww - 32, dispH);
 
-            // Status label & current note
-            string modeText = isPlayingSong ? "PLAYING DEMO: " + GetSongName(currentSongIndex) : "LIVE SYNTHESIZER MODE (Use mouse or keys A-K)";
-            SmallTextRenderer.Draw(canvas, modeText, wx + 28, dispY + 10, CyanColor);
-            SmallTextRenderer.Draw(canvas, "Current note: " + lastPlayedNote, wx + 28, dispY + 28, GoldColor);
+            // Status label & current note (zero per-frame string allocations)
+            if (isPlayingSong)
+            {
+                SmallTextRenderer.Draw(canvas, "PLAYING DEMO: ", wx + 28, dispY + 10, CyanColor);
+                SmallTextRenderer.Draw(canvas, GetSongName(currentSongIndex), wx + 112, dispY + 10, CyanColor);
+            }
+            else
+            {
+                SmallTextRenderer.Draw(canvas, "LIVE SYNTHESIZER MODE (Use mouse or keys A-K)", wx + 28, dispY + 10, CyanColor);
+            }
+            SmallTextRenderer.Draw(canvas, "Current note: ", wx + 28, dispY + 28, GoldColor);
+            SmallTextRenderer.Draw(canvas, lastPlayedNote, wx + 112, dispY + 28, GoldColor);
             SmallTextRenderer.Draw(canvas, "Keyboard layout: [A=C] [W=C#] [S=D] [E=D#] [D=E] [F=F] [T=F#] [G=G] [Y=G#] [H=A] [U=A#] [J=B] [K=C+]", wx + 28, dispY + 46, MutedColor);
 
             // Draw 8-bit Chiptune Square Waveform
@@ -383,8 +391,13 @@ namespace ZonderqOS.GUI.Apps
                 canvas.DrawFilledRectangle(keyCol, kx, keyY, keyW, keyH);
                 canvas.DrawRectangle(Color.FromArgb(100, 110, 125), kx, keyY, keyW, keyH);
 
-                string keyName = NoteNames[WhiteNoteIndices[w]] + currentOctave;
-                SmallTextRenderer.Draw(canvas, keyName, kx + keyW / 2 - 10, keyY + keyH - 24, Color.FromArgb(40, 50, 60));
+                string baseNote = NoteNames[WhiteNoteIndices[w]];
+                int noteX = kx + keyW / 2 - 10;
+                int noteY = keyY + keyH - 24;
+                Color noteColor = Color.FromArgb(40, 50, 60);
+                SmallTextRenderer.Draw(canvas, baseNote, noteX, noteY, noteColor);
+                SmallTextRenderer.DrawUInt(canvas, (ulong)Math.Max(0, currentOctave),
+                    noteX + SmallTextRenderer.Width(baseNote), noteY, noteColor);
             }
 
             // Render black keys (over white keys)

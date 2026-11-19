@@ -36,6 +36,7 @@ namespace ZonderqOS.SystemCore.Services
         private const int MaxServices = 64;
         private static readonly object Sync = new object();
         private static readonly object ConfigWriteSync = new object();
+        private static readonly object LifecycleSync = new object();
         private static readonly Dictionary<string, ServiceDefinition> Definitions =
             new Dictionary<string, ServiceDefinition>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, int> Pids =
@@ -53,7 +54,11 @@ namespace ZonderqOS.SystemCore.Services
                         File.WriteAllText(ConfigRoot + "/heartbeat.conf",
                             "# Edit and run: service reload\n" +
                             "type=heartbeat\n" +
+#if ZSRV_HOST_TESTS
                             "enabled=true\n" +
+#else
+                            "enabled=false\n" +
+#endif
                             "interval_seconds=60\n");
                 }
 
@@ -259,21 +264,24 @@ namespace ZonderqOS.SystemCore.Services
 
         public static bool Restart(string name, out string error)
         {
-            if (!ProcessManager.IsRunning("svc-" + name))
-                return Start(name, out error);
-            if (!Stop(name, out error))
-                return false;
-
-            // Cancellation is cooperative; never launch a second copy before
-            // the original thread has actually left the process registry.
-            for (int i = 0; i < 200; i++)
+            lock (LifecycleSync)
             {
                 if (!ProcessManager.IsRunning("svc-" + name))
                     return Start(name, out error);
-                Thread.Sleep(10);
+                if (!Stop(name, out error))
+                    return false;
+
+                // Cancellation is cooperative; never launch a second copy before
+                // the original thread has actually left the process registry.
+                for (int i = 0; i < 200; i++)
+                {
+                    if (!ProcessManager.IsRunning("svc-" + name))
+                        return Start(name, out error);
+                    Thread.Sleep(10);
+                }
+                error = "Service did not stop within two seconds.";
+                return false;
             }
-            error = "Service did not stop within two seconds.";
-            return false;
         }
 
         public static bool SetEnabled(string name, bool enabled, out string error)
@@ -424,6 +432,8 @@ namespace ZonderqOS.SystemCore.Services
                     // and keep periodic service telemetry in RAM.
                     if (wroteInitialHeartbeat)
                         skipDiskAppend = true;
+                    if (definition.Type == "memory")
+                        skipDiskAppend = false;
 #endif
                     if (!skipDiskAppend)
                     {

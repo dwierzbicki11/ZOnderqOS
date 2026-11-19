@@ -350,10 +350,11 @@ namespace ZonderqOS.SystemCore
         internal void Refresh()
         {
             int count = checked((int)SchedulerInfo.CpuCount);
+            bool hasAccounting = SchedulerTelemetry.HasCpuAccounting;
             long now = Stopwatch.GetTimestamp();
             long elapsed = previousTimestamp == 0 ? 0 : Math.Max(0, now - previousTimestamp);
             bool warm = elapsed > 0;
-            if (previousCpu.Length != count)
+            if (hasAccounting && previousCpu.Length != count)
             {
                 previousCpu = new long[count];
                 cpuUsage = new int[count];
@@ -366,29 +367,35 @@ namespace ZonderqOS.SystemCore
             lines.Add("CPU usage: scheduled work per logical CPU (1 second samples)");
             ActiveCpuMask = 0;
             ulong totalBusyDelta = 0;
-            bool hasAccounting = SchedulerTelemetry.HasCpuAccounting;
-            for (int cpu = 0; cpu < count; cpu++)
+            if (!hasAccounting)
             {
-                long busy = hasAccounting ? SchedulerTelemetry.CpuBusyTicks((uint)cpu) : 0;
-                ulong delta = busy >= previousCpu[cpu] ? (ulong)(busy - previousCpu[cpu]) : 0;
-                if (warm && delta > 0 && cpu < 64)
-                {
-                    ActiveCpuMask |= 1UL << cpu;
-                }
-                if (warm && hasAccounting)
-                {
-                    totalBusyDelta += delta;
-                }
-                int usage = warm && hasAccounting ? Percent(delta, (ulong)elapsed) : 0;
-                cpuUsage[cpu] = usage;
-                lines.Add(!hasAccounting
-                    ? CpuUnavailableLine(cpu)
-                    : CpuPrefix(cpu) + CpuBar(usage) + "] " +
-                        (!warm ? "..." : CpuPercentText(usage)));
-                previousCpu[cpu] = busy;
+                for (int cpu = 0; cpu < count; cpu++)
+                    lines.Add(CpuUnavailableLine(cpu));
+                TotalCpuPercent = 0;
             }
-            ulong totalCapacity = warm && count > 0 ? (ulong)elapsed * (ulong)count : 0;
-            TotalCpuPercent = warm && hasAccounting ? Percent(totalBusyDelta, totalCapacity) : 0;
+            else
+            {
+                for (int cpu = 0; cpu < count; cpu++)
+                {
+                    long busy = SchedulerTelemetry.CpuBusyTicks((uint)cpu);
+                    ulong delta = busy >= previousCpu[cpu] ? (ulong)(busy - previousCpu[cpu]) : 0;
+                    if (warm && delta > 0 && cpu < 64)
+                    {
+                        ActiveCpuMask |= 1UL << cpu;
+                    }
+                    if (warm)
+                    {
+                        totalBusyDelta += delta;
+                    }
+                    int usage = warm ? Percent(delta, (ulong)elapsed) : 0;
+                    cpuUsage[cpu] = usage;
+                    lines.Add(CpuPrefix(cpu) + CpuBar(usage) + "] " +
+                        (!warm ? "..." : CpuPercentText(usage)));
+                    previousCpu[cpu] = busy;
+                }
+                ulong totalCapacity = warm && count > 0 ? (ulong)elapsed * (ulong)count : 0;
+                TotalCpuPercent = warm ? Percent(totalBusyDelta, totalCapacity) : 0;
+            }
             // Stock Cosmos exposes no per-core busy accounting. Avoid
             // allocating the same immutable N/A total on every refresh.
             lines.Add(!hasAccounting ? "CPU total: N/A" :

@@ -31,10 +31,6 @@ namespace ZonderqOS.GUI
                 if (!PermissionManager.CanCreate(targetDir, user))
                     return null;
 
-                byte[] bmpBytes = BmpEncoder.EncodeCanvas(canvas);
-                if (bmpBytes.Length == 0)
-                    return null;
-
                 if (!Directory.Exists(targetDir))
                     Directory.CreateDirectory(targetDir);
 
@@ -50,7 +46,16 @@ namespace ZonderqOS.GUI
                 if (!PermissionManager.CanCreate(fullPath, user))
                     return null;
 
-                File.WriteAllBytes(fullPath, bmpBytes);
+                bool ok;
+                using (FileStream fs = new FileStream(fullPath, FileMode.Create, FileAccess.Write))
+                {
+                    ok = BmpEncoder.EncodeCanvasToStream(fs, canvas);
+                }
+                if (!ok)
+                {
+                    try { File.Delete(fullPath); } catch { }
+                    return null;
+                }
                 PermissionManager.SetPermission(fullPath, user, 600);
                 counter++;
 

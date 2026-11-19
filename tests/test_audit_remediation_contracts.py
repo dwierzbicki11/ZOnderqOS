@@ -112,6 +112,40 @@ class AuditRemediationContracts(unittest.TestCase):
         self.assertNotIn('"ODBLOKUJ"', lock)
         self.assertIn("ClearSessionState()", lock)
 
+        hexv = read("source/GUI/Application/HexViewerApp.cs")
+        self.assertNotIn("Poz: 0x", hexv)
+        self.assertIn("Pos: 0x", hexv)
+
+    def test_m4_m8_m9_h1_h10_l1_l4_remaining_audit_items(self):
+        vfs = read("source/Core/VirtualFs.cs")
+        self.assertIn("CanMutateVolatilePath", vfs)
+        self.assertIn("VolatileOwners", vfs)
+
+        bmp = read("source/GUI/BmpEncoder.cs")
+        self.assertIn("public static bool EncodeCanvasToStream(", bmp)
+        ss_svc = read("source/GUI/ScreenshotService.cs")
+        self.assertIn("BmpEncoder.EncodeCanvasToStream(", ss_svc)
+
+        dvp = read("source/Storage/DataVolumePolicy.cs")
+        self.assertIn("IsDedicatedDataPartitionTypeCached", dvp)
+
+        svc = read("source/Core/Services/ServiceManager.cs")
+        self.assertIn("LifecycleSync", svc)
+        self.assertIn('if (definition.Type == "memory")', svc)
+
+        icon = read("source/GUI/Icons/IconManager.cs")
+        self.assertIn("CorePreloadIcons", icon)
+
+        cmd = read("source/Shell/Command.cs")
+        self.assertIn("EnsureInitialized()", cmd)
+
+        htop = read("source/Core/HtopMonitor.cs")
+        self.assertIn("if (hasAccounting && previousCpu.Length != count)", htop)
+
+        uacc = read("source/GUI/Application/UserAccountsApp.cs")
+        self.assertIn("pendingAuthChars", uacc)
+        self.assertIn("ValidateCredentialsChars(", uacc)
+
 
 if __name__ == "__main__":
     unittest.main()

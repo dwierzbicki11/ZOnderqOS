@@ -13,6 +13,13 @@ namespace ZonderqOS
         private const int MaxTokenLength = 4 * 1024;
         private static readonly List<ICommand> _commands = new List<ICommand>();
         private static readonly Dictionary<string, ICommand> _commandLookup = new Dictionary<string, ICommand>(StringComparer.OrdinalIgnoreCase);
+        private static bool _initialized;
+
+        private static void EnsureInitialized()
+        {
+            if (!_initialized)
+                Initialize();
+        }
 
         private static void Register(ICommand cmd)
         {
@@ -52,10 +59,12 @@ namespace ZonderqOS
             Register(new CmdWc()); Register(new CmdWhich());
             Register(new CmdNeofetch()); Register(new CmdMatrix());
             Register(new CmdSysbench()); Register(new CmdInstall());
+            _initialized = true;
         }
 
         internal static string[] GetCommandNames()
         {
+            EnsureInitialized();
             string[] names = new string[_commands.Count];
             for (int i = 0; i < _commands.Count; i++) names[i] = _commands[i].Name;
             return names;
@@ -63,6 +72,7 @@ namespace ZonderqOS
 
         public static void Run(string fullInput, ref string currentPath)
         {
+            EnsureInitialized();
             if (string.IsNullOrWhiteSpace(fullInput)) return;
             if (!ValidateCommandLength(fullInput, "Command line")) return;
 

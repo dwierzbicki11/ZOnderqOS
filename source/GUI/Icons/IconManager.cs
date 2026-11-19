@@ -42,6 +42,17 @@ namespace ZonderqOS.GUI.Icons
         private static readonly int[] scaledRecentSlots = new int[IconCount];
         private static readonly int[] scaledPreviousSlots = new int[IconCount];
 
+        // Core chrome/shell icons needed immediately on Login, Lock, Taskbar, and Desktop.
+        // Remaining specialized app/file-type icons decode lazily on first DrawScaled call.
+        private static readonly IconType[] CorePreloadIcons =
+        {
+            IconType.Start, IconType.Terminal, IconType.FileManager, IconType.Settings,
+            IconType.About, IconType.Folder, IconType.File, IconType.Close,
+            IconType.Maximize, IconType.Restore, IconType.Refresh, IconType.Search,
+            IconType.Trash, IconType.Reboot, IconType.Shutdown, IconType.Network,
+            IconType.Play, IconType.Install
+        };
+
         public static void Preload()
         {
             try
@@ -52,8 +63,8 @@ namespace ZonderqOS.GUI.Icons
             {
             }
 
-            for (int i = 0; i < IconCount; i++)
-                EnsureSource((IconType)i);
+            for (int i = 0; i < CorePreloadIcons.Length; i++)
+                EnsureSource(CorePreloadIcons[i]);
         }
 
         /// <summary>

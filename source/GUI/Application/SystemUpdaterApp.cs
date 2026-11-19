@@ -494,7 +494,13 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderChannelRow(Canvas canvas, int x, int y, int w, int h)
         {
-            string chText = "CHANNEL: " + UpdateManager.Channel.ToString().ToUpperInvariant();
+            string chText = UpdateManager.Channel switch
+            {
+                UpdateChannel.Lts => "CHANNEL: LTS",
+                UpdateChannel.Beta => "CHANNEL: BETA",
+                UpdateChannel.Testing => "CHANNEL: TESTING",
+                _ => "CHANNEL: STABLE"
+            };
             DrawButton(canvas, chText, x, y, 105, h, Panel, Border, AccentColor);
 
             string srcText = UpdateManager.SourceMode switch
@@ -516,7 +522,12 @@ namespace ZonderqOS.GUI.Apps
             if (isBusy)
             {
                 UiPainter.RoundedPanel(canvas, x, y, w, h, 4, Panel, Border);
-                SmallTextRenderer.Draw(canvas, currentStepText + " (" + currentProgress + "%)", x + 12, y + 5, TextColor);
+                SmallTextRenderer.Draw(canvas, currentStepText, x + 12, y + 5, TextColor);
+                int pctX = x + 18 + SmallTextRenderer.Width(currentStepText);
+                SmallTextRenderer.Draw(canvas, "(", pctX, y + 5, TextColor);
+                ulong pctVal = (ulong)Math.Max(0, currentProgress);
+                SmallTextRenderer.DrawUInt(canvas, pctVal, pctX + 6, y + 5, TextColor);
+                SmallTextRenderer.Draw(canvas, "%)", pctX + 6 + SmallTextRenderer.WidthUInt(pctVal), y + 5, TextColor);
 
                 int barX = x + 12;
                 int barY = y + 20;

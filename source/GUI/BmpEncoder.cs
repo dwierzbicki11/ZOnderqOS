@@ -172,5 +172,86 @@ namespace ZonderqOS.GUI
                 chunk.Dispose();
             }
         }
+
+        /// <summary>
+        /// Streams a 32-bit top-down BGRA BMP directly from a Canvas into an output stream
+        /// using a bounded 16 KiB native scratch buffer, avoiding multi-megabyte managed arrays.
+        /// </summary>
+        public static bool EncodeCanvasToStream(Stream output, Canvas canvas)
+        {
+            if (output == null || canvas == null)
+                return false;
+
+            int width = (int)canvas.Width;
+            int height = (int)canvas.Height;
+            if (width <= 0 || height <= 0)
+                return false;
+
+            int imageSize = width * height * 4;
+            int fileSize = 54 + imageSize;
+            const int chunkBytes = 16384;
+            NativeScratchBuffer<byte> chunk = default;
+            try
+            {
+                chunk.Allocate(chunkBytes);
+                Span<byte> buf = chunk.AsSpan();
+                for (int i = 0; i < 54; i++)
+                    buf[i] = 0;
+
+                buf[0] = (byte)'B';
+                buf[1] = (byte)'M';
+                buf[2] = (byte)fileSize;
+                buf[3] = (byte)(fileSize >> 8);
+                buf[4] = (byte)(fileSize >> 16);
+                buf[5] = (byte)(fileSize >> 24);
+                buf[10] = 54;
+
+                buf[14] = 40;
+                buf[18] = (byte)width;
+                buf[19] = (byte)(width >> 8);
+                buf[20] = (byte)(width >> 16);
+                buf[21] = (byte)(width >> 24);
+
+                int negHeight = -height;
+                buf[22] = (byte)negHeight;
+                buf[23] = (byte)(negHeight >> 8);
+                buf[24] = (byte)(negHeight >> 16);
+                buf[25] = (byte)(negHeight >> 24);
+
+                buf[26] = 1;
+                buf[28] = 32;
+                buf[34] = (byte)imageSize;
+                buf[35] = (byte)(imageSize >> 8);
+                buf[36] = (byte)(imageSize >> 16);
+                buf[37] = (byte)(imageSize >> 24);
+
+                int pos = 54;
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        if (pos + 4 > chunkBytes)
+                        {
+                            output.Write(buf.Slice(0, pos));
+                            pos = 0;
+                        }
+                        Color c = canvas.GetPointColor(x, y);
+                        buf[pos] = c.B;
+                        buf[pos + 1] = c.G;
+                        buf[pos + 2] = c.R;
+                        buf[pos + 3] = c.A;
+                        pos += 4;
+                    }
+                }
+                if (pos > 0)
+                    output.Write(buf.Slice(0, pos));
+                output.Flush();
+                return true;
+            }
+            finally
+            {
+                chunk.Dispose();
+            }
+        }
     }
 }

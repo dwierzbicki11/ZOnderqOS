@@ -80,12 +80,15 @@ namespace ZonderqOS.GUI.Apps
         private bool showEraseWarningModal;
         private readonly char[] confirmDiskIdChars = new char[MaxTextFieldChars];
         private int confirmDiskIdLength;
+        private string cachedConfirmDiskIdText = string.Empty;
 
         // User Setup buffers (Screen 5) — passwords live in fixed char[] and are cleared after install
         private readonly char[] usernameChars = new char[MaxTextFieldChars];
         private int usernameLength;
+        private string cachedUsernameText = string.Empty;
         private readonly char[] hostnameChars = new char[MaxTextFieldChars];
         private int hostnameLength;
+        private string cachedHostnameText = string.Empty;
         private readonly char[] passwordChars = new char[MaxPasswordChars];
         private int passwordLength;
         private readonly char[] confirmPasswordChars = new char[MaxPasswordChars];
@@ -125,12 +128,14 @@ namespace ZonderqOS.GUI.Apps
             confirmPasswordLength = 0;
             Array.Clear(confirmDiskIdChars, 0, confirmDiskIdChars.Length);
             confirmDiskIdLength = 0;
+            cachedConfirmDiskIdText = string.Empty;
         }
 
         private void SetDefaultHostname(string value)
         {
             Array.Clear(hostnameChars, 0, hostnameChars.Length);
             hostnameLength = 0;
+            cachedHostnameText = string.Empty;
             if (string.IsNullOrEmpty(value))
                 return;
 
@@ -138,6 +143,7 @@ namespace ZonderqOS.GUI.Apps
             for (int i = 0; i < len; i++)
                 hostnameChars[i] = value[i];
             hostnameLength = len;
+            cachedHostnameText = new string(hostnameChars, 0, hostnameLength);
         }
 
         public void RefreshHardwareAndDisks()
@@ -271,6 +277,7 @@ namespace ZonderqOS.GUI.Apps
                 showEraseWarningModal = false;
                 Array.Clear(confirmDiskIdChars, 0, confirmDiskIdChars.Length);
                 confirmDiskIdLength = 0;
+                cachedConfirmDiskIdText = string.Empty;
                 SetStatus("Disk erase confirmation cancelled.", Warning);
                 return;
             }
@@ -278,7 +285,12 @@ namespace ZonderqOS.GUI.Apps
             if (key.Key == ConsoleKeyEx.Backspace)
             {
                 if (confirmDiskIdLength > 0)
+                {
                     confirmDiskIdChars[--confirmDiskIdLength] = '\0';
+                    cachedConfirmDiskIdText = confirmDiskIdLength > 0
+                        ? new string(confirmDiskIdChars, 0, confirmDiskIdLength)
+                        : string.Empty;
+                }
                 return;
             }
 
@@ -292,6 +304,7 @@ namespace ZonderqOS.GUI.Apps
             if (ch >= 32 && ch <= 126 && confirmDiskIdLength < MaxTextFieldChars)
             {
                 confirmDiskIdChars[confirmDiskIdLength++] = char.ToUpperInvariant(ch);
+                cachedConfirmDiskIdText = new string(confirmDiskIdChars, 0, confirmDiskIdLength);
             }
         }
 
@@ -314,10 +327,18 @@ namespace ZonderqOS.GUI.Apps
                 switch (activeUserField)
                 {
                     case 0:
-                        if (usernameLength > 0) usernameChars[--usernameLength] = '\0';
+                        if (usernameLength > 0)
+                        {
+                            usernameChars[--usernameLength] = '\0';
+                            cachedUsernameText = usernameLength > 0 ? new string(usernameChars, 0, usernameLength) : string.Empty;
+                        }
                         break;
                     case 1:
-                        if (hostnameLength > 0) hostnameChars[--hostnameLength] = '\0';
+                        if (hostnameLength > 0)
+                        {
+                            hostnameChars[--hostnameLength] = '\0';
+                            cachedHostnameText = hostnameLength > 0 ? new string(hostnameChars, 0, hostnameLength) : string.Empty;
+                        }
                         break;
                     case 2:
                         if (passwordLength > 0) passwordChars[--passwordLength] = '\0';
@@ -350,11 +371,17 @@ namespace ZonderqOS.GUI.Apps
             {
                 case 0:
                     if (usernameLength < MaxTextFieldChars)
+                    {
                         usernameChars[usernameLength++] = ch;
+                        cachedUsernameText = new string(usernameChars, 0, usernameLength);
+                    }
                     break;
                 case 1:
                     if (hostnameLength < MaxTextFieldChars)
+                    {
                         hostnameChars[hostnameLength++] = ch;
+                        cachedHostnameText = new string(hostnameChars, 0, hostnameLength);
+                    }
                     break;
                 case 2:
                     if (passwordLength < MaxPasswordChars)
@@ -566,6 +593,7 @@ namespace ZonderqOS.GUI.Apps
                 showEraseWarningModal = false;
                 Array.Clear(confirmDiskIdChars, 0, confirmDiskIdChars.Length);
                 confirmDiskIdLength = 0;
+                cachedConfirmDiskIdText = string.Empty;
                 SetStatus("Disk erase confirmation cancelled. No changes were made.", Warning);
                 return;
             }
@@ -699,6 +727,7 @@ namespace ZonderqOS.GUI.Apps
 
             Array.Clear(confirmDiskIdChars, 0, confirmDiskIdChars.Length);
             confirmDiskIdLength = 0;
+            cachedConfirmDiskIdText = string.Empty;
             showEraseWarningModal = true;
             SetStatus("Type " + selected.DiskId + " to confirm erasing all partitions on the selected disk.", Warning);
         }
@@ -1268,8 +1297,9 @@ namespace ZonderqOS.GUI.Apps
             int inputY = ty + 22;
             canvas.DrawFilledRectangle(Surface, modalX + 24, inputY, 320, 36);
             canvas.DrawRectangle(Accent, modalX + 24, inputY, 320, 36);
-            string typed = confirmDiskIdLength > 0 ? new string(confirmDiskIdChars, 0, confirmDiskIdLength) : string.Empty;
-            SmallTextRenderer.Draw(canvas, typed + "_", modalX + 36, inputY + 11, TextColor);
+            string typed = cachedConfirmDiskIdText;
+            SmallTextRenderer.Draw(canvas, typed, modalX + 36, inputY + 11, TextColor);
+            SmallTextRenderer.Draw(canvas, "_", modalX + 36 + SmallTextRenderer.Width(typed), inputY + 11, Accent);
 
             bool confirmed = d != null && InstallerInputValidator.ValidateDiskConfirmation(d.DiskId, typed);
             int btnY = modalY + modalH - 58;
@@ -1290,15 +1320,10 @@ namespace ZonderqOS.GUI.Apps
             int fieldW = 460;
             int fieldH = 38;
 
-            string userVal = usernameLength > 0 ? new string(usernameChars, 0, usernameLength) : string.Empty;
-            string hostVal = hostnameLength > 0 ? new string(hostnameChars, 0, hostnameLength) : string.Empty;
-            string passVal = passwordLength > 0 ? PasswordMask.Substring(0, Math.Min(passwordLength, PasswordMask.Length)) : string.Empty;
-            string confVal = confirmPasswordLength > 0 ? PasswordMask.Substring(0, Math.Min(confirmPasswordLength, PasswordMask.Length)) : string.Empty;
-
-            DrawInputField(canvas, labelX, fieldX, cy + 130, fieldW, fieldH, "Username:", userVal, activeUserField == 0, "e.g. alice (letters, digits, _, -)");
-            DrawInputField(canvas, labelX, fieldX, cy + 196, fieldW, fieldH, "Computer Name:", hostVal, activeUserField == 1, "e.g. zonderq-pc");
-            DrawInputField(canvas, labelX, fieldX, cy + 262, fieldW, fieldH, "Password:", passVal, activeUserField == 2, "Minimum 8 characters (letters + digits)");
-            DrawInputField(canvas, labelX, fieldX, cy + 328, fieldW, fieldH, "Confirm Password:", confVal, activeUserField == 3, "Re-enter the same password");
+            DrawInputField(canvas, labelX, fieldX, cy + 130, fieldW, fieldH, "Username:", cachedUsernameText, activeUserField == 0, "e.g. alice (letters, digits, _, -)");
+            DrawInputField(canvas, labelX, fieldX, cy + 196, fieldW, fieldH, "Computer Name:", cachedHostnameText, activeUserField == 1, "e.g. zonderq-pc");
+            DrawMaskedInputField(canvas, labelX, fieldX, cy + 262, fieldW, fieldH, "Password:", passwordLength, activeUserField == 2, "Minimum 8 characters (letters + digits)");
+            DrawMaskedInputField(canvas, labelX, fieldX, cy + 328, fieldW, fieldH, "Confirm Password:", confirmPasswordLength, activeUserField == 3, "Re-enter the same password");
 
             int footerY = cy + ch - 52;
             DrawButton(canvas, cx + 16, footerY, 130, 38, "Back", null, Muted, false);
@@ -1311,8 +1336,29 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, label, labelX, y + 12, TextColor);
             canvas.DrawFilledRectangle(focused ? PanelSelected : Panel, fieldX, y, w, h);
             canvas.DrawRectangle(focused ? Accent : Border, fieldX, y, w, h);
-            string display = focused ? (value + "_") : value;
-            SmallTextRenderer.DrawClipped(canvas, display, fieldX + 12, y + 12, w - 24, TextColor);
+            string safeVal = value ?? string.Empty;
+            SmallTextRenderer.DrawClipped(canvas, safeVal, fieldX + 12, y + 12, w - 30, TextColor);
+            if (focused)
+            {
+                int caretX = fieldX + 12 + Math.Min(SmallTextRenderer.Width(safeVal), w - 30);
+                SmallTextRenderer.Draw(canvas, "_", caretX, y + 12, Accent);
+            }
+            if (!string.IsNullOrEmpty(hint))
+                SmallTextRenderer.Draw(canvas, hint, fieldX, y + h + 6, Muted);
+        }
+
+        private void DrawMaskedInputField(Canvas canvas, int labelX, int fieldX, int y, int w, int h,
+            string label, int maskLength, bool focused, string hint)
+        {
+            SmallTextRenderer.Draw(canvas, label, labelX, y + 12, TextColor);
+            canvas.DrawFilledRectangle(focused ? PanelSelected : Panel, fieldX, y, w, h);
+            canvas.DrawRectangle(focused ? Accent : Border, fieldX, y, w, h);
+            int maxChars = Math.Max(0, (w - 30) / 6);
+            int visible = Math.Min(maskLength, Math.Min(maxChars, PasswordMask.Length));
+            if (visible > 0)
+                SmallTextRenderer.DrawRange(canvas, PasswordMask, 0, visible, fieldX + 12, y + 12, TextColor);
+            if (focused)
+                SmallTextRenderer.Draw(canvas, "_", fieldX + 12 + visible * 6, y + 12, Accent);
             if (!string.IsNullOrEmpty(hint))
                 SmallTextRenderer.Draw(canvas, hint, fieldX, y + h + 6, Muted);
         }

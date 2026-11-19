@@ -17,10 +17,14 @@ namespace ZonderqOS.GUI.Apps
         // 0 none, 1 new username, 2 new-user password, 3 switch password,
         // 4 authorize password change, 5 new password, 6 confirm new password.
         private int inputMode;
-        private string inputText = string.Empty;
+        private readonly char[] inputChars = new char[global::ZonderqOS.PasswordPolicy.MaxLength];
+        private int inputLength;
+        private string cachedUsernameDisplay = string.Empty;
         private string pendingUsername = string.Empty;
-        private string pendingAuthorizationPassword = string.Empty;
-        private string pendingNewPassword = string.Empty;
+        private readonly char[] pendingAuthChars = new char[global::ZonderqOS.PasswordPolicy.MaxLength];
+        private int pendingAuthLength;
+        private readonly char[] pendingNewPassChars = new char[global::ZonderqOS.PasswordPolicy.MaxLength];
+        private int pendingNewPassLength;
 
         public UserAccountsApp(int x, int y)
             : base("Local Accounts", "Accounts and user sessions - ZOnderqOS", x, y, 900, 724)
@@ -101,9 +105,9 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Color.FromArgb(27, 34, 41), x + 16, inputY, width - 32, 34);
             canvas.DrawRectangle(Border, x + 16, inputY, width - 32, 34);
             if (inputMode == 1)
-                SmallTextRenderer.DrawClipped(canvas, inputText, x + 26, inputY + 14, width - 54, Text);
+                SmallTextRenderer.DrawClipped(canvas, cachedUsernameDisplay, x + 26, inputY + 14, width - 54, Text);
             else
-                DrawMasked(canvas, inputText.Length, x + 26, inputY + 14, width - 54);
+                DrawMasked(canvas, inputLength, x + 26, inputY + 14, width - 54);
         }
 
         private static void DrawMasked(Canvas canvas, int count, int x, int y, int maxWidth)
@@ -245,14 +249,18 @@ namespace ZonderqOS.GUI.Apps
 
             if (key.Key == ConsoleKeyEx.Backspace)
             {
-                if (inputText.Length > 0)
-                    inputText = inputText.Substring(0, inputText.Length - 1);
+                if (inputLength > 0)
+                {
+                    inputChars[--inputLength] = '\0';
+                    if (inputMode == 1)
+                        cachedUsernameDisplay = inputLength > 0 ? new string(inputChars, 0, inputLength) : string.Empty;
+                }
                 return;
             }
 
             if (key.Key == ConsoleKeyEx.Delete)
             {
-                inputText = string.Empty;
+                ClearCurrentInputBuffer();
                 return;
             }
 
@@ -267,27 +275,47 @@ namespace ZonderqOS.GUI.Apps
             {
                 bool allowed = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
                                (ch >= '0' && ch <= '9') || ch == '_' || ch == '-';
-                if (allowed && inputText.Length < 32)
-                    inputText += ch;
+                if (allowed && inputLength < 32)
+                {
+                    inputChars[inputLength++] = ch;
+                    cachedUsernameDisplay = new string(inputChars, 0, inputLength);
+                }
             }
-            else if (ch >= 32 && ch <= 126 && inputText.Length < global::ZonderqOS.PasswordPolicy.MaxLength)
+            else if (ch >= 32 && ch <= 126 && inputLength < inputChars.Length)
             {
-                inputText += ch;
+                inputChars[inputLength++] = ch;
             }
+        }
+
+        private void ClearCurrentInputBuffer()
+        {
+            Array.Clear(inputChars, 0, inputChars.Length);
+            inputLength = 0;
+            cachedUsernameDisplay = string.Empty;
+        }
+
+        private static bool CharBuffersEqual(char[] a, int aLen, char[] b, int bLen)
+        {
+            int diff = aLen ^ bLen;
+            int max = aLen < bLen ? aLen : bLen;
+            for (int i = 0; i < max; i++)
+                diff |= a[i] ^ b[i];
+            return diff == 0;
         }
 
         private void AcceptInput()
         {
             if (inputMode == 1)
             {
-                if (string.IsNullOrEmpty(inputText) || global::ZonderqOS.UserManager.UserExists(inputText))
+                string enteredName = cachedUsernameDisplay;
+                if (string.IsNullOrEmpty(enteredName) || global::ZonderqOS.UserManager.UserExists(enteredName))
                 {
                     SetStatus("EMPTY NAME OR ACCOUNT ALREADY EXISTS", Danger);
                     return;
                 }
 
-                pendingUsername = inputText;
-                inputText = string.Empty;
+                pendingUsername = enteredName;
+                ClearCurrentInputBuffer();
                 inputMode = 2;
                 SetStatus("ENTER A PASSWORD FOR THE NEW ACCOUNT", Warning);
                 return;
@@ -295,14 +323,17 @@ namespace ZonderqOS.GUI.Apps
 
             if (inputMode == 2)
             {
+                string passStr = inputLength > 0 ? new string(inputChars, 0, inputLength) : string.Empty;
                 string reason;
-                if (!global::ZonderqOS.PasswordPolicy.Validate(inputText, out reason))
+                if (!global::ZonderqOS.PasswordPolicy.Validate(passStr, out reason))
                 {
+                    passStr = null;
                     SetStatus(reason, Danger);
                     return;
                 }
 
-                bool ok = global::ZonderqOS.UserManager.CreateUser(pendingUsername, inputText);
+                bool ok = global::ZonderqOS.UserManager.CreateUser(pendingUsername, passStr);
+                passStr = null;
                 ClearInputState();
                 RefreshData();
                 SetStatus(ok ? "ACCOUNT CREATED" : "FAILED TO CREATE ACCOUNT", ok ? Good : Danger);
@@ -322,13 +353,13 @@ namespace ZonderqOS.GUI.Apps
                 int retryAfter;
                 if (!global::ZonderqOS.AuthenticationGuard.CanAttempt(user, out retryAfter))
                 {
-                    inputText = string.Empty;
+                    ClearCurrentInputBuffer();
                     SetStatus("TOO MANY ATTEMPTS - WAIT " + retryAfter + " S", Danger);
                     return;
                 }
 
-                bool ok = global::ZonderqOS.UserManager.ValidateCredentials(user, inputText);
-                inputText = string.Empty;
+                bool ok = global::ZonderqOS.UserManager.ValidateCredentialsChars(user, inputChars, inputLength);
+                ClearCurrentInputBuffer();
                 if (!ok)
                 {
                     global::ZonderqOS.AuthenticationGuard.RecordFailure(user);
@@ -358,16 +389,16 @@ namespace ZonderqOS.GUI.Apps
                 int retryAfter;
                 if (!global::ZonderqOS.AuthenticationGuard.CanAttempt(actor, out retryAfter))
                 {
-                    inputText = string.Empty;
+                    ClearCurrentInputBuffer();
                     SetStatus("AUTHENTICATION LOCKED - WAIT " + retryAfter + " S", Danger);
                     return;
                 }
 
-                bool authorized = !string.IsNullOrEmpty(inputText) &&
-                    global::ZonderqOS.UserManager.ValidateCredentials(actor, inputText);
+                bool authorized = inputLength > 0 &&
+                    global::ZonderqOS.UserManager.ValidateCredentialsChars(actor, inputChars, inputLength);
                 if (!authorized)
                 {
-                    inputText = string.Empty;
+                    ClearCurrentInputBuffer();
                     global::ZonderqOS.AuthenticationGuard.RecordFailure(actor);
                     retryAfter = global::ZonderqOS.AuthenticationGuard.GetRetryAfterSeconds(actor);
                     SetStatus(retryAfter > 0
@@ -377,8 +408,10 @@ namespace ZonderqOS.GUI.Apps
                 }
 
                 global::ZonderqOS.AuthenticationGuard.RecordSuccess(actor);
-                pendingAuthorizationPassword = inputText;
-                inputText = string.Empty;
+                Array.Clear(pendingAuthChars, 0, pendingAuthChars.Length);
+                Array.Copy(inputChars, 0, pendingAuthChars, 0, inputLength);
+                pendingAuthLength = inputLength;
+                ClearCurrentInputBuffer();
                 inputMode = 5;
                 SetStatus("ENTER NEW PASSWORD", Warning);
                 return;
@@ -386,15 +419,20 @@ namespace ZonderqOS.GUI.Apps
 
             if (inputMode == 5)
             {
+                string candidate = inputLength > 0 ? new string(inputChars, 0, inputLength) : string.Empty;
                 string reason;
-                if (!global::ZonderqOS.PasswordPolicy.Validate(inputText, out reason))
+                bool valid = global::ZonderqOS.PasswordPolicy.Validate(candidate, out reason);
+                candidate = null;
+                if (!valid)
                 {
                     SetStatus(reason, Danger);
                     return;
                 }
 
-                pendingNewPassword = inputText;
-                inputText = string.Empty;
+                Array.Clear(pendingNewPassChars, 0, pendingNewPassChars.Length);
+                Array.Copy(inputChars, 0, pendingNewPassChars, 0, inputLength);
+                pendingNewPassLength = inputLength;
+                ClearCurrentInputBuffer();
                 inputMode = 6;
                 SetStatus("REPEAT NEW PASSWORD", Warning);
                 return;
@@ -402,19 +440,23 @@ namespace ZonderqOS.GUI.Apps
 
             if (inputMode == 6)
             {
-                if (inputText != pendingNewPassword)
+                if (!CharBuffersEqual(inputChars, inputLength, pendingNewPassChars, pendingNewPassLength))
                 {
-                    inputText = string.Empty;
-                    pendingNewPassword = string.Empty;
+                    ClearCurrentInputBuffer();
+                    Array.Clear(pendingNewPassChars, 0, pendingNewPassChars.Length);
+                    pendingNewPassLength = 0;
                     inputMode = 5;
                     SetStatus("PASSWORDS DO NOT MATCH - ENTER A NEW PASSWORD", Danger);
                     return;
                 }
 
                 string user = userCount > 0 ? users[selectedUser] : null;
+                string authPass = pendingAuthLength > 0 ? new string(pendingAuthChars, 0, pendingAuthLength) : string.Empty;
+                string newPass = pendingNewPassLength > 0 ? new string(pendingNewPassChars, 0, pendingNewPassLength) : string.Empty;
                 bool ok = !string.IsNullOrEmpty(user) &&
-                          global::ZonderqOS.UserManager.ChangePassword(
-                              user, pendingAuthorizationPassword, pendingNewPassword);
+                          global::ZonderqOS.UserManager.ChangePassword(user, authPass, newPass);
+                authPass = null;
+                newPass = null;
                 if (ok)
                     global::ZonderqOS.AuthenticationGuard.Reset(user);
                 ClearInputState();
@@ -444,10 +486,12 @@ namespace ZonderqOS.GUI.Apps
         private void ClearInputState()
         {
             inputMode = 0;
-            inputText = string.Empty;
+            ClearCurrentInputBuffer();
             pendingUsername = string.Empty;
-            pendingAuthorizationPassword = string.Empty;
-            pendingNewPassword = string.Empty;
+            Array.Clear(pendingAuthChars, 0, pendingAuthChars.Length);
+            pendingAuthLength = 0;
+            Array.Clear(pendingNewPassChars, 0, pendingNewPassChars.Length);
+            pendingNewPassLength = 0;
         }
 
         public override void Close()

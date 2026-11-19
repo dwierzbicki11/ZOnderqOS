@@ -54,7 +54,6 @@ namespace ZonderqOS
                         "CRITICAL: A/B or payload recovery failed. Boot the recovery image and restore the snapshot.");
                 ZonderqOS.Platform.SpeakerInitializer.Initialize();
                 UserManager.Initialize();
-                Command.Initialize();
                 BootSplash.Advance(43, "STARTING SHELL");
                 EnvironmentManager.Initialize();
                 SecurityLogger.Initialize();
@@ -69,6 +68,8 @@ namespace ZonderqOS
                 BootSessionHealth.Initialize();
                 SystemGuardian.Initialize();
                 SystemSettings.Load();
+                if (!SystemSettings.BootToGui || DiagnosticConsoleBoot)
+                    Command.Initialize();
                 ZonderqOS.Localization.LocalizationManager.Initialize();
                 BootSplash.Advance(72, "LOADING SETTINGS");
                 if (DiagnosticConsoleBoot)

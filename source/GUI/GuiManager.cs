@@ -1463,6 +1463,30 @@ namespace ZonderqOS.GUI
 
         private void LaunchImageViewer(int x, int y, string path)
         {
+            if (applicationManager == null)
+                return;
+
+            // Bound memory-heavy image viewer windows to at most 2 concurrent instances.
+            int openCount = 0;
+            ImageViewerApp existingReusable = null;
+            for (int i = 0; i < applicationManager.Applications.Count; i++)
+            {
+                if (applicationManager.Applications[i] is ImageViewerApp existing && existing.IsRunning)
+                {
+                    openCount++;
+                    if (existingReusable == null)
+                        existingReusable = existing;
+                }
+            }
+
+            if (existingReusable != null && (string.IsNullOrEmpty(path) || openCount >= 2))
+            {
+                if (existingReusable.Window != null && existingReusable.Window.IsMinimized)
+                    existingReusable.Window.RestoreFromMinimized();
+                applicationManager.Activate(existingReusable);
+                return;
+            }
+
             applicationManager.Launch(new ImageViewerApp(x, y, path, null));
         }
 
@@ -1568,6 +1592,20 @@ namespace ZonderqOS.GUI
 
         private void LaunchPaint(int x, int y)
         {
+            if (applicationManager == null)
+                return;
+
+            for (int i = 0; i < applicationManager.Applications.Count; i++)
+            {
+                if (applicationManager.Applications[i] is PaintApp existing && existing.IsRunning)
+                {
+                    if (existing.Window != null && existing.Window.IsMinimized)
+                        existing.Window.RestoreFromMinimized();
+                    applicationManager.Activate(existing);
+                    return;
+                }
+            }
+
             applicationManager.Launch(new PaintApp(x, y, null));
         }
 

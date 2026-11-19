@@ -36,7 +36,7 @@ namespace ZonderqOS.GUI.Apps
 
         private string currentPath;
         private string cachedTitleText = "No file (0 B)";
-        private string cachedPosText = "Poz: 0x0000 / 0x0000";
+        private string cachedPosText = "Pos: 0x0000 / 0x0000";
         private int cachedPosOffset = -1;
         private int cachedPosTotal = -1;
         private NativeScratchBuffer<byte> fileBuffer;
@@ -342,7 +342,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 cachedPosOffset = currentOffset;
                 cachedPosTotal = totalBytes;
-                cachedPosText = "Poz: 0x" + currentOffset.ToString("X4") + " / 0x" + totalBytes.ToString("X4");
+                cachedPosText = "Pos: 0x" + currentOffset.ToString("X4") + " / 0x" + totalBytes.ToString("X4");
             }
             SmallTextRenderer.Draw(canvas, cachedPosText, contentX + 220, barY + 9, MutedColor);
         }

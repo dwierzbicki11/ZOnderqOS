@@ -21,12 +21,18 @@ namespace ZonderqOS
             selected = null;
             error = null;
             IReadOnlyList<Partition> partitions = StorageManager.Partitions;
+            Cosmos.Kernel.HAL.Devices.Storage.IBlockDevice cachedHost = null;
+            bool cachedIsGpt = false;
+            bool cachedIsMbr = false;
+            List<GptPartitionEntry> cachedGpt = null;
+            List<MbrPartitionEntry> cachedMbr = null;
+
             for (int i = 0; i < partitions.Count; i++)
             {
                 Partition partition = partitions[i];
                 if (RamRootVolume.IsRamPartition(partition))
                     continue;
-                if (!IsApprovedDataPartition(partition))
+                if (!IsApprovedDataPartitionCached(partition, ref cachedHost, ref cachedIsGpt, ref cachedIsMbr, ref cachedGpt, ref cachedMbr))
                     continue;
 
                 if (selected != null)
@@ -55,28 +61,39 @@ namespace ZonderqOS
 
             try
             {
+                if (!IsDedicatedDataPartitionType(partition))
+                    return false;
+
+                return HasApprovedFat32Label(partition);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsApprovedDataPartitionCached(
+            Partition partition,
+            ref Cosmos.Kernel.HAL.Devices.Storage.IBlockDevice cachedHost,
+            ref bool cachedIsGpt,
+            ref bool cachedIsMbr,
+            ref List<GptPartitionEntry> cachedGpt,
+            ref List<MbrPartitionEntry> cachedMbr)
+        {
+            if (partition == null || partition.BlockCount < 65536UL ||
+                partition.BlockSize < 512UL || partition.BlockSize > 4096UL)
+                return false;
+
+            try
+            {
                 // A label is not an authorization boundary. On Cosmos 3.0.94
                 // also inspect the host partition table and explicitly reject
                 // GPT EFI System Partitions and MBR type 0xEF, even if someone
                 // relabels them ZONDERQDATA.
-                if (!IsDedicatedDataPartitionType(partition))
+                if (!IsDedicatedDataPartitionTypeCached(partition, ref cachedHost, ref cachedIsGpt, ref cachedIsMbr, ref cachedGpt, ref cachedMbr))
                     return false;
 
-                byte[] sector = new byte[checked((int)partition.BlockSize)];
-                partition.ReadBlock(0UL, 1UL, sector);
-                if (!FatBootSector.TryParse(sector, out FatBootSector boot) ||
-                    boot.Type != FatType.Fat32 ||
-                    boot.BytesPerSector != partition.BlockSize ||
-                    boot.TotalSectorCount > partition.BlockCount)
-                    return false;
-
-                for (int i = 0; i < RequiredLabel.Length; i++)
-                {
-                    if (sector[LabelOffset + i] != (byte)RequiredLabel[i])
-                        return false;
-                }
-
-                return true;
+                return HasApprovedFat32Label(partition);
             }
             catch
             {
@@ -85,19 +102,62 @@ namespace ZonderqOS
             }
         }
 
+        private static bool HasApprovedFat32Label(Partition partition)
+        {
+            byte[] sector = new byte[checked((int)partition.BlockSize)];
+            partition.ReadBlock(0UL, 1UL, sector);
+            if (!FatBootSector.TryParse(sector, out FatBootSector boot) ||
+                boot.Type != FatType.Fat32 ||
+                boot.BytesPerSector != partition.BlockSize ||
+                boot.TotalSectorCount > partition.BlockCount)
+                return false;
+
+            for (int i = 0; i < RequiredLabel.Length; i++)
+            {
+                if (sector[LabelOffset + i] != (byte)RequiredLabel[i])
+                    return false;
+            }
+
+            return true;
+        }
+
         private static bool IsDedicatedDataPartitionType(Partition partition)
+        {
+            Cosmos.Kernel.HAL.Devices.Storage.IBlockDevice cachedHost = null;
+            bool cachedIsGpt = false;
+            bool cachedIsMbr = false;
+            List<GptPartitionEntry> cachedGpt = null;
+            List<MbrPartitionEntry> cachedMbr = null;
+            return IsDedicatedDataPartitionTypeCached(partition, ref cachedHost, ref cachedIsGpt, ref cachedIsMbr, ref cachedGpt, ref cachedMbr);
+        }
+
+        private static bool IsDedicatedDataPartitionTypeCached(
+            Partition partition,
+            ref Cosmos.Kernel.HAL.Devices.Storage.IBlockDevice cachedHost,
+            ref bool cachedIsGpt,
+            ref bool cachedIsMbr,
+            ref List<GptPartitionEntry> cachedGpt,
+            ref List<MbrPartitionEntry> cachedMbr)
         {
             // Do not allow unpartitioned/raw volumes or unsupported partition
             // table layouts to become writable roots.
             if (partition.Host == null || partition.Host.BlockSize < 512)
                 return false;
 
-            if (Gpt.IsGpt(partition.Host))
+            if (!object.ReferenceEquals(cachedHost, partition.Host))
             {
-                List<GptPartitionEntry> entries = Gpt.Parse(partition.Host);
-                for (int i = 0; i < entries.Count; i++)
+                cachedHost = partition.Host;
+                cachedIsGpt = Gpt.IsGpt(partition.Host);
+                cachedGpt = cachedIsGpt ? Gpt.Parse(partition.Host) : null;
+                cachedIsMbr = !cachedIsGpt && Mbr.IsMbr(partition.Host);
+                cachedMbr = cachedIsMbr ? Mbr.Parse(partition.Host) : null;
+            }
+
+            if (cachedIsGpt && cachedGpt != null)
+            {
+                for (int i = 0; i < cachedGpt.Count; i++)
                 {
-                    GptPartitionEntry entry = entries[i];
+                    GptPartitionEntry entry = cachedGpt[i];
                     if (entry.StartSector == partition.StartSector &&
                         entry.SectorCount == partition.BlockCount)
                         return entry.PartitionType == Gpt.BasicDataPartitionType;
@@ -105,13 +165,12 @@ namespace ZonderqOS
                 return false;
             }
 
-            if (!Mbr.IsMbr(partition.Host))
+            if (!cachedIsMbr || cachedMbr == null)
                 return false;
 
-            List<MbrPartitionEntry> primary = Mbr.Parse(partition.Host);
-            for (int i = 0; i < primary.Count; i++)
+            for (int i = 0; i < cachedMbr.Count; i++)
             {
-                MbrPartitionEntry entry = primary[i];
+                MbrPartitionEntry entry = cachedMbr[i];
                 if (entry.StartSector == partition.StartSector &&
                     entry.SectorCount == partition.BlockCount)
                 {
