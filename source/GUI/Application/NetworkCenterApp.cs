@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Threading;
 using Cosmos.Kernel.System.Graphics;
 using ZonderqOS.GUI;
 using ZonderqOS.Security;
@@ -36,6 +37,10 @@ namespace ZonderqOS.GUI.Apps
         private bool isOnline;
         private string statusLine = "Ready";
         private Color statusColor = Muted;
+        private int dhcpJobInFlight;
+        private volatile bool dhcpSnapshotDirty;
+        private volatile bool dhcpLastOk;
+        private volatile string dhcpLastMessage;
 
         public NetworkCenterApp(int x, int y, ApplicationManager manager, Action onClose)
             : base("Network Center")
@@ -96,7 +101,7 @@ namespace ZonderqOS.GUI.Apps
             int wy = Window.Y + HeaderHeight;
             int btnY = wy + 242;
 
-            // Button 1: RENEW DHCP
+            // Button 1: RENEW DHCP (async background thread so GUI never freezes or spins CPU)
             if (Hit(mouseX, mouseY, wx + 16, btnY, 150, 28))
             {
                 if (!SecurityContext.IsAuthenticated || SecurityContext.CurrentUid != 0)
@@ -105,13 +110,43 @@ namespace ZonderqOS.GUI.Apps
                     statusColor = Danger;
                     return;
                 }
+                if (Interlocked.CompareExchange(ref dhcpJobInFlight, 1, 0) != 0)
+                {
+                    statusLine = "DHCP lease request already in progress...";
+                    statusColor = Accent;
+                    return;
+                }
                 statusLine = "Requesting DHCP lease...";
                 statusColor = Accent;
-                bool ok = Network.ConfigureDhcp();
-                RefreshSnapshot();
-                if (!ok)
+                try
                 {
-                    statusLine = Network.LastStatusMessage ?? "DHCP failed.";
+                    var thread = new Thread(() =>
+                    {
+                        try
+                        {
+                            bool ok = Network.ConfigureDhcp();
+                            dhcpLastOk = ok;
+                            dhcpLastMessage = Network.LastStatusMessage ?? (ok ? "DHCP lease active." : "DHCP failed.");
+                        }
+                        catch (Exception ex)
+                        {
+                            dhcpLastOk = false;
+                            dhcpLastMessage = "DHCP error: " + ex.Message;
+                        }
+                        finally
+                        {
+                            dhcpSnapshotDirty = true;
+                            Interlocked.Exchange(ref dhcpJobInFlight, 0);
+                        }
+                    });
+                    thread.IsBackground = true;
+                    thread.Name = "net-ui-dhcp";
+                    thread.Start();
+                }
+                catch
+                {
+                    Interlocked.Exchange(ref dhcpJobInFlight, 0);
+                    statusLine = "Failed to start DHCP worker thread.";
                     statusColor = Danger;
                 }
                 return;
@@ -159,6 +194,14 @@ namespace ZonderqOS.GUI.Apps
         {
             if (Window == null || !Window.Visible || Window.IsMinimized)
                 return;
+
+            if (dhcpSnapshotDirty)
+            {
+                dhcpSnapshotDirty = false;
+                RefreshSnapshot();
+                statusLine = dhcpLastMessage ?? Network.LastStatusMessage ?? "Ready";
+                statusColor = dhcpLastOk ? Good : Danger;
+            }
 
             base.Render(canvas);
             int wx = Window.X;

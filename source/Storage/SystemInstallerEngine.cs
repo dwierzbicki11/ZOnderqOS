@@ -686,7 +686,7 @@ namespace ZonderqOS.Storage
                 "ID_LIKE=cosmos\n" +
                 "VERSION_ID=\"" + KernelBuildInfo.KernelVersion + "\"\n" +
                 "BUILD_ID=\"" + KernelBuildInfo.KernelBuild + "\"\n" +
-                "PRETTY_NAME=\"ZonderqOS " + KernelBuildInfo.KernelVersion + " (Cosmos 3.0.97 Gen3)\"\n";
+                "PRETTY_NAME=\"ZonderqOS " + KernelBuildInfo.KernelVersion + " (Cosmos 3.0.99 Gen3)\"\n";
 
             string updateCfgContent =
                 "CHANNEL=stable\n" +

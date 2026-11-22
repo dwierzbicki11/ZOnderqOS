@@ -380,7 +380,7 @@ namespace ZonderqOS.GUI.Apps
             int itemY = y + 42;
             int stride = 28;
 
-            DrawSpecRow(canvas, x + 16, itemY, "Kernel:", "Cosmos Kernel 3.0.97 x64 Native Core (single vCPU)");
+            DrawSpecRow(canvas, x + 16, itemY, "Kernel:", "Cosmos Kernel 3.0.99 x64 Native Core (single vCPU)");
             itemY += stride;
             DrawSpecRow(canvas, x + 16, itemY, "Architecture:", "Native AOT x86_64, IL2CPU compiler, no interpreter");
             itemY += stride;

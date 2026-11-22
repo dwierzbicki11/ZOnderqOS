@@ -9,5 +9,6 @@
 
   <ItemGroup>
     <Compile Include="../../source/Hardware/UsbTethering/UsbNetProtocol.cs" Link="UsbNetProtocol.cs" />
+    <Compile Include="../../source/System/Networking/ZonderqDhcpProtocol.cs" Link="ZonderqDhcpProtocol.cs" />
   </ItemGroup>
 </Project>

@@ -12,8 +12,8 @@
     <RuntimeHostConfigurationOption Include="Cosmos.Kernel.HAL.UART.Enabled" Value="false" />
     <RuntimeHostConfigurationOption Include="Cosmos.Kernel.System.Storage.Enabled" Value="true" />
     <RuntimeHostConfigurationOption Include="Cosmos.Kernel.System.Filesystems.Fat.Enabled" Value="true" />
-    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.97" />
-    <PackageReference Include="Cosmos.Kernel.Boot.Limine" Version="3.0.97" />
+    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.99" />
+    <PackageReference Include="Cosmos.Kernel.Boot.Limine" Version="3.0.99" />
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
   </ItemGroup>
 

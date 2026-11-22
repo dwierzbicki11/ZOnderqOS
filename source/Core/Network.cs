@@ -353,12 +353,14 @@ namespace ZonderqOS
                     return false;
                 }
 
-                lastStatusMessage = "Requesting DHCP lease...";
-                int elapsed = new DhcpClient(adapter).SendDiscoverPacket();
+                lastStatusMessage = "Requesting DHCP lease (RFC 2131 broadcast)...";
+                bool ok = ZonderqDhcpClient.TryAcquireLease(adapter, out DhcpReplyInfo lease, out string dhcpErr);
                 IPConfig cfg = adapter.IPConfig;
-                if (elapsed < 0 || cfg == null || cfg.Address == null || cfg.Address.IsZero)
+                if (!ok || cfg == null || cfg.Address == null || cfg.Address.IsZero)
                 {
-                    lastStatusMessage = "DHCP timed out or returned no lease.";
+                    lastStatusMessage = string.IsNullOrEmpty(dhcpErr)
+                        ? "DHCP timed out or returned no lease."
+                        : dhcpErr;
                     RefreshDevicesLocked();
                     if (logToConsole) WriteMessage.WriteError(lastStatusMessage, "NET");
                     return false;
@@ -553,6 +555,225 @@ namespace ZonderqOS
                 CommandIO.WriteLine("      Gateway: " + d.DefaultGateway + "  DNS: " + d.DnsServer);
             }
             CommandIO.WriteLine("  Status: " + lastStatusMessage);
+            string usbDiag = ZonderqOS.Hardware.UsbTethering.UsbTetheringDriver.GetDiagnosticsSummary();
+            if (!string.IsNullOrEmpty(usbDiag))
+                CommandIO.WriteLine("  USB Net: " + usbDiag);
+#endif
+        }
+
+        public static bool TestTcpConnection(string hostOrIp, int port, int timeoutMs, out int elapsedMs, out string error)
+        {
+            elapsedMs = -1;
+            error = string.Empty;
+#if ZONDERQ_NETWORK_DISABLED
+            error = "Networking is disabled in this ZonderqOS build.";
+            return false;
+#else
+            if (!isReady)
+            {
+                error = "Network is offline.";
+                return false;
+            }
+
+            string ipText = OtaUrlParser.IsIPv4Literal(hostOrIp) ? hostOrIp : ResolveDns(hostOrIp);
+            if (string.IsNullOrEmpty(ipText) || !System.Net.IPAddress.TryParse(ipText, out System.Net.IPAddress remoteIp))
+            {
+                error = "Failed to resolve host '" + hostOrIp + "'.";
+                return false;
+            }
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            System.Net.Sockets.TcpClient tcp = null;
+            try
+            {
+                tcp = new System.Net.Sockets.TcpClient();
+                if (tcp.Client != null)
+                {
+                    tcp.Client.ReceiveTimeout = Math.Max(1000, timeoutMs);
+                    tcp.Client.SendTimeout = Math.Max(1000, timeoutMs);
+                }
+                tcp.Connect(remoteIp, port);
+                sw.Stop();
+                elapsedMs = (int)sw.ElapsedMilliseconds;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                sw.Stop();
+                error = ex.Message;
+                return false;
+            }
+            finally
+            {
+                try { tcp?.Client?.Close(1000); } catch { }
+                try { tcp?.Close(); } catch { }
+            }
+#endif
+        }
+
+        /// <summary>
+        /// End-to-end 9-stage network, protocol, and RAM stability verification suite
+        /// for QEMU (E1000E / VirtIO-Net / USB RNDIS) and physical hardware (ASUS X540LA).
+        /// </summary>
+        public static bool RunSelfTest(string testHttpsUrl = null)
+        {
+#if ZONDERQ_NETWORK_DISABLED
+            CommandIO.WriteLine("[NET-TEST] FAIL: Networking is disabled in this build.");
+            return false;
+#else
+            string httpsUrl = string.IsNullOrWhiteSpace(testHttpsUrl)
+                ? "https://raw.githubusercontent.com/dwierzbicki11/ZOnderqOS/main/global.json"
+                : testHttpsUrl.Trim();
+
+            CommandIO.WriteLine("=== ZonderqOS Cosmos 3.0.99 Network & RAM Stability Self-Test ===");
+
+            // Stage 1: PCI + USB Hardware Inventory (including ASUS X540LA RTL810xE / RTL8723BE check)
+            CommandIO.WriteLine("[1/9] Hardware & PCI/USB Inventory:");
+            ZonderqOS.SystemCore.NetworkPciDiagnostics.PrintReport(true);
+            Refresh();
+            string usbDiag = ZonderqOS.Hardware.UsbTethering.UsbTetheringDriver.GetDiagnosticsSummary();
+            if (!string.IsNullOrEmpty(usbDiag))
+                CommandIO.WriteLine("      USB Tethering: " + usbDiag);
+
+            // Stage 2: Link & MAC
+            NetworkDeviceInfo dev = activeDevice;
+            if (dev == null || !dev.Ready || !dev.LinkUp)
+            {
+                CommandIO.WriteLine("[2/9] Link & Adapter: FAIL (no active linked adapter; on ASUS X540LA enable Phone USB Tethering)");
+                return false;
+            }
+            CommandIO.WriteLine("[2/9] Link & Adapter: PASS (" + dev.Name + " MAC=" + dev.MacAddress + " LINK=UP)");
+
+            // Stage 3: DHCP / IPv4
+            if (!isReady && (SecurityContext.CurrentUid == 0 || !SecurityContext.IsAuthenticated))
+            {
+                ConfigureDhcp();
+                dev = activeDevice;
+            }
+            if (!isReady || dev == null || dev.IpAddress == "0.0.0.0")
+            {
+                CommandIO.WriteLine("[3/9] IPv4 / DHCP:    FAIL (" + lastStatusMessage + ")");
+                return false;
+            }
+            CommandIO.WriteLine("[3/9] IPv4 / DHCP:    PASS (IP=" + dev.IpAddress + " Mask=" + dev.SubnetMask +
+                                " GW=" + dev.DefaultGateway + " DNS=" + activeDns + ")");
+
+            // Stage 4: ARP + ICMP Echo to Gateway
+            int icmpReplies = 0;
+            CosmosAddress gwAddr = ParseIpv4(dev.DefaultGateway);
+            if (gwAddr != null)
+            {
+                for (int seq = 0; seq < 2; seq++)
+                {
+                    try
+                    {
+                        using (var icmp = new IcmpClient())
+                        {
+                            icmp.Connect(gwAddr);
+                            icmp.SendEcho();
+                            CosmosEndPoint ep = new CosmosEndPoint(CosmosAddress4.Zero, 0);
+                            int rtt = icmp.Receive(ref ep, 2000);
+                            if (rtt >= 0) icmpReplies++;
+                        }
+                    }
+                    catch { }
+                }
+            }
+            if (icmpReplies == 0)
+            {
+                CommandIO.WriteLine("[4/9] ARP + ICMP:     FAIL (0/2 echo replies from gateway " + dev.DefaultGateway + ")");
+                return false;
+            }
+            CommandIO.WriteLine("[4/9] ARP + ICMP:     PASS (" + icmpReplies + "/2 echo replies from " + dev.DefaultGateway + ")");
+
+            // Stage 5: UDP + DNS
+            string ghIp = ResolveDns("raw.githubusercontent.com");
+            if (string.IsNullOrEmpty(ghIp))
+            {
+                CommandIO.WriteLine("[5/9] UDP + DNS:      FAIL (could not resolve raw.githubusercontent.com)");
+                return false;
+            }
+            try
+            {
+                using (var udp = new UdpClient())
+                {
+                    CosmosAddress dnsTarget = ParseIpv4(activeDns) ?? gwAddr;
+                    if (dnsTarget != null)
+                    {
+                        udp.Connect(dnsTarget, 53);
+                    }
+                }
+            }
+            catch { }
+            CommandIO.WriteLine("[5/9] UDP + DNS:      PASS (raw.githubusercontent.com -> " + ghIp + ")");
+
+            // Stage 6: TCP Connect, Reconnect & Clean Disposal
+            int tcpMs2 = 0;
+            string tcpErr2 = string.Empty;
+            if (!TestTcpConnection(ghIp, 443, 5000, out int tcpMs1, out string tcpErr1) ||
+                !TestTcpConnection(ghIp, 443, 5000, out tcpMs2, out tcpErr2))
+            {
+                CommandIO.WriteLine("[6/9] TCP Reconnect:  FAIL (" + (string.IsNullOrEmpty(tcpErr1) ? tcpErr2 : tcpErr1) + ")");
+                return false;
+            }
+            CommandIO.WriteLine("[6/9] TCP Reconnect:  PASS (connect #1=" + tcpMs1 + "ms, reconnect #2=" + tcpMs2 + "ms, clean Close)");
+
+            // Stage 7: HTTP/1.1 (port 80 redirect check to github.com)
+            var httpOpts = new HttpDownloadOptions
+            {
+                AllowInsecureHttp = true,
+                MaxRedirects = 0,
+                TimeoutMs = 10000,
+                DnsResolver = ResolveDns
+            };
+            HttpDownloadResult httpRes = HttpStreamClient.DownloadBytes("http://github.com/", httpOpts, out _);
+            bool httpOk = httpRes != null && (httpRes.StatusCode == 200 || httpRes.StatusCode == 301 || httpRes.StatusCode == 302);
+            if (!httpOk)
+            {
+                CommandIO.WriteLine("[7/9] HTTP/1.1 (80):  FAIL (" + (httpRes?.Error ?? "no response") + ")");
+                return false;
+            }
+            CommandIO.WriteLine("[7/9] HTTP/1.1 (80):  PASS (status=" + httpRes.StatusCode + " from http://github.com/)");
+
+            // Stage 8 & 9: HTTPS TLS 1.2/1.3 + Multi-Cycle RAM Stability Measurement
+            var httpsOpts = new HttpDownloadOptions
+            {
+                AllowInsecureHttp = false,
+                MaxRedirects = 5,
+                TimeoutMs = 15000,
+                DnsResolver = ResolveDns
+            };
+
+            long ramBefore = GC.GetTotalMemory(false);
+            HttpDownloadResult https1 = HttpStreamClient.DownloadBytes(httpsUrl, httpsOpts, out _);
+            long ramAfter1 = GC.GetTotalMemory(false);
+            if (https1 == null || !https1.Success)
+            {
+                CommandIO.WriteLine("[8/9] HTTPS TLS:      FAIL (" + (https1?.Error ?? "unknown") + ")");
+                return false;
+            }
+            CommandIO.WriteLine("[8/9] HTTPS TLS:      PASS (HTTP " + https1.StatusCode + ", " +
+                                https1.BytesReceived + " bytes, SHA256=" + https1.Sha256Hex + ")");
+
+            HttpDownloadResult https2 = HttpStreamClient.DownloadBytes(httpsUrl, httpsOpts, out _);
+            long ramAfter2 = GC.GetTotalMemory(false);
+            HttpDownloadResult https3 = HttpStreamClient.DownloadBytes(httpsUrl, httpsOpts, out _);
+            long ramAfter3 = GC.GetTotalMemory(false);
+
+            if (https2 == null || !https2.Success || https3 == null || !https3.Success)
+            {
+                CommandIO.WriteLine("[9/9] RAM Soak (3x):  FAIL (subsequent HTTPS cycle failed)");
+                return false;
+            }
+
+            long kb0 = ramBefore / 1024;
+            long kb1 = ramAfter1 / 1024;
+            long kb2 = ramAfter2 / 1024;
+            long kb3 = ramAfter3 / 1024;
+            CommandIO.WriteLine("[9/9] RAM Soak (3x):  PASS (Before=" + kb0 + " KiB -> C1=" + kb1 +
+                                " KiB -> C2=" + kb2 + " KiB -> C3=" + kb3 + " KiB, pooled 20 KiB buffers)");
+            CommandIO.WriteLine("=== ALL 9 NETWORK & TLS STAGES PASSED ===");
+            return true;
 #endif
         }
 

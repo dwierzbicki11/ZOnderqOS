@@ -998,7 +998,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawRectangle(Border, boxX, infoY, boxW, 118);
             SmallTextRenderer.Draw(canvas, "SYSTEM RELEASE INFORMATION", boxX + 20, infoY + 14, Accent);
             SmallTextRenderer.Draw(canvas, "Operating System:  ZonderqOS " + KernelBuildInfo.KernelVersion + " (Build " + KernelBuildInfo.KernelBuild + ")", boxX + 20, infoY + 38, TextColor);
-            SmallTextRenderer.Draw(canvas, "Kernel Engine:     Cosmos Kernel Gen3 3.0.97 NativeAOT (" + cpuArchText + ")", boxX + 20, infoY + 60, TextColor);
+            SmallTextRenderer.Draw(canvas, "Kernel Engine:     Cosmos Kernel Gen3 3.0.99 NativeAOT (" + cpuArchText + ")", boxX + 20, infoY + 60, TextColor);
             SmallTextRenderer.Draw(canvas, "Boot Architecture: Limine v10 UEFI/BIOS + ZonderqOS EFI BootGuard (A/B Slot A & B)", boxX + 20, infoY + 82, TextColor);
 
             // Two main buttons: Install ZonderqOS / Try ZonderqOS without installing

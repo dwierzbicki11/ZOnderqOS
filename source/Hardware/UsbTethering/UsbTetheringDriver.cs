@@ -6,6 +6,7 @@ using Cosmos.Kernel.HAL.Devices.Network;
 using Cosmos.Kernel.HAL.DriverKit;
 using Cosmos.Kernel.HAL.DriverKit.Buses.Usb;
 using Cosmos.Kernel.HAL.DriverKit.Threading;
+using ZonderqOS.SystemCore.Networking;
 
 namespace ZonderqOS.Hardware.UsbTethering
 {
@@ -31,9 +32,16 @@ namespace ZonderqOS.Hardware.UsbTethering
         };
 
         private static int nextAdapterOrdinal;
+        private static UsbTetheringState lastBoundState;
 
         public override string Name => "UsbTetheringDriver";
         public override ReadOnlySpan<DeviceMatch> Matches => DriverMatches;
+
+        public static string GetDiagnosticsSummary()
+        {
+            UsbTetheringState st = lastBoundState;
+            return st == null ? string.Empty : st.FormatDiagnostics();
+        }
 
         public override ProbeResult Probe(DeviceBinding binding)
         {
@@ -56,9 +64,27 @@ namespace ZonderqOS.Hardware.UsbTethering
                 return ProbeResult.Declined("USB network data interface has no active bulk IN/OUT endpoints.");
             }
 
+            byte[] macBytes = new byte[6];
+            uint maxTransfer = 4096;
+            uint requestId = 1;
+            NcmParameters ncmParams = NcmParameters.Default;
+
+            // Per USB CDC-NCM 1.0 §7.2, GET_NTB_PARAMETERS and SET_NTB_INPUT_SIZE must be issued
+            // while the data interface is in AltSetting 0 (before activating bulk endpoints).
+            if (info.Kind == UsbNetProtocolKind.CdcNcm)
+            {
+                InitializeCdcNcmControl(binding, usb, info, macBytes, out ncmParams, out maxTransfer);
+            }
+
             if ((info.Kind == UsbNetProtocolKind.CdcEcm || info.Kind == UsbNetProtocolKind.CdcNcm) &&
                 info.DataAlternateSetting != 0)
             {
+                // Reset interface state cleanly before activating the bulk alt setting.
+                usb.ControlOut(
+                    UsbRequestType.HostToDevice | UsbRequestType.Standard | UsbRequestType.Interface,
+                    UsbReqSetInterface,
+                    0,
+                    info.DataInterfaceNumber);
                 usb.ControlOut(
                     UsbRequestType.HostToDevice | UsbRequestType.Standard | UsbRequestType.Interface,
                     UsbReqSetInterface,
@@ -75,11 +101,6 @@ namespace ZonderqOS.Hardware.UsbTethering
                 return ProbeResult.Failed("Failed to open USB bulk OUT pipe.");
             }
 
-            byte[] macBytes = new byte[6];
-            uint maxTransfer = 4096;
-            uint requestId = 1;
-            NcmParameters ncmParams = NcmParameters.Default;
-
             if (info.Kind == UsbNetProtocolKind.Rndis)
             {
                 if (!InitializeRndis(binding, usb, info.ControlInterfaceNumber, ref requestId,
@@ -90,13 +111,18 @@ namespace ZonderqOS.Hardware.UsbTethering
                     return ProbeResult.Failed("RNDIS initialization failed: " + rndisErr);
                 }
             }
-            else if (info.Kind == UsbNetProtocolKind.CdcNcm)
-            {
-                InitializeCdcNcm(binding, usb, info, macBytes, out ncmParams, out maxTransfer);
-            }
-            else
+            else if (info.Kind == UsbNetProtocolKind.CdcEcm)
             {
                 InitializeCdcEcm(binding, usb, info, macBytes);
+            }
+            else if (info.Kind == UsbNetProtocolKind.CdcNcm)
+            {
+                // Enable directed + broadcast + multicast reception once bulk alt setting is active.
+                usb.ControlOut(
+                    UsbRequestType.HostToDevice | UsbRequestType.Class | UsbRequestType.Interface,
+                    CdcReqSetEthernetPacketFilter,
+                    CdcPacketFilterDefault,
+                    info.ControlInterfaceNumber);
             }
 
             if (RndisProtocol.IsAllZeroMac(macBytes))
@@ -115,12 +141,14 @@ namespace ZonderqOS.Hardware.UsbTethering
             var mac = new MacAddress(macBytes);
             DeviceLock txLock = binding.CreateLock();
 
-            int rxBufSize = (int)Math.Max(2048U, Math.Min(maxTransfer, 8192U));
+            // Cap RX buffer at 4096 bytes to match xHCI single-page DMA buffer (avoids split multi-TRB timeouts).
+            int rxBufSize = (int)Math.Max(2048U, Math.Min(maxTransfer, 4096U));
             var state = new UsbTetheringState(
                 binding, usb, info, ncmParams, bulkInPipe, bulkOutPipe,
                 bulkOutEp.MaxPacketSize, adapterName, mac, txLock, rxBufSize);
 
             binding.DriverState = state;
+            lastBoundState = state;
             NetworkSink sink = binding.PublishNetwork(state);
             state.AttachSink(sink);
 
@@ -288,10 +316,23 @@ namespace ZonderqOS.Hardware.UsbTethering
                 info.ControlInterfaceNumber);
         }
 
-        private static void InitializeCdcNcm(DeviceBinding binding, UsbAccess usb, UsbNetDescriptorInfo info,
+        private static void InitializeCdcNcmControl(DeviceBinding binding, UsbAccess usb, UsbNetDescriptorInfo info,
             byte[] macOut, out NcmParameters ncmParams, out uint maxRxSize)
         {
-            InitializeCdcEcm(binding, usb, info, macOut);
+            if (info.MacStringDescriptorIndex != 0)
+            {
+                Span<byte> strBuf = stackalloc byte[64];
+                strBuf.Clear();
+                UsbTransferStatus macSt = usb.ControlIn(
+                    UsbRequestType.DeviceToHost | UsbRequestType.Standard | UsbRequestType.Device,
+                    (byte)UsbStandardRequest.GetDescriptor,
+                    (ushort)((UsbDescTypeString << 8) | info.MacStringDescriptorIndex),
+                    0x0409,
+                    strBuf);
+                if (macSt == UsbTransferStatus.Success)
+                    RndisProtocol.TryParseUsbMacStringDescriptor(strBuf, macOut);
+            }
+
             ncmParams = NcmParameters.Default;
             maxRxSize = 4096;
 
@@ -307,10 +348,10 @@ namespace ZonderqOS.Hardware.UsbTethering
             if (st == UsbTransferStatus.Success && NcmProtocol.TryParseNtbParameters(paramBuf, out NcmParameters parsed))
             {
                 ncmParams = parsed;
-                uint negotiatedRx = Math.Max(2048U, Math.Min(parsed.NtbInMaxSize, 8192U));
+                uint negotiatedRx = Math.Max(2048U, Math.Min(parsed.NtbInMaxSize, 4096U));
                 maxRxSize = negotiatedRx;
 
-                // Cap phone NTB IN transfer size to fit our preallocated RX buffer.
+                // Cap phone NTB IN transfer size to fit our 4 KiB single-page RX buffer (must run in AltSetting 0).
                 Span<byte> inSize = stackalloc byte[4];
                 inSize[0] = (byte)(negotiatedRx & 0xFF);
                 inSize[1] = (byte)((negotiatedRx >> 8) & 0xFF);
@@ -343,10 +384,27 @@ namespace ZonderqOS.Hardware.UsbTethering
             private bool txBusy;
             private volatile bool stopped;
             private volatile bool linkUp = true;
+            private int txOkCount;
+            private int txFailCount;
+            private int rxFrameCount;
+            private int rxTimeoutCount;
+            private int rxErrorCount;
+            private int rxZeroCount;
+            private UsbTransferStatus lastBulkInStatus = UsbTransferStatus.Success;
+            private UsbTransferStatus lastBulkOutStatus = UsbTransferStatus.Success;
 
             public string Name { get; }
             public MacAddress MacAddress { get; }
             public bool LinkUp => linkUp && !stopped && !usb.IsDisconnected;
+
+            public string FormatDiagnostics()
+            {
+                return Name + " (" + info.Kind + ", ctrlIf=" + info.ControlInterfaceNumber +
+                       ", dataIf=" + info.DataInterfaceNumber + "/alt" + info.DataAlternateSetting +
+                       "): TX=" + txOkCount + " (fail=" + txFailCount + ", last=" + lastBulkOutStatus + ")" +
+                       " RX=" + rxFrameCount + " (zlp=" + rxZeroCount + ", to=" + rxTimeoutCount +
+                       ", err=" + rxErrorCount + ", last=" + lastBulkInStatus + ")";
+            }
 
             public UsbTetheringState(DeviceBinding binding, UsbAccess usb, UsbNetDescriptorInfo info,
                 NcmParameters ncmParams, UsbPipe bulkIn, UsbPipe bulkOut, int bulkOutMaxPacket,
@@ -445,8 +503,11 @@ namespace ZonderqOS.Hardware.UsbTethering
                         status = usb.BulkOut(bulkOut, payload, out transferred);
                     }
 
+                    lastBulkOutStatus = status;
+
                     if (status == UsbTransferStatus.Disconnected)
                     {
+                        txFailCount++;
                         linkUp = false;
                         sink?.LinkChanged(false);
                         return false;
@@ -462,7 +523,9 @@ namespace ZonderqOS.Hardware.UsbTethering
                         usb.BulkOut(bulkOut, ReadOnlySpan<byte>.Empty, out _);
                     }
 
-                    return status == UsbTransferStatus.Success && transferred == transferLen;
+                    bool ok = status == UsbTransferStatus.Success && transferred == transferLen;
+                    if (ok) txOkCount++; else txFailCount++;
+                    return ok;
                 }
                 finally
                 {
@@ -478,6 +541,7 @@ namespace ZonderqOS.Hardware.UsbTethering
                 {
                     int transferred = 0;
                     UsbTransferStatus status = usb.BulkIn(bulkIn, rxBuffer, out transferred);
+                    lastBulkInStatus = status;
 
                     if (status == UsbTransferStatus.Success)
                     {
@@ -486,21 +550,29 @@ namespace ZonderqOS.Hardware.UsbTethering
                         {
                             DispatchReceivedBytes(rxBuffer.AsSpan(0, Math.Min(transferred, rxBuffer.Length)));
                         }
+                        else
+                        {
+                            // Guard against zero-length completion (ZLP) busy-spin on physical USB controllers.
+                            rxZeroCount++;
+                            binding.Sleep(5);
+                        }
                         continue;
                     }
 
                     if (status == UsbTransferStatus.Timeout)
                     {
-                        // Normal idle poll timeout on USB bulk IN — yield briefly without spinning CPU.
+                        // Normal idle poll timeout on USB bulk IN — yield cleanly without spinning CPU.
+                        rxTimeoutCount++;
                         consecutiveErrors = 0;
-                        binding.Sleep(2);
+                        binding.Sleep(20);
                         continue;
                     }
 
                     if (status == UsbTransferStatus.Stall)
                     {
+                        rxErrorCount++;
                         usb.ClearHalt(bulkIn);
-                        binding.Sleep(5);
+                        binding.Sleep(20);
                         continue;
                     }
 
@@ -509,8 +581,9 @@ namespace ZonderqOS.Hardware.UsbTethering
                         break;
                     }
 
+                    rxErrorCount++;
                     consecutiveErrors++;
-                    binding.Sleep(consecutiveErrors < 5 ? 5U : 25U);
+                    binding.Sleep(consecutiveErrors < 5 ? 20U : 100U);
                 }
 
                 linkUp = false;
@@ -528,6 +601,8 @@ namespace ZonderqOS.Hardware.UsbTethering
                     int cursor = 0;
                     while (RndisProtocol.TryUnwrapNextPacket(data, ref cursor, out ReadOnlySpan<byte> frame))
                     {
+                        rxFrameCount++;
+                        ZonderqDhcpClient.ObserveRawEthernetFrame(frame);
                         currentSink.Receive(frame);
                     }
                 }
@@ -537,6 +612,8 @@ namespace ZonderqOS.Hardware.UsbTethering
                     {
                         while (NcmProtocol.TryUnwrapNextPacket16(data, ref cursor, out ReadOnlySpan<byte> frame))
                         {
+                            rxFrameCount++;
+                            ZonderqDhcpClient.ObserveRawEthernetFrame(frame);
                             currentSink.Receive(frame);
                         }
                     }
@@ -546,6 +623,8 @@ namespace ZonderqOS.Hardware.UsbTethering
                     if (data.Length >= RndisProtocol.MinEthernetFrameBytes &&
                         data.Length <= RndisProtocol.MaxEthernetFrameBytes)
                     {
+                        rxFrameCount++;
+                        ZonderqDhcpClient.ObserveRawEthernetFrame(data);
                         currentSink.Receive(data);
                     }
                 }

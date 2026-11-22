@@ -76,8 +76,8 @@ class SysbenchSafetyContracts(unittest.TestCase):
         project = self.load(ROOT / "ZonderqOS.csproj")
         self.assertIn("Start quick test", source)
         self.assertIn("SystemDiagnosticRunner.Shared.IsRunning;", source)
-        self.assertIn('CosmosVersion = "Cosmos 3.0.97 Native Core"', build)
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.97"', project)
+        self.assertIn('CosmosVersion = "Cosmos 3.0.99 Native Core"', build)
+        self.assertIn('Sdk="Cosmos.Sdk/3.0.99"', project)
         self.assertIn("#if ZONDERQ_ARCH_ARM64", build)
 
     def test_no_manual_gc(self):

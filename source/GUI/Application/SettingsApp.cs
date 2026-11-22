@@ -453,7 +453,7 @@ namespace ZonderqOS.GUI.Apps
             DrawRow(canvas, contentX, contentWidth, 0, IconType.Start,
                 "SYSTEM", "System name and generation", "ZONDERQOS GEN3", Accent);
             DrawRow(canvas, contentX, contentWidth, 1, IconType.About,
-                "COSMOS SDK", "Version of kernel and kernel.system packages", "3.0.97", Good);
+                "COSMOS SDK", "Version of kernel and kernel.system packages", "3.0.99", Good);
             DrawRow(canvas, contentX, contentWidth, 2, IconType.Settings,
                 "ARCHITECTURE", "Architecture detected by CPUID", cpuInfo.Architecture, Text);
             DrawRow(canvas, contentX, contentWidth, 3, IconType.Settings,

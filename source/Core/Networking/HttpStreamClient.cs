@@ -4,6 +4,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.X509;
 
@@ -39,6 +40,33 @@ namespace ZonderqOS.SystemCore.Networking
     {
         private const int MaxHeaderBytes = 32 * 1024;
         private const int TransferBufferSize = 16 * 1024;
+        private const int ReaderBufferSize = 4096;
+
+        // Single-slot reusable buffers eliminate 20 KiB of heap churn per HTTP/HTTPS request.
+        private static byte[] s_pooledTransferBuffer;
+        private static byte[] s_pooledReaderBuffer;
+
+        private static byte[] RentTransferBuffer()
+        {
+            return Interlocked.Exchange(ref s_pooledTransferBuffer, null) ?? new byte[TransferBufferSize];
+        }
+
+        private static void ReturnTransferBuffer(byte[] buf)
+        {
+            if (buf != null && buf.Length == TransferBufferSize)
+                Interlocked.Exchange(ref s_pooledTransferBuffer, buf);
+        }
+
+        private static byte[] RentReaderBuffer()
+        {
+            return Interlocked.Exchange(ref s_pooledReaderBuffer, null) ?? new byte[ReaderBufferSize];
+        }
+
+        private static void ReturnReaderBuffer(byte[] buf)
+        {
+            if (buf != null && buf.Length == ReaderBufferSize)
+                Interlocked.Exchange(ref s_pooledReaderBuffer, buf);
+        }
 
         public static HttpDownloadResult DownloadBytes(string url, HttpDownloadOptions options,
             out byte[] data, Action<long, long> onProgress = null)
@@ -173,179 +201,169 @@ namespace ZonderqOS.SystemCore.Networking
 
             int timeoutMs = Math.Max(1000, Math.Min(opts.TimeoutMs, 60000));
 
+            TcpClient tcp = null;
+            NetworkStream netStream = null;
+            ManagedTlsConnection tls = null;
+            BufferedHttpReader reader = null;
+            byte[] buf = null;
+
             try
             {
-                using (var tcp = new TcpClient())
+                tcp = ConnectWithRetry(remoteIp, target.Port, timeoutMs);
+                netStream = tcp.GetStream();
+
+                Stream ioStream = netStream;
+                if (target.IsHttps)
                 {
-                    tcp.Connect(remoteIp, target.Port);
-                    if (tcp.Client != null)
+                    tls = ManagedTlsConnection.Connect(netStream, target.Host, opts.ExtraTrustedRoot);
+                    ioStream = tls.Stream;
+                }
+
+                string requestText =
+                    "GET " + target.PathAndQuery + " HTTP/1.1\r\n" +
+                    "Host: " + target.HostHeader + "\r\n" +
+                    "User-Agent: " + (string.IsNullOrEmpty(opts.UserAgent) ? "ZonderqOS-OTA/1.0" : opts.UserAgent) + "\r\n" +
+                    "Accept: */*\r\n" +
+                    "Accept-Encoding: identity\r\n" +
+                    "Connection: close\r\n\r\n";
+
+                byte[] requestBytes = Encoding.ASCII.GetBytes(requestText);
+                ioStream.Write(requestBytes, 0, requestBytes.Length);
+                ioStream.Flush();
+
+                reader = new BufferedHttpReader(ioStream, RentReaderBuffer());
+                if (!TryReadResponseHeaders(reader, out int statusCode, out Dictionary<string, string> headers, out string hdrErr))
+                {
+                    return new HttpDownloadResult { Success = false, Error = hdrErr };
+                }
+
+                if (statusCode == 301 || statusCode == 302 || statusCode == 303 ||
+                    statusCode == 307 || statusCode == 308)
+                {
+                    if (headers.TryGetValue("location", out string loc) && !string.IsNullOrWhiteSpace(loc))
                     {
-                        tcp.Client.ReceiveTimeout = timeoutMs;
-                        tcp.Client.SendTimeout = timeoutMs;
+                        redirectLocation = loc;
+                        return new HttpDownloadResult { Success = false, StatusCode = statusCode };
                     }
-
-                    NetworkStream netStream = tcp.GetStream();
-                    ManagedTlsConnection tls = null;
-                    try
+                    return new HttpDownloadResult
                     {
-                        Stream ioStream = netStream;
-                        if (target.IsHttps)
-                        {
-                            tls = ManagedTlsConnection.Connect(netStream, target.Host, opts.ExtraTrustedRoot);
-                            ioStream = tls.Stream;
-                        }
+                        Success = false,
+                        StatusCode = statusCode,
+                        Error = "HTTP " + statusCode + " redirect missing Location header."
+                    };
+                }
 
-                        string requestText =
-                            "GET " + target.PathAndQuery + " HTTP/1.1\r\n" +
-                            "Host: " + target.HostHeader + "\r\n" +
-                            "User-Agent: " + (string.IsNullOrEmpty(opts.UserAgent) ? "ZonderqOS-OTA/1.0" : opts.UserAgent) + "\r\n" +
-                            "Accept: */*\r\n" +
-                            "Accept-Encoding: identity\r\n" +
-                            "Connection: close\r\n\r\n";
+                if (statusCode != 200)
+                {
+                    return new HttpDownloadResult
+                    {
+                        Success = false,
+                        StatusCode = statusCode,
+                        Error = "HTTP server returned status " + statusCode + "."
+                    };
+                }
 
-                        byte[] requestBytes = Encoding.ASCII.GetBytes(requestText);
-                        ioStream.Write(requestBytes, 0, requestBytes.Length);
-                        ioStream.Flush();
+                bool isChunked = headers.TryGetValue("transfer-encoding", out string te) &&
+                                 te.IndexOf("chunked", StringComparison.OrdinalIgnoreCase) >= 0;
 
-                        var reader = new BufferedHttpReader(ioStream);
-                        if (!TryReadResponseHeaders(reader, out int statusCode, out Dictionary<string, string> headers, out string hdrErr))
-                        {
-                            return new HttpDownloadResult { Success = false, Error = hdrErr };
-                        }
-
-                        if (statusCode == 301 || statusCode == 302 || statusCode == 303 ||
-                            statusCode == 307 || statusCode == 308)
-                        {
-                            if (headers.TryGetValue("location", out string loc) && !string.IsNullOrWhiteSpace(loc))
-                            {
-                                redirectLocation = loc;
-                                return new HttpDownloadResult { Success = false, StatusCode = statusCode };
-                            }
-                            return new HttpDownloadResult
-                            {
-                                Success = false,
-                                StatusCode = statusCode,
-                                Error = "HTTP " + statusCode + " redirect missing Location header."
-                            };
-                        }
-
-                        if (statusCode != 200)
-                        {
-                            return new HttpDownloadResult
-                            {
-                                Success = false,
-                                StatusCode = statusCode,
-                                Error = "HTTP server returned status " + statusCode + "."
-                            };
-                        }
-
-                        bool isChunked = headers.TryGetValue("transfer-encoding", out string te) &&
-                                         te.IndexOf("chunked", StringComparison.OrdinalIgnoreCase) >= 0;
-
-                        long contentLength = -1;
-                        if (!isChunked && headers.TryGetValue("content-length", out string clStr))
-                        {
-                            if (!long.TryParse(clStr.Trim(), out contentLength) || contentLength < 0)
-                            {
-                                return new HttpDownloadResult
-                                {
-                                    Success = false,
-                                    StatusCode = statusCode,
-                                    Error = "Invalid Content-Length header."
-                                };
-                            }
-                            if (maxBytes > 0 && contentLength > maxBytes)
-                            {
-                                return new HttpDownloadResult
-                                {
-                                    Success = false,
-                                    StatusCode = statusCode,
-                                    Error = "Remote file (" + contentLength + " bytes) exceeds maximum allowed size (" + maxBytes + " bytes)."
-                                };
-                            }
-                        }
-
-                        var sha = new Sha256Digest();
-                        byte[] buf = new byte[TransferBufferSize];
-                        long totalReceived = 0;
-
-                        if (isChunked)
-                        {
-                            if (!ReadChunkedBody(reader, sink, sha, buf, maxBytes, onProgress, out totalReceived, out string chunkErr))
-                            {
-                                return new HttpDownloadResult
-                                {
-                                    Success = false,
-                                    StatusCode = statusCode,
-                                    BytesReceived = totalReceived,
-                                    Error = chunkErr
-                                };
-                            }
-                        }
-                        else if (contentLength >= 0)
-                        {
-                            long remaining = contentLength;
-                            while (remaining > 0)
-                            {
-                                int toRead = remaining < buf.Length ? (int)remaining : buf.Length;
-                                int read = reader.Read(buf, 0, toRead);
-                                if (read <= 0)
-                                {
-                                    return new HttpDownloadResult
-                                    {
-                                        Success = false,
-                                        StatusCode = statusCode,
-                                        BytesReceived = totalReceived,
-                                        Error = "Connection closed prematurely (" + totalReceived + "/" + contentLength + " bytes)."
-                                    };
-                                }
-                                sink.Write(buf, 0, read);
-                                sha.BlockUpdate(buf, 0, read);
-                                totalReceived += read;
-                                remaining -= read;
-                                onProgress?.Invoke(totalReceived, contentLength);
-                            }
-                        }
-                        else
-                        {
-                            while (true)
-                            {
-                                int read = reader.Read(buf, 0, buf.Length);
-                                if (read <= 0)
-                                    break;
-                                if (maxBytes > 0 && totalReceived + read > maxBytes)
-                                {
-                                    return new HttpDownloadResult
-                                    {
-                                        Success = false,
-                                        StatusCode = statusCode,
-                                        BytesReceived = totalReceived,
-                                        Error = "Response body exceeded maximum allowed size (" + maxBytes + " bytes)."
-                                    };
-                                }
-                                sink.Write(buf, 0, read);
-                                sha.BlockUpdate(buf, 0, read);
-                                totalReceived += read;
-                                onProgress?.Invoke(totalReceived, -1);
-                            }
-                        }
-
-                        byte[] digest = new byte[sha.GetDigestSize()];
-                        sha.DoFinal(digest, 0);
-
+                long contentLength = -1;
+                if (!isChunked && headers.TryGetValue("content-length", out string clStr))
+                {
+                    if (!long.TryParse(clStr.Trim(), out contentLength) || contentLength < 0)
+                    {
                         return new HttpDownloadResult
                         {
-                            Success = true,
+                            Success = false,
                             StatusCode = statusCode,
-                            BytesReceived = totalReceived,
-                            Sha256Hex = ToLowerHex(digest)
+                            Error = "Invalid Content-Length header."
                         };
                     }
-                    finally
+                    if (maxBytes > 0 && contentLength > maxBytes)
                     {
-                        tls?.Dispose();
+                        return new HttpDownloadResult
+                        {
+                            Success = false,
+                            StatusCode = statusCode,
+                            Error = "Remote file (" + contentLength + " bytes) exceeds maximum allowed size (" + maxBytes + " bytes)."
+                        };
                     }
                 }
+
+                var sha = new Sha256Digest();
+                buf = RentTransferBuffer();
+                long totalReceived = 0;
+
+                if (isChunked)
+                {
+                    if (!ReadChunkedBody(reader, sink, sha, buf, maxBytes, onProgress, out totalReceived, out string chunkErr))
+                    {
+                        return new HttpDownloadResult
+                        {
+                            Success = false,
+                            StatusCode = statusCode,
+                            BytesReceived = totalReceived,
+                            Error = chunkErr
+                        };
+                    }
+                }
+                else if (contentLength >= 0)
+                {
+                    long remaining = contentLength;
+                    while (remaining > 0)
+                    {
+                        int toRead = remaining < buf.Length ? (int)remaining : buf.Length;
+                        int read = reader.Read(buf, 0, toRead);
+                        if (read <= 0)
+                        {
+                            return new HttpDownloadResult
+                            {
+                                Success = false,
+                                StatusCode = statusCode,
+                                BytesReceived = totalReceived,
+                                Error = "Connection closed prematurely (" + totalReceived + "/" + contentLength + " bytes)."
+                            };
+                        }
+                        sink.Write(buf, 0, read);
+                        sha.BlockUpdate(buf, 0, read);
+                        totalReceived += read;
+                        remaining -= read;
+                        onProgress?.Invoke(totalReceived, contentLength);
+                    }
+                }
+                else
+                {
+                    while (true)
+                    {
+                        int read = reader.Read(buf, 0, buf.Length);
+                        if (read <= 0)
+                            break;
+                        if (maxBytes > 0 && totalReceived + read > maxBytes)
+                        {
+                            return new HttpDownloadResult
+                            {
+                                Success = false,
+                                StatusCode = statusCode,
+                                BytesReceived = totalReceived,
+                                Error = "Response body exceeded maximum allowed size (" + maxBytes + " bytes)."
+                            };
+                        }
+                        sink.Write(buf, 0, read);
+                        sha.BlockUpdate(buf, 0, read);
+                        totalReceived += read;
+                        onProgress?.Invoke(totalReceived, -1);
+                    }
+                }
+
+                byte[] digest = new byte[sha.GetDigestSize()];
+                sha.DoFinal(digest, 0);
+
+                return new HttpDownloadResult
+                {
+                    Success = true,
+                    StatusCode = statusCode,
+                    BytesReceived = totalReceived,
+                    Sha256Hex = ToLowerHex(digest)
+                };
             }
             catch (Exception ex)
             {
@@ -355,6 +373,52 @@ namespace ZonderqOS.SystemCore.Networking
                     Error = "HTTP/TLS error: " + ex.Message
                 };
             }
+            finally
+            {
+                if (buf != null)
+                    ReturnTransferBuffer(buf);
+                if (reader != null)
+                    ReturnReaderBuffer(reader.DetachBuffer());
+                try { tls?.Dispose(); } catch { }
+                try { netStream?.Close(); } catch { }
+                SafeCloseTcpClient(tcp);
+            }
+        }
+
+        private static TcpClient ConnectWithRetry(IPAddress remoteIp, int port, int timeoutMs)
+        {
+            Exception lastError = null;
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                var candidate = new TcpClient();
+                try
+                {
+                    if (candidate.Client != null)
+                    {
+                        candidate.Client.ReceiveTimeout = timeoutMs;
+                        candidate.Client.SendTimeout = timeoutMs;
+                    }
+                    candidate.Connect(remoteIp, port);
+                    return candidate;
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex;
+                    // Deterministic cleanup of failed SYN_SENT socket in Cosmos SocketPlug.s_tcpStateMachines.
+                    SafeCloseTcpClient(candidate);
+                    if (attempt == 0)
+                        Thread.Sleep(150);
+                }
+            }
+            throw lastError ?? new SocketException();
+        }
+
+        private static void SafeCloseTcpClient(TcpClient client)
+        {
+            if (client == null)
+                return;
+            try { client.Client?.Close(1000); } catch { }
+            try { client.Close(); } catch { }
         }
 
         private static string ResolveHost(string host, Func<string, string> customResolver, out string error)
@@ -568,13 +632,21 @@ namespace ZonderqOS.SystemCore.Networking
         private sealed class BufferedHttpReader
         {
             private readonly Stream stream;
-            private readonly byte[] buffer = new byte[4096];
+            private byte[] buffer;
             private int pos;
             private int len;
 
-            public BufferedHttpReader(Stream stream)
+            public BufferedHttpReader(Stream stream, byte[] rentedBuffer)
             {
                 this.stream = stream;
+                this.buffer = rentedBuffer ?? new byte[ReaderBufferSize];
+            }
+
+            public byte[] DetachBuffer()
+            {
+                byte[] b = buffer;
+                buffer = null;
+                return b;
             }
 
             public int Read(byte[] dst, int offset, int count)

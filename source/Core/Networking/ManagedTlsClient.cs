@@ -20,6 +20,9 @@ namespace ZonderqOS.SystemCore.Networking
     /// </summary>
     public sealed class ManagedTlsConnection : IDisposable
     {
+        private static readonly object CryptoLock = new object();
+        private static DigestRandomGenerator s_randomGenerator;
+        private static BcTlsCrypto s_sharedCrypto;
         private readonly TlsClientProtocol protocol;
         private bool disposed;
 
@@ -38,8 +41,7 @@ namespace ZonderqOS.SystemCore.Networking
             if (string.IsNullOrWhiteSpace(serverHost))
                 throw new ArgumentException("Server host is required for TLS verification.", nameof(serverHost));
 
-            SecureRandom random = CreateSecureRandom();
-            var crypto = new BcTlsCrypto(random);
+            BcTlsCrypto crypto = GetOrCreateSharedCrypto();
             var client = new ZonderqTlsClient(crypto, serverHost.Trim(), extraTrustedRoot);
             var protocol = new TlsClientProtocol(transportStream);
             try
@@ -62,23 +64,29 @@ namespace ZonderqOS.SystemCore.Networking
             try { protocol.Close(); } catch { }
         }
 
-        private static SecureRandom CreateSecureRandom()
+        private static BcTlsCrypto GetOrCreateSharedCrypto()
         {
-            var gen = new DigestRandomGenerator(new Sha256Digest());
-            byte[] seed = new byte[64];
-            try
+            lock (CryptoLock)
             {
-                RandomNumberGenerator.Fill(seed);
-                gen.AddSeedMaterial(seed);
-            }
-            catch { }
+                if (s_sharedCrypto == null)
+                {
+                    s_randomGenerator = new DigestRandomGenerator(new Sha256Digest());
+                    byte[] seed = new byte[64];
+                    try
+                    {
+                        RandomNumberGenerator.Fill(seed);
+                        s_randomGenerator.AddSeedMaterial(seed);
+                    }
+                    catch { }
+                    s_randomGenerator.AddSeedMaterial(Guid.NewGuid().ToByteArray());
+                    Array.Clear(seed, 0, seed.Length);
+                    s_sharedCrypto = new BcTlsCrypto(new SecureRandom(s_randomGenerator));
+                }
 
-            gen.AddSeedMaterial(Stopwatch.GetTimestamp());
-            gen.AddSeedMaterial(DateTime.UtcNow.Ticks);
-            gen.AddSeedMaterial(Guid.NewGuid().ToByteArray());
-            gen.AddSeedMaterial(Guid.NewGuid().ToByteArray());
-            Array.Clear(seed, 0, seed.Length);
-            return new SecureRandom(gen);
+                s_randomGenerator.AddSeedMaterial(Stopwatch.GetTimestamp());
+                s_randomGenerator.AddSeedMaterial(DateTime.UtcNow.Ticks);
+                return s_sharedCrypto;
+            }
         }
 
         private sealed class ZonderqTlsClient : DefaultTlsClient

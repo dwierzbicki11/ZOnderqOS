@@ -1045,7 +1045,7 @@ namespace ZonderqOS.GUI.Apps
             int parts = hardware != null ? hardware.StoragePartitionCount : 2;
             SmallTextRenderer.Draw(canvas, "  Mass storage:" + drives + " drive(s), " + parts + " partition(s) (VFS FAT32 / ZONDERQDATA)", sx, sy, TextColor);
             sy += lineH;
-            SmallTextRenderer.Draw(canvas, "  Kernel:       Cosmos C# Kernel v3.0.97 Upstream (Single-vCPU)", sx, sy, TextColor);
+            SmallTextRenderer.Draw(canvas, "  Kernel:       Cosmos C# Kernel v3.0.99 Upstream (Single-vCPU)", sx, sy, TextColor);
         }
 
         private void RenderComparisonTab(Canvas canvas, int wx, int cy, int ww)

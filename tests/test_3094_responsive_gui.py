@@ -634,9 +634,9 @@ class ResponsiveGui3094(unittest.TestCase):
                                      1 / restored_width + 0.001)
 
     def test_sdk_version_still_pinned(self):
-        self.assertTrue('Sdk="Cosmos.Sdk/3.0.97"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
-        self.assertTrue('Version="3.0.97"' in PROJECT or 'Version="3.0.95"' in PROJECT)
-        self.assertIn('"3.0.97", Good', SETTINGS)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.99"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.97"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
+        self.assertTrue('Version="3.0.99"' in PROJECT or 'Version="3.0.97"' in PROJECT or 'Version="3.0.95"' in PROJECT)
+        self.assertIn('"3.0.99", Good', SETTINGS)
         self.assertNotIn('"3.0.94", Good', SETTINGS)
 
     def test_task_manager_compact_refresh_button_has_no_negative_label_width(self):

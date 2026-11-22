@@ -16,7 +16,7 @@ namespace ZonderqOS.SystemCore
 #else
         public const string Architecture = "x86_64";
 #endif
-        public const string CosmosVersion = "Cosmos 3.0.97 Native Core";
+        public const string CosmosVersion = "Cosmos 3.0.99 Native Core";
         public const string GitCommit = "3f48d33e";
         public const string CompileTimestamp = "2026-11-08 17:35:00 UTC";
         public const string KernelBinaryName = "ZonderqOS.elf";

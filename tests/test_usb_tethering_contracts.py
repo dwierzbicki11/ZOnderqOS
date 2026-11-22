@@ -72,6 +72,19 @@ class TestUsbTetheringContracts(unittest.TestCase):
 
         self.assertGreaterEqual(blocks_checked, 2)
 
+    def test_rfc2131_dhcp_broadcast_and_zero_cpu_wait(self):
+        dhcp_protocol = (ROOT / "source/System/Networking/ZonderqDhcpProtocol.cs").read_text(encoding="utf-8")
+        dhcp_client = (ROOT / "source/System/Networking/ZonderqDhcpClient.cs").read_text(encoding="utf-8")
+
+        self.assertIn("BootpFlagBroadcast = 0x8000", dhcp_protocol)
+        self.assertIn("OptServerId = 54", dhcp_protocol)
+        self.assertIn("ObserveRawEthernetFrame(", dhcp_client)
+        self.assertIn("Thread.Sleep(25)", dhcp_client)
+        code_lines = "\n".join(
+            line for line in dhcp_client.splitlines() if not line.lstrip().startswith("//")
+        )
+        self.assertNotIn("TimerManager.Wait", code_lines)
+
 
 if __name__ == "__main__":
     unittest.main()

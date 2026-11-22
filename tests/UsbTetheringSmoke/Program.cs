@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using ZonderqOS.Hardware.UsbTethering;
+using ZonderqOS.SystemCore.Networking;
 
 namespace UsbTetheringSmoke
 {
@@ -22,6 +23,7 @@ namespace UsbTetheringSmoke
             TestRndisRxMultiPacketAggregationAndCorruptionGuards();
             TestCdcEcmMacStringDescriptor();
             TestCdcNcmProtocol();
+            TestRfc2131DhcpCodec();
 
             Console.WriteLine("[USB-NET-TEST] ALL USB TETHERING PROTOCOL TESTS PASSED [PASS]");
             return 0;
@@ -293,6 +295,86 @@ namespace UsbTetheringSmoke
             while (NcmProtocol.TryUnwrapNextPacket16(cyclic, ref crx, out _))
                 guardIters++;
             Assert(guardIters == 0, "Cyclic empty NDP16 must terminate with 0 frames");
+        }
+
+        private static void TestRfc2131DhcpCodec()
+        {
+            Console.WriteLine("  -> Testing RFC 2131 DHCPv4 codec (Broadcast 0x8000, Option 54, checksums, arbitrary TLV order)...");
+            byte[] mac = { 0x02, 0x5A, 0x51, 0xAA, 0xBB, 0xCC };
+            uint xid = 0x5A511234U;
+            byte[] frame = new byte[ZonderqDhcpProtocol.FullEthernetFrameSize];
+
+            // 1. DHCPDISCOVER frame: 342 bytes, Broadcast flag 0x8000, valid IPv4 + UDP checksums
+            int len = ZonderqDhcpProtocol.BuildDiscoverEthernetFrame(mac, xid, 2, frame);
+            Assert(len == 342, "Expected 342-byte DHCPDISCOVER frame, got " + len);
+            Assert(frame[12] == 0x08 && frame[13] == 0x00, "EtherType must be IPv4");
+            // IPv4 header checksum verifies to 0
+            Assert(ZonderqDhcpProtocol.ComputeChecksum(frame.AsSpan(14, 20)) == 0, "Invalid IPv4 header checksum");
+            // BOOTP flags at 14 + 20 + 8 + 10 = 52 must be 0x8000 (Broadcast)
+            Assert(frame[52] == 0x80 && frame[53] == 0x00, "BOOTP broadcast flag 0x8000 missing in DISCOVER");
+            // Magic cookie at 42 + 236 = 278
+            Assert(frame[278] == 0x63 && frame[279] == 0x82 && frame[280] == 0x53 && frame[281] == 0x63, "Magic cookie missing");
+
+            // 2. DHCPREQUEST frame must include Option 50 (Requested IP) + Option 54 (Server Identifier) + Broadcast 0x8000
+            byte[] offeredIp = { 192, 168, 42, 155 };
+            byte[] serverId = { 192, 168, 42, 129 };
+            int reqLen = ZonderqDhcpProtocol.BuildRequestEthernetFrame(mac, xid, 4, offeredIp, serverId, frame);
+            Assert(reqLen == 342, "Expected 342-byte DHCPREQUEST frame");
+            Assert(frame[52] == 0x80 && frame[53] == 0x00, "BOOTP broadcast flag 0x8000 missing in REQUEST");
+            Assert(ZonderqDhcpProtocol.ComputeChecksum(frame.AsSpan(14, 20)) == 0, "Invalid REQUEST IPv4 checksum");
+            bool foundOpt50 = false, foundOpt54 = false;
+            int p = 42 + 240;
+            while (p < frame.Length && frame[p] != 255)
+            {
+                byte code = frame[p++];
+                if (code == 0) continue;
+                byte olen = frame[p++];
+                if (code == 50 && olen == 4 && frame[p] == 192 && frame[p + 3] == 155) foundOpt50 = true;
+                if (code == 54 && olen == 4 && frame[p] == 192 && frame[p + 3] == 129) foundOpt54 = true;
+                p += olen;
+            }
+            Assert(foundOpt50 && foundOpt54, "DHCPREQUEST must contain both Option 50 and Option 54");
+
+            // 3. Parse a UNICAST Android DHCPOFFER where Option 54 & Option 1 appear BEFORE Option 53 (breaks stock Cosmos!)
+            byte[] offerEth = new byte[342];
+            offerEth[12] = 0x08; offerEth[13] = 0x00;
+            offerEth[14] = 0x45;
+            offerEth[16] = (byte)(328 >> 8); offerEth[17] = (byte)(328 & 0xFF);
+            offerEth[23] = 17; // UDP
+            // Src IP 192.168.42.129 -> Unicast Dst IP 192.168.42.155
+            serverId.CopyTo(offerEth, 26);
+            offeredIp.CopyTo(offerEth, 30);
+            // UDP 67 -> 68
+            offerEth[34] = 0; offerEth[35] = 67;
+            offerEth[36] = 0; offerEth[37] = 68;
+            offerEth[38] = (byte)(308 >> 8); offerEth[39] = (byte)(308 & 0xFF);
+            // BOOTP reply at 42
+            offerEth[42] = 2; offerEth[43] = 1; offerEth[44] = 6;
+            offerEth[46] = 0x5A; offerEth[47] = 0x51; offerEth[48] = 0x12; offerEth[49] = 0x34;
+            offeredIp.CopyTo(offerEth, 42 + 16); // yiaddr
+            mac.CopyTo(offerEth, 42 + 28);       // chaddr
+            offerEth[42 + 236] = 0x63; offerEth[42 + 237] = 0x82; offerEth[42 + 238] = 0x53; offerEth[42 + 239] = 0x63;
+            int o = 42 + 240;
+            // Put Option 0 PAD + Option 54 + Option 1 + Option 3 + Option 6 BEFORE Option 53!
+            offerEth[o++] = 0;
+            offerEth[o++] = 54; offerEth[o++] = 4; serverId.CopyTo(offerEth, o); o += 4;
+            offerEth[o++] = 1; offerEth[o++] = 4; offerEth[o++] = 255; offerEth[o++] = 255; offerEth[o++] = 255; offerEth[o++] = 0;
+            offerEth[o++] = 3; offerEth[o++] = 4; serverId.CopyTo(offerEth, o); o += 4;
+            offerEth[o++] = 6; offerEth[o++] = 4; serverId.CopyTo(offerEth, o); o += 4;
+            offerEth[o++] = 53; offerEth[o++] = 1; offerEth[o++] = ZonderqDhcpProtocol.MsgOffer;
+            offerEth[o] = 255;
+
+            Assert(ZonderqDhcpProtocol.TryParseReplyEthernetFrame(offerEth, mac, xid, out var parsed), "Failed to parse out-of-order unicast Android DHCPOFFER");
+            Assert(parsed.MessageType == ZonderqDhcpProtocol.MsgOffer, "Offer MsgType mismatch");
+            Assert(ZonderqDhcpProtocol.FormatIpv4(parsed.OfferedIp) == "192.168.42.155", "Offered IP mismatch");
+            Assert(ZonderqDhcpProtocol.FormatIpv4(parsed.ServerId) == "192.168.42.129", "ServerId mismatch");
+            Assert(ZonderqDhcpProtocol.FormatIpv4(parsed.Gateway) == "192.168.42.129", "Gateway mismatch");
+            Assert(ZonderqDhcpProtocol.FormatIpv4(parsed.DnsServer) == "192.168.42.129", "DNS mismatch");
+
+            // 4. Reject mismatched XID or MAC
+            Assert(!ZonderqDhcpProtocol.TryParseReplyEthernetFrame(offerEth, mac, xid + 1, out _), "Accepted wrong XID");
+            byte[] otherMac = { 0x02, 0x5A, 0x51, 0x00, 0x00, 0x01 };
+            Assert(!ZonderqDhcpProtocol.TryParseReplyEthernetFrame(offerEth, otherMac, xid, out _), "Accepted wrong MAC");
         }
     }
 }
