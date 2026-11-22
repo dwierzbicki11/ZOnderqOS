@@ -11,7 +11,8 @@ namespace ZonderqOS.Storage
     public enum InstallationPartitionLayout
     {
         DualEfiAndSystem = 0,
-        SingleSystemPartition = 1
+        SingleSystemPartition = 1,
+        DualBootAlongsideExistingOs = 2
     }
 
     public sealed class PreparedInstallPartitions
@@ -20,6 +21,7 @@ namespace ZonderqOS.Storage
         public InstallationPartitionLayout Layout { get; set; }
         public Partition EfiPartition { get; set; }
         public Partition SystemPartition { get; set; }
+        public bool PreserveExistingEfiPartition { get; set; }
     }
 
     /// <summary>
@@ -55,6 +57,17 @@ namespace ZonderqOS.Storage
             out PreparedInstallPartitions prepared,
             out string error)
         {
+            if (requestedLayout == InstallationPartitionLayout.DualBootAlongsideExistingOs)
+            {
+                return PrepareDiskForDualBoot(
+                    token,
+                    typedConfirmation,
+                    0UL,
+                    progressCallback,
+                    out prepared,
+                    out error);
+            }
+
             prepared = null;
             error = null;
 
@@ -208,6 +221,514 @@ namespace ZonderqOS.Storage
                 error = "Disk preparation exception: " + ex.Message;
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Non-destructive Dual-Boot disk preparation:
+        ///   - NEVER calls WipePartitionStructures. All foreign partitions (Kali Linux, Windows, ESP) are preserved.
+        ///   - If targetPartitionStartLba == 0: allocates a new partition in unallocated free space (&gt;= 64 MiB)
+        ///     using the first free MBR slot (0x0C FAT32 LBA) or first free GPT slot (BasicDataPartitionType).
+        ///   - If targetPartitionStartLba &gt; 0: reuses that specific existing non-ESP partition and ensures its
+        ///     partition type is 0x0C (MBR) or BasicDataPartitionType (GPT).
+        ///   - Formats ONLY the target ZONDERQDATA partition as FAT32 and leaves any existing ESP untouched
+        ///     (PreserveExistingEfiPartition = true).
+        /// </summary>
+        public static bool PrepareDiskForDualBoot(
+            DiskIdentityToken token,
+            string typedConfirmation,
+            ulong targetPartitionStartLba,
+            Action<int, string> progressCallback,
+            out PreparedInstallPartitions prepared,
+            out string error)
+        {
+            prepared = null;
+            error = null;
+
+            if (!EnsureRootPrivilege(out error))
+                return false;
+
+            if (token == null || !InstallerInputValidator.ValidateDiskConfirmation(token.DiskId, typedConfirmation))
+            {
+                error = "Disk confirmation ID does not match the selected target disk.";
+                return false;
+            }
+
+            if (!DiskCatalog.VerifyIdentityBeforeWrite(token, out error))
+                return false;
+
+            IBlockDevice device = token.DeviceReference;
+            if (device.BlockSize != 512UL)
+            {
+                error = "Only 512-byte logical sector disks are currently supported for automated OS installation (found " +
+                        device.BlockSize + " B).";
+                return false;
+            }
+
+            if (device.BlockCount < FirstPartitionStartLba + EfiPartitionSectors512)
+            {
+                error = "Target disk is smaller than the minimum required 68 MB.";
+                return false;
+            }
+
+            try
+            {
+                progressCallback?.Invoke(8, "Preparing disk");
+                ulong sysStart = 0;
+                ulong sysCount = 0;
+                ulong existingEspStart = 0;
+
+                if (Gpt.IsGpt(device))
+                {
+                    if (!PrepareGptForDualBoot(device, targetPartitionStartLba, out sysStart, out sysCount, out existingEspStart, out error))
+                        return false;
+                }
+                else
+                {
+                    if (!PrepareMbrForDualBoot(device, targetPartitionStartLba, out sysStart, out sysCount, out existingEspStart, out error))
+                        return false;
+                }
+
+                progressCallback?.Invoke(18, "Creating partitions");
+                device.Flush();
+                StorageManager.RescanPartitions(device);
+
+                Partition efiPartition = null;
+                Partition sysPartition = null;
+                var allPartitions = StorageManager.Partitions;
+                if (allPartitions != null)
+                {
+                    for (int i = 0; i < allPartitions.Count; i++)
+                    {
+                        Partition p = allPartitions[i];
+                        if (p == null || !object.ReferenceEquals(p.Host, device))
+                            continue;
+
+                        if (p.StartSector == sysStart)
+                        {
+                            sysPartition = p;
+                        }
+                        else if (existingEspStart != 0 && p.StartSector == existingEspStart)
+                        {
+                            efiPartition = p;
+                        }
+                    }
+                }
+
+                if (sysPartition == null)
+                {
+                    error = "Failed to discover Dual-Boot ZonderqOS system partition at LBA " + sysStart + " after rescan.";
+                    return false;
+                }
+
+                progressCallback?.Invoke(32, "Formatting filesystem");
+                if (!FormatAndVerifyFat32(sysPartition, DataVolumePolicy.RequiredLabel, true, out error))
+                    return false;
+
+                prepared = new PreparedInstallPartitions
+                {
+                    Device = device,
+                    Layout = InstallationPartitionLayout.DualBootAlongsideExistingOs,
+                    EfiPartition = efiPartition,
+                    SystemPartition = sysPartition,
+                    PreserveExistingEfiPartition = efiPartition != null
+                };
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = "Dual-Boot disk preparation exception: " + ex.Message;
+                return false;
+            }
+        }
+
+        private static bool PrepareMbrForDualBoot(
+            IBlockDevice device,
+            ulong targetPartitionStartLba,
+            out ulong sysStartLba,
+            out ulong sysSectorCount,
+            out ulong existingEspStartLba,
+            out string error)
+        {
+            sysStartLba = 0;
+            sysSectorCount = 0;
+            existingEspStartLba = 0;
+            error = null;
+
+            byte[] mbr = new byte[512];
+            device.ReadBlock(0UL, 1UL, mbr);
+            if (mbr[510] != 0x55 || mbr[511] != 0xAA)
+            {
+                error = "Target disk does not have a valid MBR signature (0x55AA) for Dual-Boot.";
+                return false;
+            }
+
+            int firstFreeSlot = -1;
+            int targetSlot = -1;
+            ulong highestEndLba = FirstPartitionStartLba;
+            bool anyActive = false;
+
+            for (int slot = 0; slot < 4; slot++)
+            {
+                int off = 446 + slot * 16;
+                byte bootFlag = mbr[off + 0];
+                byte partType = mbr[off + 4];
+                uint start = BitConverter.ToUInt32(mbr, off + 8);
+                uint count = BitConverter.ToUInt32(mbr, off + 12);
+
+                if (partType == 0 || start == 0 || count == 0)
+                {
+                    if (firstFreeSlot < 0)
+                        firstFreeSlot = slot;
+                    continue;
+                }
+
+                if ((bootFlag & 0x80) != 0)
+                    anyActive = true;
+
+                if (partType == 0xEF && existingEspStartLba == 0)
+                    existingEspStartLba = start;
+
+                ulong endExclusive = (ulong)start + (ulong)count;
+                if (endExclusive > highestEndLba)
+                    highestEndLba = endExclusive;
+
+                if (targetPartitionStartLba != 0 && start == targetPartitionStartLba)
+                    targetSlot = slot;
+            }
+
+            if (targetPartitionStartLba != 0)
+            {
+                if (targetSlot < 0)
+                {
+                    error = "Selected target partition at LBA " + targetPartitionStartLba + " was not found in the MBR partition table.";
+                    return false;
+                }
+
+                int off = 446 + targetSlot * 16;
+                byte partType = mbr[off + 4];
+                uint start = BitConverter.ToUInt32(mbr, off + 8);
+                uint count = BitConverter.ToUInt32(mbr, off + 12);
+
+                if (partType == 0xEF)
+                {
+                    error = "Refusing to format the EFI System Partition (0xEF) as ZONDERQDATA in Dual-Boot mode.";
+                    return false;
+                }
+
+                if (count < EfiPartitionSectors512)
+                {
+                    error = "Selected partition at LBA " + start + " is smaller than the 64 MB minimum required for ZonderqOS.";
+                    return false;
+                }
+
+                mbr[off + 4] = 0x0C; // FAT32 LBA so DataVolumePolicy approves it
+                if (!anyActive)
+                    mbr[off + 0] = 0x80;
+
+                EnsureMbrSignatureForDualBoot(device, mbr);
+                device.WriteBlock(0UL, 1UL, mbr);
+                sysStartLba = start;
+                sysSectorCount = count;
+                return true;
+            }
+
+            if (firstFreeSlot < 0)
+            {
+                error = "All 4 primary MBR partition slots are occupied. Select an existing partition to format as ZONDERQDATA or free one MBR slot.";
+                return false;
+            }
+
+            ulong alignedStart = highestEndLba < FirstPartitionStartLba ? FirstPartitionStartLba : highestEndLba;
+            ulong rem = alignedStart % 2048UL;
+            if (rem != 0)
+                alignedStart += (2048UL - rem);
+
+            if (device.BlockCount <= alignedStart || (device.BlockCount - alignedStart) < EfiPartitionSectors512)
+            {
+                error = "Insufficient unallocated free space after existing partitions (need at least 64 MB free space, or select an existing partition).";
+                return false;
+            }
+
+            ulong freeSectors = device.BlockCount - alignedStart;
+            if (alignedStart > uint.MaxValue)
+            {
+                error = "Unallocated space starts beyond the 2 TiB MBR limit.";
+                return false;
+            }
+            if (freeSectors > uint.MaxValue)
+                freeSectors = uint.MaxValue;
+
+            int slotOff = 446 + firstFreeSlot * 16;
+            mbr[slotOff + 0] = anyActive ? (byte)0x00 : (byte)0x80;
+            SetChsTuple(mbr, slotOff + 1, alignedStart);
+            mbr[slotOff + 4] = 0x0C; // FAT32 LBA
+            SetChsTuple(mbr, slotOff + 5, alignedStart + freeSectors - 1UL);
+            WriteUInt32LE(mbr, slotOff + 8, (uint)alignedStart);
+            WriteUInt32LE(mbr, slotOff + 12, (uint)freeSectors);
+
+            EnsureMbrSignatureForDualBoot(device, mbr);
+            device.WriteBlock(0UL, 1UL, mbr);
+
+            sysStartLba = alignedStart;
+            sysSectorCount = freeSectors;
+            return true;
+        }
+
+        private static void EnsureMbrSignatureForDualBoot(IBlockDevice device, byte[] mbr)
+        {
+            uint sig = BitConverter.ToUInt32(mbr, 440);
+            if (sig == 0)
+            {
+                sig = (uint)(0x5A510000U ^ (uint)(device.BlockCount & 0xFFFFU));
+                if (sig == LimineBootMediaDetector.BootMbrDiskId)
+                    sig ^= 0x0000A55AU;
+                WriteUInt32LE(mbr, 440, sig);
+            }
+            mbr[510] = 0x55;
+            mbr[511] = 0xAA;
+        }
+
+        private static bool PrepareGptForDualBoot(
+            IBlockDevice device,
+            ulong targetPartitionStartLba,
+            out ulong sysStartLba,
+            out ulong sysSectorCount,
+            out ulong existingEspStartLba,
+            out string error)
+        {
+            sysStartLba = 0;
+            sysSectorCount = 0;
+            existingEspStartLba = 0;
+            error = null;
+
+            List<GptPartitionEntry> gpt = Gpt.Parse(device);
+            if (gpt == null)
+            {
+                error = "Failed to parse GPT header on target disk.";
+                return false;
+            }
+
+            int blockSize = (int)device.BlockSize;
+            byte[] primaryHdr = new byte[blockSize];
+            device.ReadBlock(1UL, 1UL, primaryHdr);
+
+            uint headerSize = BitConverter.ToUInt32(primaryHdr, 12);
+            ulong myLba = BitConverter.ToUInt64(primaryHdr, 24);
+            ulong altLba = BitConverter.ToUInt64(primaryHdr, 32);
+            ulong firstUsable = BitConverter.ToUInt64(primaryHdr, 40);
+            ulong lastUsable = BitConverter.ToUInt64(primaryHdr, 48);
+            ulong partEntryLba = BitConverter.ToUInt64(primaryHdr, 72);
+            uint numEntries = BitConverter.ToUInt32(primaryHdr, 80);
+            uint entrySize = BitConverter.ToUInt32(primaryHdr, 84);
+
+            if (entrySize < 128 || entrySize > 512 || numEntries == 0 || numEntries > 1024 || headerSize < 92 || headerSize > (uint)blockSize)
+            {
+                error = "Unsupported GPT entry geometry for in-place Dual-Boot modification.";
+                return false;
+            }
+
+            ulong totalTableBytes = (ulong)numEntries * (ulong)entrySize;
+            ulong tableSectors = (totalTableBytes + (ulong)blockSize - 1UL) / (ulong)blockSize;
+            byte[] tableBytes = new byte[tableSectors * (ulong)blockSize];
+            device.ReadBlock(partEntryLba, tableSectors, tableBytes);
+
+            int firstFreeSlot = -1;
+            int targetSlot = -1;
+            ulong highestEndLba = firstUsable > FirstPartitionStartLba ? firstUsable : FirstPartitionStartLba;
+
+            for (int i = 0; i < (int)numEntries; i++)
+            {
+                int off = i * (int)entrySize;
+                bool empty = true;
+                for (int b = 0; b < 16; b++)
+                {
+                    if (tableBytes[off + b] != 0)
+                    {
+                        empty = false;
+                        break;
+                    }
+                }
+
+                if (empty)
+                {
+                    if (firstFreeSlot < 0)
+                        firstFreeSlot = i;
+                    continue;
+                }
+
+                byte[] typeGuidBytes = new byte[16];
+                Array.Copy(tableBytes, off, typeGuidBytes, 0, 16);
+                Guid typeGuid = new Guid(typeGuidBytes);
+                ulong firstLba = BitConverter.ToUInt64(tableBytes, off + 32);
+                ulong lastLba = BitConverter.ToUInt64(tableBytes, off + 40);
+
+                if (typeGuid == DualBootManager.GptEfiSystemPartitionGuid && existingEspStartLba == 0)
+                    existingEspStartLba = firstLba;
+
+                if (lastLba >= firstLba && lastLba + 1UL > highestEndLba)
+                    highestEndLba = lastLba + 1UL;
+
+                if (targetPartitionStartLba != 0 && firstLba == targetPartitionStartLba)
+                    targetSlot = i;
+            }
+
+            int writeSlot;
+            ulong newFirstLba;
+            ulong newLastLba;
+
+            if (targetPartitionStartLba != 0)
+            {
+                if (targetSlot < 0)
+                {
+                    error = "Selected GPT partition at LBA " + targetPartitionStartLba + " was not found.";
+                    return false;
+                }
+
+                int off = targetSlot * (int)entrySize;
+                byte[] typeGuidBytes = new byte[16];
+                Array.Copy(tableBytes, off, typeGuidBytes, 0, 16);
+                Guid typeGuid = new Guid(typeGuidBytes);
+                if (typeGuid == DualBootManager.GptEfiSystemPartitionGuid)
+                {
+                    error = "Refusing to overwrite the GPT EFI System Partition as ZONDERQDATA.";
+                    return false;
+                }
+
+                newFirstLba = BitConverter.ToUInt64(tableBytes, off + 32);
+                newLastLba = BitConverter.ToUInt64(tableBytes, off + 40);
+                if (newLastLba < newFirstLba || (newLastLba - newFirstLba + 1UL) < EfiPartitionSectors512)
+                {
+                    error = "Selected GPT partition is smaller than the 64 MB minimum required for ZonderqOS.";
+                    return false;
+                }
+                writeSlot = targetSlot;
+            }
+            else
+            {
+                if (firstFreeSlot < 0)
+                {
+                    error = "No empty GPT partition slot is available on the target disk.";
+                    return false;
+                }
+
+                ulong alignedStart = highestEndLba < FirstPartitionStartLba ? FirstPartitionStartLba : highestEndLba;
+                ulong rem = alignedStart % 2048UL;
+                if (rem != 0)
+                    alignedStart += (2048UL - rem);
+
+                if (lastUsable <= alignedStart || (lastUsable - alignedStart + 1UL) < EfiPartitionSectors512)
+                {
+                    error = "Insufficient unallocated GPT space after existing partitions (need at least 64 MB).";
+                    return false;
+                }
+
+                writeSlot = firstFreeSlot;
+                newFirstLba = alignedStart;
+                newLastLba = lastUsable;
+            }
+
+            int slotOff = writeSlot * (int)entrySize;
+            byte[] basicTypeBytes = Gpt.BasicDataPartitionType.ToByteArray();
+            Array.Copy(basicTypeBytes, 0, tableBytes, slotOff, 16);
+
+            bool uniqueZero = true;
+            for (int b = 0; b < 16; b++)
+            {
+                if (tableBytes[slotOff + 16 + b] != 0)
+                {
+                    uniqueZero = false;
+                    break;
+                }
+            }
+            if (uniqueZero)
+            {
+                WriteUInt64LE(tableBytes, slotOff + 16, 0x5A4F4E4445525144UL ^ newFirstLba);
+                WriteUInt64LE(tableBytes, slotOff + 24, 0x4455414C424F4F54UL ^ newLastLba);
+            }
+
+            WriteUInt64LE(tableBytes, slotOff + 32, newFirstLba);
+            WriteUInt64LE(tableBytes, slotOff + 40, newLastLba);
+            WriteUInt64LE(tableBytes, slotOff + 48, 0UL);
+
+            const string gptPartName = "ZonderqOS Data";
+            for (int c = 0; c < 36; c++)
+            {
+                ushort ch = c < gptPartName.Length ? (ushort)gptPartName[c] : (ushort)0;
+                tableBytes[slotOff + 56 + c * 2] = (byte)(ch & 0xFF);
+                tableBytes[slotOff + 56 + c * 2 + 1] = (byte)((ch >> 8) & 0xFF);
+            }
+
+            uint entriesCrc = ComputeCrc32(tableBytes, 0, (int)totalTableBytes);
+            device.WriteBlock(partEntryLba, tableSectors, tableBytes);
+
+            WriteUInt32LE(primaryHdr, 88, entriesCrc);
+            WriteUInt32LE(primaryHdr, 16, 0U);
+            uint primaryHdrCrc = ComputeCrc32(primaryHdr, 0, (int)headerSize);
+            WriteUInt32LE(primaryHdr, 16, primaryHdrCrc);
+            device.WriteBlock(myLba, 1UL, primaryHdr);
+
+            if (altLba > lastUsable && altLba < device.BlockCount)
+            {
+                try
+                {
+                    byte[] backupHdr = new byte[blockSize];
+                    device.ReadBlock(altLba, 1UL, backupHdr);
+                    ulong backupEntriesLba = BitConverter.ToUInt64(backupHdr, 72);
+                    if (backupEntriesLba > lastUsable && backupEntriesLba + tableSectors <= altLba)
+                    {
+                        device.WriteBlock(backupEntriesLba, tableSectors, tableBytes);
+                    }
+                    WriteUInt32LE(backupHdr, 88, entriesCrc);
+                    WriteUInt32LE(backupHdr, 16, 0U);
+                    uint backupCrc = ComputeCrc32(backupHdr, 0, (int)headerSize);
+                    WriteUInt32LE(backupHdr, 16, backupCrc);
+                    device.WriteBlock(altLba, 1UL, backupHdr);
+                }
+                catch
+                {
+                }
+            }
+
+            sysStartLba = newFirstLba;
+            sysSectorCount = newLastLba - newFirstLba + 1UL;
+            return true;
+        }
+
+        private static void WriteUInt32LE(byte[] buf, int offset, uint value)
+        {
+            buf[offset + 0] = (byte)(value & 0xFF);
+            buf[offset + 1] = (byte)((value >> 8) & 0xFF);
+            buf[offset + 2] = (byte)((value >> 16) & 0xFF);
+            buf[offset + 3] = (byte)((value >> 24) & 0xFF);
+        }
+
+        private static void WriteUInt64LE(byte[] buf, int offset, ulong value)
+        {
+            buf[offset + 0] = (byte)(value & 0xFF);
+            buf[offset + 1] = (byte)((value >> 8) & 0xFF);
+            buf[offset + 2] = (byte)((value >> 16) & 0xFF);
+            buf[offset + 3] = (byte)((value >> 24) & 0xFF);
+            buf[offset + 4] = (byte)((value >> 32) & 0xFF);
+            buf[offset + 5] = (byte)((value >> 40) & 0xFF);
+            buf[offset + 6] = (byte)((value >> 48) & 0xFF);
+            buf[offset + 7] = (byte)((value >> 56) & 0xFF);
+        }
+
+        private static uint ComputeCrc32(byte[] data, int offset, int length)
+        {
+            uint crc = 0xFFFFFFFFU;
+            for (int i = 0; i < length; i++)
+            {
+                crc ^= data[offset + i];
+                for (int bit = 0; bit < 8; bit++)
+                {
+                    if ((crc & 1U) != 0)
+                        crc = (crc >> 1) ^ 0xEDB88320U;
+                    else
+                        crc >>= 1;
+                }
+            }
+            return ~crc;
         }
 
         public static bool FormatAndVerifyFat32(

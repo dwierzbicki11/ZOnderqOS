@@ -74,8 +74,11 @@ namespace ZonderqOS.GUI.Apps
         private int diskScrollOffset;
 
         // Installation type & explicit Erase Disk confirmation modal (Screen 4)
-        private int installModeIndex; // 0 = Erase Disk and Install (Automatic), 1 = Advanced Installation
+        private int installModeIndex; // 0 = Erase Disk and Install (Automatic), 1 = Advanced Installation, 2 = Dual-Boot Alongside Existing OS
         private InstallationPartitionLayout chosenLayout = InstallationPartitionLayout.DualEfiAndSystem;
+        private DualBootDiskInspection currentDualBootInfo;
+        private int dualBootCandidateIndex = -1; // -1 = Use Free Unallocated Space, 0..N-1 = CandidateTargetPartitions[i]
+        private ulong chosenDualBootPartitionLba;
         private bool zeroFillExtendedHeader;
         private bool showEraseWarningModal;
         private readonly char[] confirmDiskIdChars = new char[MaxTextFieldChars];
@@ -250,9 +253,15 @@ namespace ZonderqOS.GUI.Apps
 
                 case ScreenInstallType:
                     if (key.Key == ConsoleKeyEx.UpArrow || key.Key == ConsoleKeyEx.LeftArrow)
-                        installModeIndex = 0;
+                    {
+                        installModeIndex = (installModeIndex + 2) % 3;
+                        ApplyInstallModeSelection();
+                    }
                     else if (key.Key == ConsoleKeyEx.DownArrow || key.Key == ConsoleKeyEx.RightArrow)
-                        installModeIndex = 1;
+                    {
+                        installModeIndex = (installModeIndex + 1) % 3;
+                        ApplyInstallModeSelection();
+                    }
                     else if (key.Key == ConsoleKeyEx.Enter)
                         OpenEraseConfirmationModal();
                     else if (key.Key == ConsoleKeyEx.Backspace)
@@ -520,32 +529,91 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
+        private void RefreshDualBootInspectionForSelectedDisk()
+        {
+            if (selectedDiskIndex >= 0 && selectedDiskIndex < disks.Length)
+            {
+                currentDualBootInfo = DualBootManager.InspectDiskForDualBoot(disks[selectedDiskIndex]);
+                if (currentDualBootInfo.CanAllocateFromFreeSpace)
+                {
+                    dualBootCandidateIndex = -1;
+                    chosenDualBootPartitionLba = 0UL;
+                }
+                else if (currentDualBootInfo.CandidateTargetPartitions.Count > 0)
+                {
+                    dualBootCandidateIndex = 0;
+                    chosenDualBootPartitionLba = currentDualBootInfo.CandidateTargetPartitions[0].StartLba;
+                }
+                else
+                {
+                    dualBootCandidateIndex = -1;
+                    chosenDualBootPartitionLba = 0UL;
+                }
+            }
+            else
+            {
+                currentDualBootInfo = null;
+                dualBootCandidateIndex = -1;
+                chosenDualBootPartitionLba = 0UL;
+            }
+        }
+
+        private void ApplyInstallModeSelection()
+        {
+            if (installModeIndex == 0)
+            {
+                chosenLayout = InstallationPartitionLayout.DualEfiAndSystem;
+                zeroFillExtendedHeader = false;
+                SetStatus("Selected: Erase Disk and Install ZonderqOS (Recommended automatic layout).", Good);
+            }
+            else if (installModeIndex == 1)
+            {
+                if (chosenLayout == InstallationPartitionLayout.DualBootAlongsideExistingOs)
+                    chosenLayout = InstallationPartitionLayout.DualEfiAndSystem;
+                SetStatus("Selected: Advanced Installation (Customize partition layout & format options).", Accent);
+            }
+            else if (installModeIndex == 2)
+            {
+                chosenLayout = InstallationPartitionLayout.DualBootAlongsideExistingOs;
+                zeroFillExtendedHeader = false;
+                RefreshDualBootInspectionForSelectedDisk();
+                SetStatus("Selected: Dual-Boot Alongside Existing OS (" +
+                    (currentDualBootInfo != null ? currentDualBootInfo.DiagnosticNote : "Preserves existing OS partitions") + ")", Good);
+            }
+        }
+
         private void HandleInstallTypeMouse(int mx, int my, int cx, int cy, int cw, int ch)
         {
             int cardX = cx + 24;
             int cardW = cw - 48;
-            int card1Y = cy + 106;
-            int card2Y = cy + 210;
+            int card1Y = cy + 100;
+            int card2Y = cy + 174;
+            int card3Y = cy + 248;
 
-            if (Hit(mx, my, cardX, card1Y, cardW, 90))
+            if (Hit(mx, my, cardX, card1Y, cardW, 68))
             {
                 installModeIndex = 0;
-                chosenLayout = InstallationPartitionLayout.DualEfiAndSystem;
-                zeroFillExtendedHeader = false;
-                SetStatus("Selected: Erase Disk and Install ZonderqOS (Recommended automatic layout).", Good);
+                ApplyInstallModeSelection();
                 return;
             }
 
-            if (Hit(mx, my, cardX, card2Y, cardW, 90))
+            if (Hit(mx, my, cardX, card2Y, cardW, 68))
             {
                 installModeIndex = 1;
-                SetStatus("Selected: Advanced Installation (Customize partition layout & format options).", Accent);
+                ApplyInstallModeSelection();
+                return;
+            }
+
+            if (Hit(mx, my, cardX, card3Y, cardW, 68))
+            {
+                installModeIndex = 2;
+                ApplyInstallModeSelection();
                 return;
             }
 
             if (installModeIndex == 1)
             {
-                int optY = cy + 320;
+                int optY = cy + 324;
                 if (Hit(mx, my, cardX, optY, 280, 42))
                 {
                     chosenLayout = InstallationPartitionLayout.DualEfiAndSystem;
@@ -564,6 +632,40 @@ namespace ZonderqOS.GUI.Apps
                     SetStatus(zeroFillExtendedHeader
                         ? "Format Mode: Extended Header Wipe enabled (4096 sectors)."
                         : "Format Mode: Standard Quick Partition & FAT32 Initialization.", Accent);
+                    return;
+                }
+            }
+            else if (installModeIndex == 2 && currentDualBootInfo != null)
+            {
+                int optY = cy + 324;
+                if (Hit(mx, my, cardX, optY, 420, 42))
+                {
+                    if (currentDualBootInfo.CanAllocateFromFreeSpace)
+                    {
+                        dualBootCandidateIndex = -1;
+                        chosenDualBootPartitionLba = 0UL;
+                        SetStatus("Dual-Boot Target: Using " + currentDualBootInfo.FreeSpaceMegabytes + " MB unallocated free space.", Good);
+                    }
+                    else
+                    {
+                        SetStatus("No unallocated free space >= 64 MB; select an existing partition on the right.", Warning);
+                    }
+                    return;
+                }
+                if (Hit(mx, my, cardX + 436, optY, 440, 42))
+                {
+                    int count = currentDualBootInfo.CandidateTargetPartitions.Count;
+                    if (count > 0)
+                    {
+                        dualBootCandidateIndex = (dualBootCandidateIndex + 1) % count;
+                        DualBootCandidatePartition cand = currentDualBootInfo.CandidateTargetPartitions[dualBootCandidateIndex];
+                        chosenDualBootPartitionLba = cand.StartLba;
+                        SetStatus("Dual-Boot Target Partition: Part #" + cand.PartitionNumber + " (LBA " + cand.StartLba + ", " + cand.SizeMegabytes + " MB, " + cand.FilesystemType + ").", Accent);
+                    }
+                    else
+                    {
+                        SetStatus("No eligible existing non-ESP partitions found on this disk.", Warning);
+                    }
                     return;
                 }
             }
@@ -821,6 +923,9 @@ namespace ZonderqOS.GUI.Apps
                 TargetDiskToken = targetDisk.IdentityToken,
                 TypedDiskConfirmation = typedConfirm,
                 PartitionLayout = chosenLayout,
+                DualBootTargetPartitionStartLba = chosenLayout == InstallationPartitionLayout.DualBootAlongsideExistingOs
+                    ? chosenDualBootPartitionLba
+                    : 0UL,
                 ZeroFillHeaderRegion = zeroFillExtendedHeader,
                 Username = username,
                 Hostname = hostname,
@@ -883,6 +988,7 @@ namespace ZonderqOS.GUI.Apps
                     SetStatus("Select the destination disk for ZonderqOS installation.", Accent);
                     break;
                 case ScreenInstallType:
+                    RefreshDualBootInspectionForSelectedDisk();
                     SetStatus("Choose installation mode and review disk layout.", Accent);
                     break;
                 case ScreenUserSetup:
@@ -1172,47 +1278,62 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderInstallTypeScreen(Canvas canvas, int cx, int cy, int cw, int ch)
         {
-            SmallTextRenderer.Draw(canvas, "INSTALLATION TYPE", cx + 24, cy + 66, TextColor);
+            SmallTextRenderer.Draw(canvas, "INSTALLATION TYPE", cx + 24, cy + 62, TextColor);
             SmallTextRenderer.Draw(canvas,
                 "Choose how ZonderqOS should prepare and partition the selected disk:",
-                cx + 24, cy + 84, Muted);
+                cx + 24, cy + 80, Muted);
 
             int cardX = cx + 24;
             int cardW = cw - 48;
 
             // Option 1: Erase Disk and Install ZonderqOS
             bool opt1 = installModeIndex == 0;
-            canvas.DrawFilledRectangle(opt1 ? PanelSelected : Panel, cardX, cy + 106, cardW, 90);
-            canvas.DrawRectangle(opt1 ? Accent : Border, cardX, cy + 106, cardW, 90);
-            canvas.DrawFilledRectangle(opt1 ? Accent : Muted, cardX, cy + 106, 4, 90);
+            canvas.DrawFilledRectangle(opt1 ? PanelSelected : Panel, cardX, cy + 100, cardW, 68);
+            canvas.DrawRectangle(opt1 ? Accent : Border, cardX, cy + 100, cardW, 68);
+            canvas.DrawFilledRectangle(opt1 ? Accent : Muted, cardX, cy + 100, 4, 68);
             SmallTextRenderer.Draw(canvas,
                 (opt1 ? "[*] " : "[ ] ") + "1. Erase Disk and Install ZonderqOS (Recommended - Automatic)",
-                cardX + 18, cy + 124, TextColor);
+                cardX + 18, cy + 112, TextColor);
             SmallTextRenderer.Draw(canvas,
                 "Automatically removes all existing partitions on the selected disk, creates the EFI System Partition",
-                cardX + 42, cy + 148, Muted);
+                cardX + 42, cy + 132, Muted);
             SmallTextRenderer.Draw(canvas,
                 "and ZonderqOS System Partition (FAT32 ZONDERQDATA), and installs Limine + BootGuard.",
-                cardX + 42, cy + 168, Muted);
+                cardX + 42, cy + 148, Muted);
 
             // Option 2: Advanced Installation
             bool opt2 = installModeIndex == 1;
-            canvas.DrawFilledRectangle(opt2 ? PanelSelected : Panel, cardX, cy + 210, cardW, 90);
-            canvas.DrawRectangle(opt2 ? Accent : Border, cardX, cy + 210, cardW, 90);
-            canvas.DrawFilledRectangle(opt2 ? Accent : Muted, cardX, cy + 210, 4, 90);
+            canvas.DrawFilledRectangle(opt2 ? PanelSelected : Panel, cardX, cy + 174, cardW, 68);
+            canvas.DrawRectangle(opt2 ? Accent : Border, cardX, cy + 174, cardW, 68);
+            canvas.DrawFilledRectangle(opt2 ? Accent : Muted, cardX, cy + 174, 4, 68);
             SmallTextRenderer.Draw(canvas,
                 (opt2 ? "[*] " : "[ ] ") + "2. Advanced Installation (Custom Partition Layout & Wipe Policy)",
-                cardX + 18, cy + 228, TextColor);
+                cardX + 18, cy + 186, TextColor);
             SmallTextRenderer.Draw(canvas,
                 "Configure Dual-Partition (ESP + ZONDERQDATA) vs Single-Partition layout, or enable extended",
-                cardX + 42, cy + 252, Muted);
+                cardX + 42, cy + 206, Muted);
             SmallTextRenderer.Draw(canvas,
                 "header zero-filling before formatting. Protected disks remain strictly locked.",
-                cardX + 42, cy + 272, Muted);
+                cardX + 42, cy + 222, Muted);
+
+            // Option 3: Dual-Boot Alongside Existing OS
+            bool opt3 = installModeIndex == 2;
+            canvas.DrawFilledRectangle(opt3 ? PanelSelected : Panel, cardX, cy + 248, cardW, 68);
+            canvas.DrawRectangle(opt3 ? Good : Border, cardX, cy + 248, cardW, 68);
+            canvas.DrawFilledRectangle(opt3 ? Good : Muted, cardX, cy + 248, 4, 68);
+            SmallTextRenderer.Draw(canvas,
+                (opt3 ? "[*] " : "[ ] ") + "3. Dual-Boot Alongside Existing OS (Preserve Kali Linux / Windows / ESP)",
+                cardX + 18, cy + 260, TextColor);
+            SmallTextRenderer.Draw(canvas,
+                "Preserves all existing OS partitions and shares the EFI System Partition. Allocates ZONDERQDATA from",
+                cardX + 42, cy + 280, Muted);
+            SmallTextRenderer.Draw(canvas,
+                "free space (or a selected partition) and adds Kali Linux / Windows / GRUB to the Limine boot menu.",
+                cardX + 42, cy + 296, Muted);
 
             if (opt2)
             {
-                int optY = cy + 320;
+                int optY = cy + 324;
                 bool dual = chosenLayout == InstallationPartitionLayout.DualEfiAndSystem;
                 DrawButton(canvas, cardX, optY, 280, 42,
                     dual ? "[*] Dual: ESP + ZONDERQDATA" : "[ ] Dual: ESP + ZONDERQDATA",
@@ -1223,6 +1344,34 @@ namespace ZonderqOS.GUI.Apps
                 DrawButton(canvas, cardX + 592, optY, 280, 42,
                     zeroFillExtendedHeader ? "[*] Extended Header Wipe" : "[ ] Quick Format (Default)",
                     null, zeroFillExtendedHeader ? Warning : Good, false);
+            }
+            else if (opt3 && currentDualBootInfo != null)
+            {
+                int optY = cy + 324;
+                bool useFree = dualBootCandidateIndex < 0 && currentDualBootInfo.CanAllocateFromFreeSpace;
+                string freeLabel = currentDualBootInfo.CanAllocateFromFreeSpace
+                    ? ((useFree ? "[*] " : "[ ] ") + "Free Space (" + currentDualBootInfo.FreeSpaceMegabytes + " MB)")
+                    : "[Unavailable] Free Space (< 64 MB)";
+                DrawButton(canvas, cardX, optY, 420, 42,
+                    freeLabel, null, useFree ? Good : Muted, useFree);
+
+                string partLabel;
+                bool usePart = dualBootCandidateIndex >= 0 && dualBootCandidateIndex < currentDualBootInfo.CandidateTargetPartitions.Count;
+                if (usePart)
+                {
+                    DualBootCandidatePartition cand = currentDualBootInfo.CandidateTargetPartitions[dualBootCandidateIndex];
+                    partLabel = "[*] Part #" + cand.PartitionNumber + " (" + cand.SizeMegabytes + " MB " + cand.FilesystemType + ") [Click to cycle]";
+                }
+                else if (currentDualBootInfo.CandidateTargetPartitions.Count > 0)
+                {
+                    partLabel = "[ ] Select Existing Partition (" + currentDualBootInfo.CandidateTargetPartitions.Count + " available)";
+                }
+                else
+                {
+                    partLabel = "[None] No Eligible Existing Partitions";
+                }
+                DrawButton(canvas, cardX + 436, optY, 440, 42,
+                    partLabel, null, usePart ? Accent : Muted, usePart);
             }
 
             // Target disk summary preview
@@ -1235,12 +1384,27 @@ namespace ZonderqOS.GUI.Apps
                 SmallTextRenderer.Draw(canvas,
                     "TARGET DISK: " + d.DiskId + " (" + d.Model + ", " + d.FormattedCapacity + ")",
                     cardX + 16, sumY + 14, Warning);
-                SmallTextRenderer.Draw(canvas,
-                    "PLANNED LAYOUT: " +
-                    (chosenLayout == InstallationPartitionLayout.DualEfiAndSystem && d.SizeMegabytes >= DiskFormattingEngine.DualLayoutMinDiskMegabytes
-                        ? "Partition 1: 64 MB EFI System (FAT32 ZONDERQEFI)  |  Partition 2: ZonderqOS System (FAT32 ZONDERQDATA)"
-                        : "Partition 1: Full-Disk ZonderqOS System Partition (FAT32 ZONDERQDATA)"),
-                    cardX + 16, sumY + 38, TextColor);
+
+                string plannedDesc;
+                if (chosenLayout == InstallationPartitionLayout.DualBootAlongsideExistingOs)
+                {
+                    string targetPartDesc = chosenDualBootPartitionLba == 0
+                        ? ("New FAT32 ZONDERQDATA in unallocated space (" + (currentDualBootInfo != null ? currentDualBootInfo.FreeSpaceMegabytes : 0) + " MB)")
+                        : ("Format existing partition @ LBA " + chosenDualBootPartitionLba + " as FAT32 ZONDERQDATA");
+                    plannedDesc = "DUAL-BOOT: Preserve foreign OS (" + (currentDualBootInfo != null ? currentDualBootInfo.DetectedOsSummary : "Auto") + ") | " + targetPartDesc;
+                }
+                else if (chosenLayout == InstallationPartitionLayout.DualEfiAndSystem && d.SizeMegabytes >= DiskFormattingEngine.DualLayoutMinDiskMegabytes)
+                {
+                    plannedDesc = "Partition 1: 64 MB EFI System (FAT32 ZONDERQEFI)  |  Partition 2: ZonderqOS System (FAT32 ZONDERQDATA)";
+                }
+                else
+                {
+                    plannedDesc = "Partition 1: Full-Disk ZonderqOS System Partition (FAT32 ZONDERQDATA)";
+                }
+
+                SmallTextRenderer.DrawClipped(canvas,
+                    "PLANNED LAYOUT: " + plannedDesc,
+                    cardX + 16, sumY + 38, cardW - 32, TextColor);
                 SmallTextRenderer.Draw(canvas,
                     "OTHER DISKS: All other connected disks remain untouched and protected.",
                     cardX + 16, sumY + 60, Good);

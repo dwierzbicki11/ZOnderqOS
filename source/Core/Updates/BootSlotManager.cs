@@ -926,6 +926,14 @@ namespace ZonderqOS.SystemCore.Updates
                 sb.AppendLine("    resolution: 1366x768x32");
                 sb.AppendLine("    path: boot():/boot/ZonderqOS.elf");
 
+                List<ZonderqOS.Storage.DualBootEntry> dualEntries = ZonderqOS.Storage.DualBootManager.LoadSavedEntries("");
+                string dualSection = ZonderqOS.Storage.DualBootManager.FormatLimineDualBootSection(dualEntries);
+                if (!string.IsNullOrEmpty(dualSection))
+                {
+                    sb.AppendLine();
+                    sb.Append(dualSection);
+                }
+
                 string config = sb.ToString();
 
                 if (!Directory.Exists("/boot"))

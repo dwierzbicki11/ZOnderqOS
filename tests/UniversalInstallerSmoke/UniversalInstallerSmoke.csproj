@@ -36,6 +36,7 @@
     <Compile Include="../../source/Storage/InstallerStepTracker.cs" Link="InstallerStepTracker.cs" />
     <Compile Include="../../source/Storage/LimineBootMediaDetector.cs" Link="LimineBootMediaDetector.cs" />
     <Compile Include="../../source/Storage/DiskCatalog.cs" Link="DiskCatalog.cs" />
+    <Compile Include="../../source/Storage/DualBootManager.cs" Link="DualBootManager.cs" />
     <Compile Include="../../source/Storage/DiskFormattingEngine.cs" Link="DiskFormattingEngine.cs" />
     <Compile Include="../../source/Storage/SystemInstallerEngine.cs" Link="SystemInstallerEngine.cs" />
     <Compile Include="Program.cs" />

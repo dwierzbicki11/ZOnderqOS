@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using Cosmos.Kernel.HAL.Devices.Storage;
 using Cosmos.Kernel.System.FileSystem;
@@ -14,6 +15,7 @@ namespace ZonderqOS.Storage
         public DiskIdentityToken TargetDiskToken { get; set; }
         public string TypedDiskConfirmation { get; set; } = string.Empty;
         public InstallationPartitionLayout PartitionLayout { get; set; } = InstallationPartitionLayout.DualEfiAndSystem;
+        public ulong DualBootTargetPartitionStartLba { get; set; }
         public bool ZeroFillHeaderRegion { get; set; }
         public string Username { get; set; } = string.Empty;
         public string Hostname { get; set; } = "zonderq-pc";
@@ -171,19 +173,35 @@ namespace ZonderqOS.Storage
 
                 // Steps 0, 1, 2: Preparing disk, Creating partitions, Formatting filesystem
                 NotifyProgress(0, 5);
-                if (!DiskFormattingEngine.PrepareDiskForInstallation(
-                    request.TargetDiskToken,
-                    request.TypedDiskConfirmation,
-                    request.PartitionLayout,
-                    request.ZeroFillHeaderRegion,
-                    (pct, stepName) =>
-                    {
-                        if (pct < 15) NotifyProgress(0, pct);
-                        else if (pct < 26) NotifyProgress(1, pct);
-                        else NotifyProgress(2, pct);
-                    },
-                    out PreparedInstallPartitions prepared,
-                    out error))
+                PreparedInstallPartitions prepared;
+                bool prepSuccess = request.PartitionLayout == InstallationPartitionLayout.DualBootAlongsideExistingOs
+                    ? DiskFormattingEngine.PrepareDiskForDualBoot(
+                        request.TargetDiskToken,
+                        request.TypedDiskConfirmation,
+                        request.DualBootTargetPartitionStartLba,
+                        (pct, stepName) =>
+                        {
+                            if (pct < 15) NotifyProgress(0, pct);
+                            else if (pct < 26) NotifyProgress(1, pct);
+                            else NotifyProgress(2, pct);
+                        },
+                        out prepared,
+                        out error)
+                    : DiskFormattingEngine.PrepareDiskForInstallation(
+                        request.TargetDiskToken,
+                        request.TypedDiskConfirmation,
+                        request.PartitionLayout,
+                        request.ZeroFillHeaderRegion,
+                        (pct, stepName) =>
+                        {
+                            if (pct < 15) NotifyProgress(0, pct);
+                            else if (pct < 26) NotifyProgress(1, pct);
+                            else NotifyProgress(2, pct);
+                        },
+                        out prepared,
+                        out error);
+
+                if (!prepSuccess)
                 {
                     tracker.Fail(error);
                     onProgressUpdated?.Invoke();
@@ -196,15 +214,17 @@ namespace ZonderqOS.Storage
 
                 // Step 3: Installing bootloader (Limine BIOS stage 1/2 + EFI System Partition files)
                 NotifyProgress(3, 40);
-                if (!DiskFormattingEngine.InstallLimineBiosBootloader(prepared.Device, out error))
+                if (!Gpt.IsGpt(prepared.Device))
                 {
-                    tracker.Fail(error);
-                    onProgressUpdated?.Invoke();
-                    return false;
+                    if (!DiskFormattingEngine.InstallLimineBiosBootloader(prepared.Device, out error))
+                    {
+                        tracker.Fail(error);
+                        onProgressUpdated?.Invoke();
+                        return false;
+                    }
                 }
 
-                string limineConfigText = BuildDefaultLimineConfig();
-
+                var dualBootEntries = new List<DualBootEntry>();
                 EnsureVfsMountDirectories();
 
                 if (prepared.EfiPartition != null)
@@ -220,13 +240,26 @@ namespace ZonderqOS.Storage
 
                     CreateDirVfs(EfiMountPoint + "/EFI");
                     CreateDirVfs(EfiMountPoint + "/EFI/BOOT");
+                    CreateDirVfs(EfiMountPoint + "/EFI/zonderq");
                     CreateDirVfs(EfiMountPoint + "/boot");
                     CreateDirVfs(EfiMountPoint + "/boot/limine");
+
+                    if (prepared.PreserveExistingEfiPartition)
+                    {
+                        DualBootManager.BackupForeignFallbackBootloaderIfNeeded(
+                            EfiMountPoint,
+                            bootGuardBytes.Length,
+                            limineEfiBytes.Length,
+                            out _);
+                        DualBootManager.ScanMountedEfiForBootloaders(EfiMountPoint, dualBootEntries);
+                    }
 
                     // Do not write limine.conf on ESP so UEFI Limine uses the single authoritative
                     // A/B BootSlotManager configuration on ZONDERQDATA (no shadowing config on ESP).
                     if (!WriteBytesVfs(EfiMountPoint + "/EFI/BOOT/BOOTX64.EFI", bootGuardBytes, out error) ||
                         !WriteBytesVfs(EfiMountPoint + "/EFI/BOOT/LIMINE.EFI", limineEfiBytes, out error) ||
+                        !WriteBytesVfs(EfiMountPoint + "/EFI/zonderq/BOOTX64.EFI", bootGuardBytes, out error) ||
+                        !WriteBytesVfs(EfiMountPoint + "/EFI/zonderq/LIMINE.EFI", limineEfiBytes, out error) ||
                         !WriteBytesVfs(EfiMountPoint + "/boot/limine/limine-bios.sys", limineBiosSysBytes, out error))
                     {
                         tracker.Fail("EFI partition bootloader write failed: " + error);
@@ -245,6 +278,13 @@ namespace ZonderqOS.Storage
                     DiskFormattingEngine.MirrorPrimaryFatToSecondaryFat(prepared.EfiPartition);
                     prepared.EfiPartition.Flush();
                 }
+
+                if (prepared.Layout == InstallationPartitionLayout.DualBootAlongsideExistingOs)
+                {
+                    DualBootManager.ScanDisksForForeignPartitions(dualBootEntries);
+                }
+
+                string limineConfigText = BuildDefaultLimineConfig(dualBootEntries);
 
                 tracker.CompleteStep(3);
 
@@ -319,6 +359,11 @@ namespace ZonderqOS.Storage
                 }
 
                 string bootStateText = BuildInitialBootStateConfig();
+                if (dualBootEntries.Count > 0)
+                {
+                    DualBootManager.SaveEntries(SysMountPoint, dualBootEntries, out _);
+                }
+
                 if (!WriteTextVfs(SysMountPoint + "/boot/boot_state.cfg", bootStateText, out error) ||
                     !WriteTextVfs(SysMountPoint + "/boot/limine.conf", limineConfigText, out error) ||
                     !WriteTextVfs(SysMountPoint + "/limine.conf", limineConfigText, out error) ||
@@ -838,9 +883,9 @@ namespace ZonderqOS.Storage
             return true;
         }
 
-        public static string BuildDefaultLimineConfig()
+        public static string BuildDefaultLimineConfig(IReadOnlyList<DualBootEntry> dualBootEntries = null)
         {
-            return
+            string baseConfig =
                 "# Cosmos Gen3 / Limine v10 A/B dual-slot boot configuration.\n" +
                 "timeout: 5\n" +
                 "default_entry: 1\n" +
@@ -857,6 +902,13 @@ namespace ZonderqOS.Storage
                 "    protocol: limine\n" +
                 "    resolution: 1366x768x32\n" +
                 "    path: boot():/boot/ZonderqOS.elf\n";
+
+            string dualSection = DualBootManager.FormatLimineDualBootSection(dualBootEntries);
+            if (!string.IsNullOrEmpty(dualSection))
+            {
+                baseConfig += "\n" + dualSection;
+            }
+            return baseConfig;
         }
 
         public static string BuildInitialBootStateConfig()

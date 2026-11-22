@@ -58,7 +58,7 @@ namespace ZonderqOS
             Register(new CmdFind()); Register(new CmdTail());
             Register(new CmdWc()); Register(new CmdWhich());
             Register(new CmdNeofetch()); Register(new CmdMatrix());
-            Register(new CmdSysbench()); Register(new CmdInstall());
+            Register(new CmdSysbench()); Register(new CmdInstall()); Register(new CmdDualBoot());
 #if !ZONDERQ_NETWORK_DISABLED
             Register(new CmdNetwork()); Register(new CmdIp());
             Register(new CmdPing()); Register(new CmdDns());

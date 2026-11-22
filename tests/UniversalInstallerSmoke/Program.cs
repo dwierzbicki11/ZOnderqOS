@@ -318,8 +318,206 @@ namespace UniversalInstallerSmoke
             Assert(!ZonderqOS.DataVolumePolicy.IsApprovedDataPartition(installedEsp), "ESP must NOT be approved as ZONDERQDATA");
             Assert(ZonderqOS.DataVolumePolicy.IsApprovedDataPartition(installedSys), "System partition MUST be approved by DataVolumePolicy");
 
+            // 8. Test G: Non-Destructive Dual-Boot Installation Alongside Existing Kali Linux + Windows ESP
+            Console.WriteLine("[Test G] Preparing 220 MB disk with existing ESP (/EFI/kali/grubx64.efi + /EFI/Microsoft/Boot/bootmgfw.efi) + Kali Linux EXT4 + 115 MB free space...");
+            var disk2DualBoot = new VirtualTestDisk("nvme0-dualboot-kali-win", 220);
+            Mbr.Create(disk2DualBoot);
+            const ulong espStart = 2048UL;
+            const ulong espCount = 131072UL; // 64 MiB ESP
+            const ulong kaliStart = espStart + espCount; // 133120
+            const ulong kaliCount = 81920UL; // 40 MiB Kali EXT4
+            Assert(Mbr.AddPartition(disk2DualBoot, 0, 0xEF, espStart, espCount), "Add ESP to disk2 failed");
+            Assert(Mbr.AddPartition(disk2DualBoot, 1, 0x83, kaliStart, kaliCount), "Add Kali partition to disk2 failed");
+
+            // Set non-zero MBR disk signature on disk2
+            disk2DualBoot.RawBytes[440] = 0x77;
+            disk2DualBoot.RawBytes[441] = 0x88;
+            disk2DualBoot.RawBytes[442] = 0x99;
+            disk2DualBoot.RawBytes[443] = 0xAA;
+
+            // Populate Kali Linux EXT4 partition with superblock magic 0xEF53 and deterministic payload
+            int kaliByteOffset = (int)(kaliStart * 512UL);
+            int kaliByteLen = (int)(kaliCount * 512UL);
+            for (int i = 0; i < kaliByteLen; i += 4096)
+            {
+                disk2DualBoot.RawBytes[kaliByteOffset + i] = (byte)'K';
+                disk2DualBoot.RawBytes[kaliByteOffset + i + 1] = (byte)'A';
+                disk2DualBoot.RawBytes[kaliByteOffset + i + 2] = (byte)'L';
+                disk2DualBoot.RawBytes[kaliByteOffset + i + 3] = (byte)'I';
+            }
+            disk2DualBoot.RawBytes[kaliByteOffset + 1024 + 56] = 0x53;
+            disk2DualBoot.RawBytes[kaliByteOffset + 1024 + 57] = 0xEF;
+
+            var kaliDigestBefore = new Sha256Digest();
+            kaliDigestBefore.BlockUpdate(disk2DualBoot.RawBytes, kaliByteOffset, kaliByteLen);
+            byte[] kaliHashBeforeBytes = new byte[kaliDigestBefore.GetDigestSize()];
+            kaliDigestBefore.DoFinal(kaliHashBeforeBytes, 0);
+            string kaliShaBefore = BitConverter.ToString(kaliHashBeforeBytes).Replace("-", "").ToLowerInvariant();
+
+            StorageManager.RegisterDevice(disk2DualBoot);
+
+            // Format existing ESP on disk2 and seed /EFI/kali/grubx64.efi, /EFI/Microsoft/Boot/bootmgfw.efi, and foreign /EFI/BOOT/BOOTX64.EFI
+            Partition disk2Esp = null;
+            foreach (Partition p in StorageManager.Partitions)
+            {
+                if (object.ReferenceEquals(p.Host, disk2DualBoot) && p.StartSector == espStart)
+                {
+                    disk2Esp = p;
+                    break;
+                }
+            }
+            Assert(disk2Esp != null, "disk2 ESP partition not found");
+            Assert(DiskFormattingEngine.FormatAndVerifyFat32(disk2Esp, "SYSTEM_ESP ", false, out string espFmtErr), "Format disk2 ESP failed: " + espFmtErr);
+
+            Assert(VfsManager.RegisterFileSystem("testg_esp_seed", new FatFileSystemType(disk2Esp)), "Register testg_esp_seed failed");
+            VfsManager.TryCreateDirectory("/mnt", VfsMode.Directory);
+            VfsManager.TryCreateDirectory("/mnt/testg_seed", VfsMode.Directory);
+            Assert(VfsManager.TryMount("testg_esp_seed", ReadOnlySpan<char>.Empty, MountFlags.None, "/mnt/testg_seed", out _), "Mount testg_seed failed");
+
+            VfsManager.TryCreateDirectory("/mnt/testg_seed/EFI", VfsMode.Directory);
+            VfsManager.TryCreateDirectory("/mnt/testg_seed/EFI/kali", VfsMode.Directory);
+            VfsManager.TryCreateDirectory("/mnt/testg_seed/EFI/Microsoft", VfsMode.Directory);
+            VfsManager.TryCreateDirectory("/mnt/testg_seed/EFI/Microsoft/Boot", VfsMode.Directory);
+            VfsManager.TryCreateDirectory("/mnt/testg_seed/EFI/BOOT", VfsMode.Directory);
+
+            byte[] kaliGrubBytes = Encoding.ASCII.GetBytes("KALI_LINUX_GRUBX64_EFI_BOOTLOADER_BINARY_PAYLOAD");
+            byte[] winBootBytes = Encoding.ASCII.GetBytes("MICROSOFT_WINDOWS_BOOTMGFW_EFI_BINARY_PAYLOAD");
+            byte[] foreignBootx64 = Encoding.ASCII.GetBytes("FOREIGN_PREEXISTING_FALLBACK_BOOTX64_EFI_PAYLOAD");
+
+            WriteSeedVfsFile("/mnt/testg_seed/EFI/kali/grubx64.efi", kaliGrubBytes);
+            WriteSeedVfsFile("/mnt/testg_seed/EFI/Microsoft/Boot/bootmgfw.efi", winBootBytes);
+            WriteSeedVfsFile("/mnt/testg_seed/EFI/BOOT/BOOTX64.EFI", foreignBootx64);
+            Assert(VfsManager.TryUnmount("/mnt/testg_seed"), "Unmount testg_seed failed");
+
+            catalog = DiskCatalog.DiscoverPhysicalDisks();
+            Assert(catalog.Count == 3, "Expected 3 physical disks, found " + catalog.Count);
+            DiskCatalogEntry entry2 = catalog[2];
+
+            DualBootDiskInspection dbInfo = DualBootManager.InspectDiskForDualBoot(entry2);
+            Console.WriteLine("[Test G] DualBootInspection: CanAllocate=" + dbInfo.CanAllocateFromFreeSpace +
+                              ", FreeMB=" + dbInfo.FreeSpaceMegabytes +
+                              ", HasESP=" + dbInfo.HasExistingEfiPartition +
+                              ", DetectedOS=" + dbInfo.DetectedOsSummary);
+            Assert(dbInfo.CanAllocateFromFreeSpace && dbInfo.FreeSpaceMegabytes >= 100, "Expected >= 100 MB unallocated space for Dual-Boot");
+            Assert(dbInfo.HasExistingEfiPartition && dbInfo.ExistingEfiStartLba == espStart, "Expected existing ESP detection at LBA 2048");
+            Assert(dbInfo.DetectedOsSummary.Contains("Linux", StringComparison.OrdinalIgnoreCase), "Expected Kali/Linux detection in DetectedOsSummary");
+
+            var dbTracker = new InstallerStepTracker();
+            var dbReq = new InstallationRequest
+            {
+                TargetDiskToken = entry2.IdentityToken,
+                TypedDiskConfirmation = entry2.DiskId,
+                PartitionLayout = InstallationPartitionLayout.DualBootAlongsideExistingOs,
+                DualBootTargetPartitionStartLba = 0UL, // Allocate from unallocated tail space
+                Username = "zonderq",
+                Hostname = "zonderq-dualboot",
+                PasswordBuffer = "DualBootPass123".ToCharArray(),
+                PasswordLength = 15,
+                ConfirmPasswordBuffer = "DualBootPass123".ToCharArray(),
+                ConfirmPasswordLength = 15,
+                TestKernelElfOverride = BuildSyntheticElfKernel(256 * 1024)
+            };
+
+            bool dbOk = SystemInstallerEngine.ExecuteInstallation(
+                dbReq,
+                dbTracker,
+                () => Console.WriteLine("  [DualBoot] -> Step " + dbTracker.CurrentStepIndex + " (" + dbTracker.ProgressPercent + "%): " + dbTracker.CurrentStepName),
+                out string dbInstallErr);
+
+            Assert(dbOk && dbTracker.IsCompleted && !dbTracker.HasFailed, "Dual-Boot installation failed: " + dbInstallErr);
+
+            // Verify Kali Linux EXT4 partition bytes are 100% bit-for-bit identical!
+            var kaliDigestAfter = new Sha256Digest();
+            kaliDigestAfter.BlockUpdate(disk2DualBoot.RawBytes, kaliByteOffset, kaliByteLen);
+            byte[] kaliHashAfterBytes = new byte[kaliDigestAfter.GetDigestSize()];
+            kaliDigestAfter.DoFinal(kaliHashAfterBytes, 0);
+            string kaliShaAfter = BitConverter.ToString(kaliHashAfterBytes).Replace("-", "").ToLowerInvariant();
+            Console.WriteLine("[Test G] Kali Linux EXT4 partition SHA-256 before: " + kaliShaBefore);
+            Console.WriteLine("[Test G] Kali Linux EXT4 partition SHA-256 after:  " + kaliShaAfter);
+            Assert(kaliShaBefore == kaliShaAfter, "Kali Linux EXT4 partition was modified during Dual-Boot install!");
+
+            // Verify MBR now has 3 partitions: 0=0xEF (ESP), 1=0x83 (Kali Linux), 2=0x0C (ZONDERQDATA)
+            List<MbrPartitionEntry> dbMbr = Mbr.Parse(disk2DualBoot);
+            Assert(dbMbr.Count == 3, "Expected 3 MBR partitions after Dual-Boot install, found " + dbMbr.Count);
+            Assert(dbMbr[0].SystemId == 0xEF && dbMbr[0].StartSector == espStart, "Partition 1 (ESP) altered!");
+            Assert(dbMbr[1].SystemId == 0x83 && dbMbr[1].StartSector == kaliStart, "Partition 2 (Kali 0x83) altered!");
+            Assert(dbMbr[2].SystemId == 0x0C && dbMbr[2].StartSector == kaliStart + kaliCount, "Partition 3 (ZONDERQDATA 0x0C) not created at expected LBA!");
+
+            Partition dbEspPart = null;
+            Partition dbSysPart = null;
+            foreach (Partition p in StorageManager.Partitions)
+            {
+                if (object.ReferenceEquals(p.Host, disk2DualBoot))
+                {
+                    if (p.StartSector == dbMbr[0].StartSector) dbEspPart = p;
+                    if (p.StartSector == dbMbr[2].StartSector) dbSysPart = p;
+                }
+            }
+            Assert(dbEspPart != null && dbSysPart != null, "Dual-Boot ESP or System partition not found after rescan");
+            Assert(ZonderqOS.DataVolumePolicy.IsApprovedDataPartition(dbSysPart), "Dual-Boot ZONDERQDATA partition must be approved by DataVolumePolicy");
+
+            // Mount ESP and verify Kali GRUB, Windows Boot Manager, backed-up BOOTX64_PREV.EFI, and ZonderqOS BootGuard/Limine coexist
+            Assert(VfsManager.RegisterFileSystem("testg_esp_verify", new FatFileSystemType(dbEspPart)), "Register testg_esp_verify failed");
+            VfsManager.TryCreateDirectory("/mnt/testg_esp_v", VfsMode.Directory);
+            Assert(VfsManager.TryMount("testg_esp_verify", ReadOnlySpan<char>.Empty, MountFlags.None, "/mnt/testg_esp_v", out _), "Mount testg_esp_v failed");
+            Assert(ReadSeedVfsFile("/mnt/testg_esp_v/EFI/kali/grubx64.efi") == Encoding.ASCII.GetString(kaliGrubBytes),
+                "Existing /EFI/kali/grubx64.efi on ESP was not preserved!");
+            Assert(ReadSeedVfsFile("/mnt/testg_esp_v/EFI/Microsoft/Boot/bootmgfw.efi") == Encoding.ASCII.GetString(winBootBytes),
+                "Existing /EFI/Microsoft/Boot/bootmgfw.efi on ESP was not preserved!");
+            Assert(ReadSeedVfsFile("/mnt/testg_esp_v/EFI/BOOT/BOOTX64_PREV.EFI") == Encoding.ASCII.GetString(foreignBootx64),
+                "Pre-existing foreign /EFI/BOOT/BOOTX64.EFI was not backed up to /EFI/BOOT/BOOTX64_PREV.EFI!");
+            Assert(VfsManager.TryStat("/mnt/testg_esp_v/EFI/BOOT/LIMINE.EFI", out VfsStat limStat) && limStat.Size > 1024,
+                "LIMINE.EFI missing on shared ESP");
+            Assert(VfsManager.TryUnmount("/mnt/testg_esp_v"), "Unmount testg_esp_v failed");
+
+            // Mount Dual-Boot ZONDERQDATA and verify limine.conf contains Kali Linux, Windows Boot Manager, and Previous UEFI OS chainload entries
+            Assert(VfsManager.RegisterFileSystem("testg_sys_verify", new FatFileSystemType(dbSysPart)), "Register testg_sys_verify failed");
+            VfsManager.TryCreateDirectory("/mnt/testg_sys_v", VfsMode.Directory);
+            Assert(VfsManager.TryMount("testg_sys_verify", ReadOnlySpan<char>.Empty, MountFlags.None, "/mnt/testg_sys_v", out _), "Mount testg_sys_v failed");
+            string dbLimineConf = ReadSeedVfsFile("/mnt/testg_sys_v/boot/limine/limine.conf");
+            string dbEntriesCfg = ReadSeedVfsFile("/mnt/testg_sys_v/boot/dualboot_entries.cfg");
+            Console.WriteLine("[Test G] Generated /boot/dualboot_entries.cfg:\n" + dbEntriesCfg.Trim());
+            Assert(dbLimineConf.Contains("/Kali Linux (GRUB UEFI)") && dbLimineConf.Contains("boot():/EFI/kali/grubx64.efi"),
+                "limine.conf missing Kali Linux UEFI chainload entry!");
+            Assert(dbLimineConf.Contains("/Windows Boot Manager") && dbLimineConf.Contains("boot():/EFI/Microsoft/Boot/bootmgfw.efi"),
+                "limine.conf missing Windows Boot Manager UEFI chainload entry!");
+            Assert(dbLimineConf.Contains("/Previous UEFI OS (Fallback Bootloader)") && dbLimineConf.Contains("boot():/EFI/BOOT/BOOTX64_PREV.EFI"),
+                "limine.conf missing backed-up BOOTX64_PREV.EFI chainload entry!");
+            Assert(VfsManager.TryUnmount("/mnt/testg_sys_v"), "Unmount testg_sys_v failed");
+
             Console.WriteLine("=== ALL UNIVERSAL INSTALLER SMOKE TESTS PASSED ===");
             return 0;
+        }
+
+        private static void WriteSeedVfsFile(string path, byte[] data)
+        {
+            Assert(VfsManager.TryCreateFile(path, VfsMode.RegularFile), "Create seed file failed: " + path);
+            Assert(VfsManager.TryOpenFile(path, out IVfsFileHandle h), "Open seed file failed: " + path);
+            try
+            {
+                Assert(h.Write(data) == data.Length, "Write seed file failed: " + path);
+                h.TryFlush();
+            }
+            finally
+            {
+                (h as IDisposable)?.Dispose();
+            }
+        }
+
+        private static string ReadSeedVfsFile(string path)
+        {
+            Assert(VfsManager.TryStat(path, out VfsStat st) && st.Size > 0, "Stat seed file failed: " + path);
+            Assert(VfsManager.TryOpenFile(path, out IVfsFileHandle h), "Open seed file for read failed: " + path);
+            try
+            {
+                byte[] buf = new byte[(int)st.Size];
+                int r = (int)h.Read(buf);
+                return Encoding.UTF8.GetString(buf, 0, r);
+            }
+            finally
+            {
+                (h as IDisposable)?.Dispose();
+            }
         }
     }
 }

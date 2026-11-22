@@ -98,6 +98,22 @@ class UniversalGraphicalInstallerContracts(unittest.TestCase):
         self.assertEqual(res.returncode, 0, f"UniversalInstallerSmoke failed:\n{res.stdout}\n{res.stderr}")
         self.assertIn("ALL UNIVERSAL INSTALLER SMOKE TESTS PASSED", res.stdout)
 
+    def test_dual_boot_installation_and_chainloader_contract(self):
+        dual_src = (ROOT / "source/Storage/DualBootManager.cs").read_text(encoding="utf-8")
+        slot_src = (ROOT / "source/Core/Updates/BootSlotManager.cs").read_text(encoding="utf-8")
+        cmd_src = (ROOT / "source/Shell/Commands/CmdDualBoot.cs").read_text(encoding="utf-8")
+
+        self.assertIn("DualBootAlongsideExistingOs", FORMAT_ENGINE)
+        self.assertIn("PrepareDiskForDualBoot", FORMAT_ENGINE)
+        self.assertIn("PreserveExistingEfiPartition", FORMAT_ENGINE)
+        self.assertIn("/EFI/kali/grubx64.efi", dual_src)
+        self.assertIn("/EFI/Microsoft/Boot/bootmgfw.efi", dual_src)
+        self.assertIn("/EFI/BOOT/BOOTX64_PREV.EFI", dual_src)
+        self.assertIn("/boot/dualboot_entries.cfg", dual_src)
+        self.assertIn("Dual-Boot Alongside Existing OS", INSTALLER_GUI)
+        self.assertIn("DualBootManager.LoadSavedEntries", slot_src)
+        self.assertIn('public string Name => "dualboot"', cmd_src)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

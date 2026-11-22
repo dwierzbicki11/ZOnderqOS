@@ -35,7 +35,7 @@ namespace ZonderqOS.Commands
 
             CommandIO.WriteLine("Usage:");
             CommandIO.WriteLine("  zinstall list");
-            CommandIO.WriteLine("  zinstall run --disk DISK-X --confirm DISK-X --user <username> --host <hostname> --pass <password> [--single]");
+            CommandIO.WriteLine("  zinstall run --disk DISK-X --confirm DISK-X --user <username> --host <hostname> --pass <password> [--single | --dualboot [--part-lba <lba>]]");
         }
 
         private static void PrintDisks()
@@ -84,6 +84,8 @@ namespace ZonderqOS.Commands
             string hostname = "zonderq-pc";
             string password = null;
             bool singlePartition = false;
+            bool dualBoot = false;
+            ulong dualBootPartLba = 0UL;
             bool simulateError = false;
 
             for (int i = 2; i < args.Length; i++)
@@ -101,6 +103,10 @@ namespace ZonderqOS.Commands
                     password = args[++i];
                 else if (string.Equals(flag, "--single", StringComparison.OrdinalIgnoreCase))
                     singlePartition = true;
+                else if (string.Equals(flag, "--dualboot", StringComparison.OrdinalIgnoreCase))
+                    dualBoot = true;
+                else if (string.Equals(flag, "--part-lba", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                    ulong.TryParse(args[++i], out dualBootPartLba);
                 else if (string.Equals(flag, "--simulate-write-error", StringComparison.OrdinalIgnoreCase))
                     simulateError = true;
             }
@@ -143,9 +149,12 @@ namespace ZonderqOS.Commands
             {
                 TargetDiskToken = target.IdentityToken,
                 TypedDiskConfirmation = confirmId,
-                PartitionLayout = singlePartition
-                    ? InstallationPartitionLayout.SingleSystemPartition
-                    : InstallationPartitionLayout.DualEfiAndSystem,
+                PartitionLayout = dualBoot
+                    ? InstallationPartitionLayout.DualBootAlongsideExistingOs
+                    : (singlePartition
+                        ? InstallationPartitionLayout.SingleSystemPartition
+                        : InstallationPartitionLayout.DualEfiAndSystem),
+                DualBootTargetPartitionStartLba = dualBoot ? dualBootPartLba : 0UL,
                 Username = username,
                 Hostname = hostname,
                 PasswordBuffer = passBuf,
