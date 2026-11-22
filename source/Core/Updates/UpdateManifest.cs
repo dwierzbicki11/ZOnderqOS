@@ -17,7 +17,7 @@ namespace ZonderqOS.SystemCore.Updates
     /// </summary>
     public sealed class UpdateManifest
     {
-        public const string ExpectedArchitecture = "x86_64";
+        public const string ExpectedArchitecture = KernelBuildInfo.Architecture;
 
         public string Version { get; set; } = "1.0.0";
         public int BuildNumber { get; set; } = 3100;

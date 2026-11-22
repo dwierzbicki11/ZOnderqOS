@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
+using ZonderqOS.Security;
 using ZonderqOS.SystemCore.Networking;
 #if !ZONDERQ_NETWORK_DISABLED
 using Cosmos.Kernel.System.Network;
@@ -169,6 +170,12 @@ namespace ZonderqOS
 #if ZONDERQ_NETWORK_DISABLED
             return false;
 #else
+            if (!CanMutateNetworkConfig("set-active-device", out string authErr))
+            {
+                WriteMessage.WriteError(authErr, "NET");
+                return false;
+            }
+
             lock (Sync)
             {
                 try
@@ -223,6 +230,13 @@ namespace ZonderqOS
 #if ZONDERQ_NETWORK_DISABLED
             return false;
 #else
+            if (!CanMutateNetworkConfig("configure-dhcp", out string authErr))
+            {
+                lastStatusMessage = authErr;
+                WriteMessage.WriteError(authErr, "NET");
+                return false;
+            }
+
             lock (Sync)
             {
                 try
@@ -275,6 +289,13 @@ namespace ZonderqOS
 #if ZONDERQ_NETWORK_DISABLED
             return false;
 #else
+            if (!CanMutateNetworkConfig("configure-static", out string authErr))
+            {
+                lastStatusMessage = authErr;
+                WriteMessage.WriteError(authErr, "NET");
+                return false;
+            }
+
             lock (Sync)
             {
                 try
@@ -435,6 +456,26 @@ namespace ZonderqOS
         }
 
 #if !ZONDERQ_NETWORK_DISABLED
+        private static bool CanMutateNetworkConfig(string operation, out string error)
+        {
+            error = string.Empty;
+            // Boot-time autoconfig runs before login (!IsAuthenticated); once a user
+            // session is authenticated, only root (UID 0) may alter network settings.
+            if (SecurityContext.IsAuthenticated && SecurityContext.CurrentUid != 0)
+            {
+                error = "Permission denied: root privileges are required for network configuration (" + operation + ").";
+                try
+                {
+                    SecurityLogger.LogEvent("WARN",
+                        "Unauthorized network mutation '" + operation + "' by " +
+                        (SecurityContext.CurrentUser ?? "?") + " (uid=" + SecurityContext.CurrentUid + ")");
+                }
+                catch { }
+                return false;
+            }
+            return true;
+        }
+
         private static bool EnsureInitializedAdapterLocked(out NetworkAdapter adapter, out string error)
         {
             adapter = default(NetworkAdapter);

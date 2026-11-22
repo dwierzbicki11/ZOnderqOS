@@ -38,7 +38,7 @@ namespace ZonderqOS.SystemCore.Updates
     {
         public string Version { get; set; } = "1.0.0";
         public int BuildNumber { get; set; } = 3100;
-        public string Architecture { get; set; } = "x86_64";
+        public string Architecture { get; set; } = KernelBuildInfo.Architecture;
         public string Title { get; set; } = "ZonderqOS System Update";
         public string ReleaseDate { get; set; } = "2026-11-08";
         public string Severity { get; set; } = "Recommended";

@@ -32,6 +32,23 @@ class TestNetworkHttpsOtaContracts(unittest.TestCase):
         content = (ROOT / "source/Core/Updates/UpdateManager.cs").read_text(encoding="utf-8")
         self.assertIn("OtaUpdateClient.DownloadVerifiedPackageToDirectory", content)
 
+    def test_network_mutations_require_root(self):
+        net = (ROOT / "source/Core/Network.cs").read_text(encoding="utf-8")
+        cmd_ip = (ROOT / "source/Shell/Commands/CmdIp.cs").read_text(encoding="utf-8")
+        cmd_net = (ROOT / "source/Shell/Commands/CmdNetwork.cs").read_text(encoding="utf-8")
+        self.assertIn("CanMutateNetworkConfig", net)
+        self.assertIn("SecurityContext.CurrentUid != 0", net)
+        self.assertIn('RequireRoot("static")', cmd_ip)
+        self.assertIn('RequireRoot("dhcp")', cmd_ip)
+        self.assertIn('RequireRoot("dhcp")', cmd_net)
+        self.assertIn('RequireRoot("device")', cmd_net)
+
+    def test_manifest_arch_tracks_kernel_build_info_and_settings_opens_network_center(self):
+        manifest = (ROOT / "source/Core/Updates/UpdateManifest.cs").read_text(encoding="utf-8")
+        settings = (ROOT / "source/GUI/Application/SettingsApp.cs").read_text(encoding="utf-8")
+        self.assertIn("ExpectedArchitecture = KernelBuildInfo.Architecture;", manifest)
+        self.assertIn("new NetworkCenterApp(", settings)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -178,10 +178,16 @@ namespace ZonderqOS.SystemCore.Updates
                 return false;
             }
 
+            bool completed = false;
             try
             {
                 progress?.Invoke(5, "Preparing OTA staging directory...");
                 ResetDirectory(stagingDir);
+
+                // Verify staging volume is writable before starting a multi-MiB download.
+                string probePath = Path.Combine(stagingDir, ".ota_probe");
+                File.WriteAllText(probePath, "ok");
+                File.Delete(probePath);
 
                 string kernelRel = manifest.KernelImage;
                 string kernelUrl = OtaUrlParser.CombineBaseAndRelative(check.BaseUrl, kernelRel);
@@ -278,14 +284,21 @@ namespace ZonderqOS.SystemCore.Updates
                 File.WriteAllBytes(manPath, check.RawManifestBytes);
 
                 manifestPathOnDisk = manPath;
+                completed = true;
                 progress?.Invoke(100, "OTA update package downloaded and verified.");
                 return true;
             }
             catch (Exception ex)
             {
-                try { ResetDirectory(stagingDir); } catch { }
                 error = "OTA staging failed: " + ex.Message;
                 return false;
+            }
+            finally
+            {
+                if (!completed)
+                {
+                    try { ResetDirectory(stagingDir); } catch { }
+                }
             }
         }
 

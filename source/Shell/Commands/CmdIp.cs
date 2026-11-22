@@ -1,4 +1,5 @@
 using System;
+using ZonderqOS.Security;
 
 namespace ZonderqOS.Commands
 {
@@ -20,11 +21,15 @@ namespace ZonderqOS.Commands
                     return;
 
                 case "dhcp":
+                    if (!RequireRoot("dhcp"))
+                        return;
                     SystemSettings.SetNetworkModeDhcp(true);
                     CommandIO.LastCommandSuccess = Network.ConfigureDhcp();
                     return;
 
                 case "static":
+                    if (!RequireRoot("static"))
+                        return;
                     if (args.Length < 6)
                     {
                         CommandIO.WriteLine("Usage: ip static <address> <mask> <gateway> <dns>");
@@ -43,6 +48,8 @@ namespace ZonderqOS.Commands
                     return;
 
                 case "device":
+                    if (!RequireRoot("device"))
+                        return;
                     if (args.Length < 3 || !int.TryParse(args[2], out int deviceIndex))
                     {
                         CommandIO.WriteLine("Usage: ip device <index>");
@@ -54,6 +61,8 @@ namespace ZonderqOS.Commands
                     return;
 
                 case "apply":
+                    if (!RequireRoot("apply"))
+                        return;
                     CommandIO.LastCommandSuccess = Network.ApplySavedConfiguration();
                     return;
 
@@ -62,6 +71,19 @@ namespace ZonderqOS.Commands
                     CommandIO.LastCommandSuccess = false;
                     return;
             }
+        }
+
+        private static bool RequireRoot(string action)
+        {
+            if (SecurityContext.IsAuthenticated && SecurityContext.CurrentUid == 0)
+                return true;
+
+            WriteMessage.WriteError("Root privileges are required for 'ip " + action + "'.", "NET");
+            SecurityLogger.LogEvent("WARN",
+                "Unauthorized 'ip " + action + "' attempt by " +
+                (SecurityContext.CurrentUser ?? "?") + " (uid=" + SecurityContext.CurrentUid + ")");
+            CommandIO.LastCommandSuccess = false;
+            return false;
         }
 
         private static void PrintUsage()

@@ -88,8 +88,8 @@ namespace NetworkOtaSmoke
         {
             Console.WriteLine("  -> Testing embedded Root CA trust store...");
             var roots = TlsTrustStore.GetBuiltInRoots();
-            Assert(roots != null && roots.Length >= 8, "Expected at least 8 embedded Root CAs, got " + (roots?.Length ?? 0));
-            Console.WriteLine("     Loaded " + roots.Length + " embedded Root CAs (GitHub/Let's Encrypt/DigiCert/Sectigo/USERTrust/GlobalSign/GTS).");
+            Assert(roots != null && roots.Length >= 12, "Expected at least 12 embedded Root CAs, got " + (roots?.Length ?? 0));
+            Console.WriteLine("     Loaded " + roots.Length + " embedded Root CAs (GitHub/Let's Encrypt/DigiCert/Sectigo/USERTrust/GlobalSign/GTS/Amazon/Microsoft).");
         }
 
         private static void TestRealTlsHttpAndEd25519OtaEndToEnd()

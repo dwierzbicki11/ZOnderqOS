@@ -1,4 +1,5 @@
 using System;
+using ZonderqOS.Security;
 
 namespace ZonderqOS.Commands
 {
@@ -30,6 +31,8 @@ namespace ZonderqOS.Commands
                     return;
 
                 case "dhcp":
+                    if (!RequireRoot("dhcp"))
+                        return;
                     CommandIO.LastCommandSuccess = Network.ConfigureDhcp();
                     return;
 
@@ -75,6 +78,8 @@ namespace ZonderqOS.Commands
                     return;
 
                 case "device":
+                    if (!RequireRoot("device"))
+                        return;
                     if (args.Length < 3 || !int.TryParse(args[2], out int devIndex))
                     {
                         CommandIO.WriteLine("Usage: net device <adapter_index>");
@@ -90,6 +95,19 @@ namespace ZonderqOS.Commands
                     CommandIO.LastCommandSuccess = false;
                     return;
             }
+        }
+
+        private static bool RequireRoot(string action)
+        {
+            if (SecurityContext.IsAuthenticated && SecurityContext.CurrentUid == 0)
+                return true;
+
+            WriteMessage.WriteError("Root privileges are required for 'net " + action + "'.", "NET");
+            SecurityLogger.LogEvent("WARN",
+                "Unauthorized 'net " + action + "' attempt by " +
+                (SecurityContext.CurrentUser ?? "?") + " (uid=" + SecurityContext.CurrentUid + ")");
+            CommandIO.LastCommandSuccess = false;
+            return false;
         }
     }
 }

@@ -615,7 +615,7 @@ namespace ZonderqOS.GUI.Apps
 
                 case PageNetwork:
                     if (row == 1 || row == 4)
-                        LaunchSubApp(new NetworkAdvancedApp(Window.X + 70, Window.Y + 40));
+                        LaunchSubApp(new NetworkCenterApp(Window.X + 70, Window.Y + 40, applicationManager, null));
                     else if (row == 5)
                         LaunchSubApp(new DeviceManagerApp(Window.X + 70, Window.Y + 40));
                     break;
