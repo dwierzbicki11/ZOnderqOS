@@ -19,6 +19,7 @@ namespace ZonderqOS
     /// </summary>
     public sealed class NetworkDeviceInfo
     {
+        internal int AdapterIndex { get; set; } = -1;
         public string Name { get; internal set; } = "Unavailable";
         public string MacAddress { get; internal set; } = "--";
         public bool LinkUp { get; internal set; }
@@ -45,6 +46,8 @@ namespace ZonderqOS
         private static string activeDns = "0.0.0.0";
         private static string lastStatusMessage = "Not initialized";
         private static int autoConfigStarted;
+        private static int hotplugDhcpInFlight;
+        private static volatile bool bootInitialized;
 
         static Network()
         {
@@ -99,9 +102,10 @@ namespace ZonderqOS
                     }
 
                     RefreshDevicesLocked();
+                    bootInitialized = true;
                     if (devices.Count == 0)
                     {
-                        lastStatusMessage = "No supported network adapter detected (Intel E1000E / VirtIO-Net).";
+                        lastStatusMessage = "No supported network adapter detected (Intel E1000E, VirtIO-Net, USB Tethering RNDIS/CDC-NCM/CDC-ECM).";
                     }
                     else
                     {
@@ -153,6 +157,92 @@ namespace ZonderqOS
         public static void Refresh()
         {
 #if !ZONDERQ_NETWORK_DISABLED
+            lock (Sync)
+            {
+                try
+                {
+                    if (NetworkManager.IsEnabled && NetworkManager.IsInitialized)
+                        RefreshDevicesLocked();
+                }
+                catch { }
+            }
+#endif
+        }
+
+        /// <summary>
+        /// Called by hot-pluggable network drivers (e.g. UsbTetheringDriver) when a new
+        /// adapter binds after boot. Refreshes device inventory and, when DHCP is enabled,
+        /// automatically acquires a lease on a one-shot background thread.
+        /// </summary>
+        public static void NotifyHotpluggedAdapter(string adapterName)
+        {
+#if !ZONDERQ_NETWORK_DISABLED
+            if (!bootInitialized)
+                return;
+            if (Interlocked.CompareExchange(ref hotplugDhcpInFlight, 1, 0) != 0)
+                return;
+
+            try
+            {
+                var thread = new Thread(() =>
+                {
+                    try
+                    {
+                        Thread.Sleep(250);
+                        lock (Sync)
+                        {
+                            if (!NetworkManager.IsEnabled || !NetworkManager.IsInitialized)
+                                return;
+
+                            RefreshDevicesLocked();
+                            if (!string.IsNullOrEmpty(adapterName))
+                            {
+                                for (int i = 0; i < devices.Count; i++)
+                                {
+                                    if (string.Equals(devices[i].Name, adapterName, StringComparison.OrdinalIgnoreCase) &&
+                                        devices[i].Ready && devices[i].LinkUp && devices[i].AdapterIndex >= 0)
+                                    {
+                                        activeIndex = devices[i].AdapterIndex;
+                                        NetworkAdapter target = NetworkManager.GetAdapter(activeIndex);
+                                        if (target.IsValid)
+                                            NetworkManager.Primary = target;
+                                        RefreshDevicesLocked();
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (!isReady && SystemSettings.NetworkUseDhcp)
+                            {
+                                ConfigureDhcpInternalLocked(logToConsole: false);
+                            }
+                        }
+                    }
+                    catch { }
+                    finally
+                    {
+                        Interlocked.Exchange(ref hotplugDhcpInFlight, 0);
+                    }
+                });
+                thread.IsBackground = true;
+                thread.Name = "net-hotplug-dhcp";
+                thread.Start();
+            }
+            catch
+            {
+                Interlocked.Exchange(ref hotplugDhcpInFlight, 0);
+            }
+#endif
+        }
+
+        /// <summary>
+        /// Called by hot-pluggable network drivers on USB detach to refresh link state immediately.
+        /// </summary>
+        public static void NotifyAdapterDetached(string adapterName)
+        {
+#if !ZONDERQ_NETWORK_DISABLED
+            if (!bootInitialized)
+                return;
             lock (Sync)
             {
                 try
@@ -239,50 +329,60 @@ namespace ZonderqOS
 
             lock (Sync)
             {
-                try
-                {
-                    if (!EnsureInitializedAdapterLocked(out NetworkAdapter adapter, out string err))
-                    {
-                        lastStatusMessage = err;
-                        WriteMessage.WriteError(err, "NET");
-                        return false;
-                    }
-
-                    if (!adapter.Ready || !adapter.LinkUp)
-                    {
-                        lastStatusMessage = "Adapter '" + adapter.Name + "' link is down.";
-                        WriteMessage.WriteError(lastStatusMessage, "NET");
-                        return false;
-                    }
-
-                    lastStatusMessage = "Requesting DHCP lease...";
-                    int elapsed = new DhcpClient(adapter).SendDiscoverPacket();
-                    IPConfig cfg = adapter.IPConfig;
-                    if (elapsed < 0 || cfg == null || cfg.Address == null || cfg.Address.IsZero)
-                    {
-                        lastStatusMessage = "DHCP timed out or returned no lease.";
-                        RefreshDevicesLocked();
-                        WriteMessage.WriteError(lastStatusMessage, "NET");
-                        return false;
-                    }
-
-                    EnsureDnsConfiguredLocked(cfg.DefaultGateway?.ToString());
-                    RefreshDevicesLocked();
-                    lastStatusMessage = "DHCP lease active: " + currentAddress;
-                    WriteMessage.WriteOK("DHCP configured (" + activeDevice.Name + "): IP=" + currentAddress +
-                        " Mask=" + activeDevice.SubnetMask + " GW=" + activeDevice.DefaultGateway +
-                        " DNS=" + activeDns, "NET");
-                    return true;
-                }
-                catch (Exception ex)
-                {
-                    lastStatusMessage = "DHCP error: " + ex.Message;
-                    WriteMessage.WriteError(lastStatusMessage, "NET");
-                    return false;
-                }
+                return ConfigureDhcpInternalLocked(logToConsole: true);
             }
 #endif
         }
+
+#if !ZONDERQ_NETWORK_DISABLED
+        private static bool ConfigureDhcpInternalLocked(bool logToConsole)
+        {
+            try
+            {
+                if (!EnsureInitializedAdapterLocked(out NetworkAdapter adapter, out string err))
+                {
+                    lastStatusMessage = err;
+                    if (logToConsole) WriteMessage.WriteError(err, "NET");
+                    return false;
+                }
+
+                if (!adapter.Ready || !adapter.LinkUp)
+                {
+                    lastStatusMessage = "Adapter '" + adapter.Name + "' link is down.";
+                    if (logToConsole) WriteMessage.WriteError(lastStatusMessage, "NET");
+                    return false;
+                }
+
+                lastStatusMessage = "Requesting DHCP lease...";
+                int elapsed = new DhcpClient(adapter).SendDiscoverPacket();
+                IPConfig cfg = adapter.IPConfig;
+                if (elapsed < 0 || cfg == null || cfg.Address == null || cfg.Address.IsZero)
+                {
+                    lastStatusMessage = "DHCP timed out or returned no lease.";
+                    RefreshDevicesLocked();
+                    if (logToConsole) WriteMessage.WriteError(lastStatusMessage, "NET");
+                    return false;
+                }
+
+                EnsureDnsConfiguredLocked(cfg.DefaultGateway?.ToString());
+                RefreshDevicesLocked();
+                lastStatusMessage = "DHCP lease active: " + currentAddress;
+                if (logToConsole && activeDevice != null)
+                {
+                    WriteMessage.WriteOK("DHCP configured (" + activeDevice.Name + "): IP=" + currentAddress +
+                        " Mask=" + activeDevice.SubnetMask + " GW=" + activeDevice.DefaultGateway +
+                        " DNS=" + activeDns, "NET");
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                lastStatusMessage = "DHCP error: " + ex.Message;
+                if (logToConsole) WriteMessage.WriteError(lastStatusMessage, "NET");
+                return false;
+            }
+        }
+#endif
 
         public static bool ConfigureStatic(string ip, string subnet, string gateway, string dns)
         {
@@ -436,7 +536,8 @@ namespace ZonderqOS
             CommandIO.WriteLine("=== ZonderqOS Network Interfaces ===");
             if (devices.Count == 0)
             {
-                CommandIO.WriteLine("  No supported network adapter detected (supported: Intel E1000E, VirtIO-Net).");
+                CommandIO.WriteLine("  No supported network adapter detected (Intel E1000E, VirtIO-Net, USB Tethering RNDIS/CDC-NCM/CDC-ECM).");
+                CommandIO.WriteLine("  Plug in a phone with USB Tethering ON, then run 'net info' and 'net dhcp'.");
                 CommandIO.WriteLine("  Run 'nicdiag' to inspect raw PCI network controllers.");
                 return;
             }
@@ -507,12 +608,21 @@ namespace ZonderqOS
                 ? NetworkManager.GetAdapter(activeIndex)
                 : NetworkManager.Primary;
 
+            if (!adapter.IsValid || !adapter.Ready || !adapter.LinkUp)
+            {
+                // Pick up a freshly hot-plugged ready/linked adapter (e.g. USB Tethering).
+                RefreshDevicesLocked();
+                if (activeIndex >= 0 && activeIndex < NetworkManager.DeviceCount)
+                    adapter = NetworkManager.GetAdapter(activeIndex);
+            }
+
             if (!adapter.IsValid)
             {
                 error = "No valid network adapter available.";
                 return false;
             }
 
+            NetworkManager.Primary = adapter;
             return true;
         }
 
@@ -547,6 +657,7 @@ namespace ZonderqOS
 
                 var info = new NetworkDeviceInfo
                 {
+                    AdapterIndex = i,
                     Name = string.IsNullOrEmpty(a.Name) ? ("nic" + i) : a.Name,
                     MacAddress = a.MacAddress != null ? a.MacAddress.ToString() : "--",
                     LinkUp = a.LinkUp,
@@ -562,7 +673,8 @@ namespace ZonderqOS
                     selected = devices.Count - 1;
             }
 
-            if (selected < 0 && devices.Count > 0)
+            // Always prefer a Ready + LinkUp adapter (e.g. plugged USB Tethering) over a LinkDown adapter (e.g. unplugged Ethernet).
+            if (devices.Count > 0 && (selected < 0 || !devices[selected].Ready || !devices[selected].LinkUp))
             {
                 for (int i = 0; i < devices.Count; i++)
                 {
@@ -576,14 +688,24 @@ namespace ZonderqOS
                     selected = 0;
             }
 
-            activeIndex = selected;
             if (selected >= 0 && selected < devices.Count)
             {
                 activeDevice = devices[selected];
+                activeIndex = activeDevice.AdapterIndex;
+                if (activeDevice.Ready && activeDevice.LinkUp && activeIndex >= 0 && activeIndex < count)
+                {
+                    NetworkAdapter selectedAdapter = NetworkManager.GetAdapter(activeIndex);
+                    if (selectedAdapter.IsValid)
+                        NetworkManager.Primary = selectedAdapter;
+                }
                 currentAddress = activeDevice.IpAddress;
                 activeDns = activeDevice.DnsServer;
                 isReady = activeDevice.Ready && activeDevice.LinkUp &&
                           !string.IsNullOrEmpty(currentAddress) && currentAddress != "0.0.0.0";
+            }
+            else
+            {
+                activeIndex = -1;
             }
         }
 

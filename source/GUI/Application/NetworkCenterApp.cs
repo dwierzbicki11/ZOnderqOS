@@ -53,7 +53,7 @@ namespace ZonderqOS.GUI.Apps
             isOnline = Network.IsReady;
             if (dev == null)
             {
-                adapterName = "NONE (No E1000E / VirtIO-Net detected)";
+                adapterName = "NONE (Plug Ethernet or Phone USB Tethering)";
                 macText = "--";
                 linkText = "NO ADAPTER";
                 ipText = "0.0.0.0";
